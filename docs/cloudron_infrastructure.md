@@ -62,7 +62,7 @@ ZBNW-NG běží v Cloudron prostředí, které poskytuje:
 │                             │                             │   └─────────────────────┘   │
 │   ┌─────────────────────┐   │                             │                             │
 │   │ Mastodon            │   │                             │   IP whitelist:             │
-│   │ - zpravobot.news    │   │                             │   allow <zbnw-server-ip>;      │
+│   │ - zpravobot.news    │   │                             │   allow <zbnw-server-ip>;   │
 │   └─────────────────────┘   │                             │   deny all;                 │
 └─────────────────────────────┘                             └─────────────────────────────┘
 ```

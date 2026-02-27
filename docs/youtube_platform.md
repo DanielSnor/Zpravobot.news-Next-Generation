@@ -57,7 +57,7 @@ YouTube integrace v ZBNW-NG umožňuje:
                                                               │
                                                               ▼
 ┌─────────────────────┐     ┌──────────────────┐     ┌────────────────────┐
-│  Mastodon API       │◀────│  MastodonPublisher│◀────│  Orchestrator      │
+│  Mastodon API       │◀────│ MastodonPublisher│◀────│  Orchestrator      │
 │  (status + media)   │     │  (thumbnail up)  │     │  (scheduling)      │
 └─────────────────────┘     └──────────────────┘     └────────────────────┘
 ```

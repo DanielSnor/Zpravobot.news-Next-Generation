@@ -66,7 +66,7 @@ Náhrada za IFTTT automatizace, které měly problémy:
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────────────┐
-│                              VSTUPNÍ KANÁLY                                      │
+│                              VSTUPNÍ KANÁLY                                     │
 ├─────────────────────────────────────────────────────────────────────────────────┤
 │  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐  ┌─────────────────────────┐ │
 │  │ Bluesky API │  │  RSS Feeds  │  │ YouTube RSS │  │ Twitter (IFTTT+Nitter)  │ │
@@ -75,7 +75,7 @@ Náhrada za IFTTT automatizace, které měly problémy:
           │                │                │                     │
           ▼                ▼                ▼                     ▼
 ┌─────────────────────────────────────────────────────────────────────────────────┐
-│                              ADAPTERS                                            │
+│                              ADAPTERS                                           │
 ├─────────────────────────────────────────────────────────────────────────────────┤
 │  BlueskyAdapter    RssAdapter     YouTubeAdapter    TwitterAdapter              │
 │                                                     TwitterNitterAdapter        │
@@ -83,47 +83,47 @@ Náhrada za IFTTT automatizace, které měly problémy:
                                       │
                                       ▼
 ┌─────────────────────────────────────────────────────────────────────────────────┐
-│                              POST MODEL                                          │
+│                              POST MODEL                                         │
 │  Unified representation: id, url, text, author, media, is_repost, is_quote...   │
 └─────────────────────────────────────────────────────────────────────────────────┘
                                       │
                                       ▼
 ┌─────────────────────────────────────────────────────────────────────────────────┐
-│                          ORCHESTRATOR / QUEUE PROCESSOR                          │
-│  - Scheduling (due checks)          - Thread parent resolution                   │
-│  - Adapter creation                 - First-run handling                         │
-│  - Stats tracking                   - Error handling                             │
+│                          ORCHESTRATOR / QUEUE PROCESSOR                         │
+│  - Scheduling (due checks)          - Thread parent resolution                  │
+│  - Adapter creation                 - First-run handling                        │
+│  - Stats tracking                   - Error handling                            │
 └─────────────────────────────────────────────────────────────────────────────────┘
                                       │
                                       ▼
 ┌─────────────────────────────────────────────────────────────────────────────────┐
-│                              POST PROCESSOR                                      │
+│                              POST PROCESSOR                                     │
 ├─────────────────────────────────────────────────────────────────────────────────┤
-│  1. Dedupe check (already_published?)                                            │
-│  2. Edit detection (check_for_edit) ← Twitter/Bluesky only                       │
-│  3. Content filtering (banned_phrases, required_keywords)                        │
-│  3. Format (UniversalFormatter via platform-specific wrapper)                    │
-│  4. Apply content_replacements                                                   │
-│  5. Content processing (trim by strategy: smart/word/hard)                       │
-│  6. URL processing (cleanup, domain fixes)                                       │
-│  7. Media upload                                                                 │
-│  8. Publish to Mastodon                                                          │
-│  9. Mark as published                                                            │
+│  1. Dedupe check (already_published?)                                           │
+│  2. Edit detection (check_for_edit) ← Twitter/Bluesky only                      │
+│  3. Content filtering (banned_phrases, required_keywords)                       │
+│  3. Format (UniversalFormatter via platform-specific wrapper)                   │
+│  4. Apply content_replacements                                                  │
+│  5. Content processing (trim by strategy: smart/word/hard)                      │
+│  6. URL processing (cleanup, domain fixes)                                      │
+│  7. Media upload                                                                │
+│  8. Publish to Mastodon                                                         │
+│  9. Mark as published                                                           │
 └─────────────────────────────────────────────────────────────────────────────────┘
                                       │
                                       ▼
 ┌─────────────────────────────────────────────────────────────────────────────────┐
-│                           MASTODON PUBLISHER                                     │
-│  - Status posting with media        - Rate limit handling (429)                  │
-│  - Media upload from URL            - Server error retry (5xx)                   │
-│  - Threading (in_reply_to_id)       - Credential verification                    │
+│                           MASTODON PUBLISHER                                    │
+│  - Status posting with media        - Rate limit handling (429)                 │
+│  - Media upload from URL            - Server error retry (5xx)                  │
+│  - Threading (in_reply_to_id)       - Credential verification                   │
 └─────────────────────────────────────────────────────────────────────────────────┘
                                       │
                                       ▼
 ┌─────────────────────────────────────────────────────────────────────────────────┐
-│                           STATE MANAGER (PostgreSQL)                             │
-│  - published_posts (deduplikace)    - source_state (scheduling, errors)          │
-│  - activity_log (diagnostika)       - Thread lookup (platform_uri)               │
+│                           STATE MANAGER (PostgreSQL)                            │
+│  - published_posts (deduplikace)    - source_state (scheduling, errors)         │
+│  - activity_log (diagnostika)       - Thread lookup (platform_uri)              │
 └─────────────────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -275,69 +275,69 @@ Každý post prochází jednotnou pipeline v PostProcessor:
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
-│ 1. DEDUPE CHECK                                                  │
-│    state_manager.published?(source_id, post_id)                  │
-│    → :skipped if duplicate                                       │
+│ 1. DEDUPE CHECK                                                 │
+│    state_manager.published?(source_id, post_id)                 │
+│    → :skipped if duplicate                                      │
 ├─────────────────────────────────────────────────────────────────┤
-│ 1b. EDIT DETECTION (Twitter/Bluesky only)                        │
-│    edit_detector.check_for_edit(source_id, post_id, username)    │
-│    → :update_existing if similar post found                      │
-│    → :skip_older_version if older version detected               │
+│ 1b. EDIT DETECTION (Twitter/Bluesky only)                       │
+│    edit_detector.check_for_edit(source_id, post_id, username)   │
+│    → :update_existing if similar post found                     │
+│    → :skip_older_version if older version detected              │
 ├─────────────────────────────────────────────────────────────────┤
-│ 2. CONTENT FILTERING                                             │
-│    ContentFilter.banned?(text) → :skipped if banned              │
-│    ContentFilter.has_required?(text) → :skipped if missing       │
-│    Platform-specific skip rules (replies, retweets, quotes)      │
+│ 2. CONTENT FILTERING                                            │
+│    ContentFilter.banned?(text) → :skipped if banned             │
+│    ContentFilter.has_required?(text) → :skipped if missing      │
+│    Platform-specific skip rules (replies, retweets, quotes)     │
 ├─────────────────────────────────────────────────────────────────┤
-│ 3. FORMATTING                                                    │
-│    Platform wrapper (TwitterFormatter, BlueskyFormatter, etc.)   │
-│    → UniversalFormatter                                          │
-│    Output: formatted text with headers, URLs, mentions           │
+│ 3. FORMATTING                                                   │
+│    Platform wrapper (TwitterFormatter, BlueskyFormatter, etc.)  │
+│    → UniversalFormatter                                         │
+│    Output: formatted text with headers, URLs, mentions          │
 ├─────────────────────────────────────────────────────────────────┤
-│ 4. CONTENT REPLACEMENTS                                          │
-│    Apply regex/literal replacements from config                  │
-│    (cleaning noise, fixing patterns)                             │
+│ 4. CONTENT REPLACEMENTS                                         │
+│    Apply regex/literal replacements from config                 │
+│    (cleaning noise, fixing patterns)                            │
 ├─────────────────────────────────────────────────────────────────┤
-│ 5. CONTENT PROCESSING (TRIM)                                     │
-│    ContentProcessor with strategy:                               │
-│    - smart: sentence boundary within tolerance                   │
-│    - word: break at last word                                    │
-│    - hard: exact cut + ellipsis                                  │
-│    Preserves trailing URL through trimming                       │
+│ 5. CONTENT PROCESSING (TRIM)                                    │
+│    ContentProcessor with strategy:                              │
+│    - smart: sentence boundary within tolerance                  │
+│    - word: break at last word                                   │
+│    - hard: exact cut + ellipsis                                 │
+│    Preserves trailing URL through trimming                      │
 ├─────────────────────────────────────────────────────────────────┤
-│ 6. URL PROCESSING                                                │
-│    UrlProcessor:                                                 │
-│    - Remove tracking params (utm_*, fbclid, etc.)                │
-│    - Apply domain fixes (from config)                            │
-│    - Detect/remove truncated URLs (ending with …)                │
-│    - Deduplicate URLs at end                                     │
+│ 6. URL PROCESSING                                               │
+│    UrlProcessor:                                                │
+│    - Remove tracking params (utm_*, fbclid, etc.)               │
+│    - Apply domain fixes (from config)                           │
+│    - Detect/remove truncated URLs (ending with …)               │
+│    - Deduplicate URLs at end                                    │
 ├─────────────────────────────────────────────────────────────────┤
-│ 7. MEDIA UPLOAD                                                  │
-│    Download from source URL → Upload to Mastodon (v2 API)        │
-│    v2 API returns 202 → poll GET /api/v1/media/:id               │
-│    until 200 (ready), backoff 1-5s, max 10 attempts              │
-│    Limit: max MAX_MEDIA_COUNT (4) per post, rest skipped         │
-│    Skip: link_cards, video_thumbnails when video exists          │
-│    Safety net: post-upload trim media_ids to MAX_MEDIA_COUNT     │
-│    Return: array of media_ids                                    │
+│ 7. MEDIA UPLOAD                                                 │
+│    Download from source URL → Upload to Mastodon (v2 API)       │
+│    v2 API returns 202 → poll GET /api/v1/media/:id              │
+│    until 200 (ready), backoff 1-5s, max 10 attempts             │
+│    Limit: max MAX_MEDIA_COUNT (4) per post, rest skipped        │
+│    Skip: link_cards, video_thumbnails when video exists         │
+│    Safety net: post-upload trim media_ids to MAX_MEDIA_COUNT    │
+│    Return: array of media_ids                                   │
 ├─────────────────────────────────────────────────────────────────┤
-│ 8. PUBLISH                                                       │
-│    MastodonPublisher.publish(                                    │
-│      text, media_ids, visibility, in_reply_to_id                 │
-│    )                                                             │
-│    Retry on rate limit (429) and server errors (5xx)             │
-│    Thread fallback: if parent post not found → standalone        │
+│ 8. PUBLISH                                                      │
+│    MastodonPublisher.publish(                                   │
+│      text, media_ids, visibility, in_reply_to_id                │
+│    )                                                            │
+│    Retry on rate limit (429) and server errors (5xx)            │
+│    Thread fallback: if parent post not found → standalone       │
 ├─────────────────────────────────────────────────────────────────┤
-│ 9. MARK PUBLISHED                                                │
-│    state_manager.mark_published(                                 │
-│      source_id, post_id, post_url, mastodon_status_id,           │
-│      platform_uri                                                │
-│    )                                                             │
-│    state_manager.log_publish(...)                                │
+│ 9. MARK PUBLISHED                                               │
+│    state_manager.mark_published(                                │
+│      source_id, post_id, post_url, mastodon_status_id,          │
+│      platform_uri                                               │
+│    )                                                            │
+│    state_manager.log_publish(...)                               │
 ├─────────────────────────────────────────────────────────────────┤
-│ 9b. ADD TO EDIT BUFFER (Twitter/Bluesky only)                    │
-│    edit_detector.add_to_buffer(source_id, post_id, username,     │
-│      text, mastodon_id: mastodon_status_id)                      │
+│ 9b. ADD TO EDIT BUFFER (Twitter/Bluesky only)                   │
+│    edit_detector.add_to_buffer(source_id, post_id, username,    │
+│      text, mastodon_id: mastodon_status_id)                     │
 └─────────────────────────────────────────────────────────────────┘
 ```
 
