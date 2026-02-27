@@ -1,0 +1,31 @@
+# ============================================================
+# Zpravobot: Mastodon účty a tokeny
+# ============================================================
+# ⚠️  TENTO SOUBOR OBSAHUJE CITLIVÉ ÚDAJE!
+# ⚠️  PŘIDAT DO .gitignore!
+# ============================================================
+#
+# Struktura:
+#   account_id:
+#     instance: https://...    # Volitelné, jinak z global.yml
+#     token: access_token
+#     description: Popis účtu  # Volitelné, pro přehlednost
+#
+# Použití v sources/*.yml:
+#   target:
+#     mastodon_account: account_id
+#
+# ============================================================
+
+# Testovací účet
+betabot:
+  token: "sem vložte token testovacího účtu"
+  aggregator: true
+  categories: [test]
+  description: "Testovací účet pro vývoj"
+
+# Příklad s jinou instancí
+# external_bot:
+#   instance: https://mastodon.social
+#   token: "TOKEN_FOR_OTHER_INSTANCE"
+#   description: "Bot na jiné instanci"

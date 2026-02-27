@@ -1,0 +1,87 @@
+# ============================================================
+# Zpravobot NG: Platform Configuration - RSS
+# ============================================================
+# Výchozí nastavení pro všechny RSS zdroje.
+# Přepisuje hodnoty z global.yml.
+# Jednotlivé zdroje mohou přepsat jakékoliv nastavení.
+# ============================================================
+
+# ------------------------------------------------------------
+# FILTERING - Filtrování obsahu
+# ------------------------------------------------------------
+filtering:
+  skip_replies: false       # N/A pro RSS
+  skip_retweets: false      # N/A pro RSS
+  skip_quotes: false        # N/A pro RSS
+  banned_phrases: []        # Seznam zakázaných frází
+  required_keywords: []     # Požadovaná klíčová slova
+
+# ------------------------------------------------------------
+# CONTENT - Zpracování obsahu
+# ------------------------------------------------------------
+# IFTTT-kompatibilní logika:
+# - Vše false (default): jen perex/content, titulek jako fallback
+# - show_title_as_content: true = jen titulek, ignoruje perex
+# - combine_title_and_content: true = titulek + separator + perex
+content:
+  show_title_as_content: false
+  combine_title_and_content: false
+  title_separator: " — "
+  max_input_chars: 2000             # Pre-truncation pro dlouhé HTML feedy
+
+# ------------------------------------------------------------
+# FORMATTING - Formátování výstupu
+# ------------------------------------------------------------
+# Sjednocená struktura postů napříč platformami:
+#
+# RSS nemá header (repost/quote), takže:
+#   [prefix_post_text if != "\n"] + text + "\n" + prefix_post_url + url
+#
+formatting:
+  platform_emoji: "📰"              # Emoji platformy v příspěvku
+  move_url_to_end: true             # Přesunout URL na konec příspěvku
+  
+  # Sjednocené prefixy
+  prefix_post_text: ""              # Prefix před textem (prázdný pro RSS)
+  prefix_post_url: "\n"             # Prefix před URL
+
+# ------------------------------------------------------------
+# URL - Úprava odkazů
+# ------------------------------------------------------------
+url:
+  replace_from: []
+  replace_to: ""
+  domain_fixes: []
+
+# ------------------------------------------------------------
+# MENTIONS - Zpracování zmínek
+# ------------------------------------------------------------
+# Default: vypnuto pro standardní RSS feedy
+# Pro RSS.app feedy ze sociálních sítí nastavit v source YAML:
+#   rss_source_type: facebook  -> https://facebook.com/page
+#   rss_source_type: instagram -> https://instagram.com/user
+mentions:
+  type: none
+  value: ""
+
+# ------------------------------------------------------------
+# PROCESSING - Zpracování textu
+# ------------------------------------------------------------
+processing:
+  max_length: 200                   # Maximální délka finálního příspěvku
+  trim_strategy: smart              # Strategie zkracování
+
+# ------------------------------------------------------------
+# SCHEDULING - Plánování stahování
+# ------------------------------------------------------------
+scheduling:
+  priority: normal
+  interval_minutes: 15
+  max_posts_per_run: 5
+
+# ------------------------------------------------------------
+# PROFILE SYNC - Synchronizace profilu
+# ------------------------------------------------------------
+profile_sync:
+  enabled: false
+  retention_days: 90

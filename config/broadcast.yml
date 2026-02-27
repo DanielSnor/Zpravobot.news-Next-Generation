@@ -1,0 +1,38 @@
+# ============================================================
+# Broadcast Configuration
+# ============================================================
+# Config for bin/broadcast.rb (CLI) and tlambot webhook trigger
+# ============================================================
+
+# Accounts to always skip (by mastodon_account key from mastodon_accounts.yml)
+blacklist:
+  - udrzbot
+  - tlambot    # broadcast trigger bot — never broadcasts to itself
+
+# Throttling between publications
+throttle:
+  delay_seconds: 0.5
+
+# Retry on per-account publish failure
+retry:
+  max_attempts: 3
+  backoff_base: 2    # seconds, exponential backoff (2s, 4s)
+
+# Default CLI options (bin/broadcast.rb)
+default_target: zpravobot
+default_visibility: public
+
+# ============================================================
+# Tlambot Webhook Trigger
+# ============================================================
+# Mastodon bot that triggers broadcasts via toots.
+# Webhook secret via ENV: TLAMBOT_WEBHOOK_SECRET
+#
+# Mention-based routing:
+#   "Zprava"              → broadcast to all accounts
+#   "@zpravobot Zprava"   → broadcast to zpravobot.news accounts only
+#   "@jedenbot Zprava"    → broadcast to jedenbot only
+#   "@bot1 @bot2 Zprava"  → broadcast to bot1 + bot2
+tlambot:
+  trigger_account: tlambot
+  broadcast_visibility: public   # override: tlambot toots unlisted, broadcasts go public

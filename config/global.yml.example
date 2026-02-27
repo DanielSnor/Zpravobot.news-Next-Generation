@@ -1,0 +1,119 @@
+# ============================================================
+# Zpravobot: Globální konfigurace
+# ============================================================
+# Defaults pro všechny boty. Přepisuje se platformou a botem.
+#
+# POUŽITÍ:
+#   cp config/global.yml.example config/global.yml
+#   Upravte hodnoty podle svého prostředí.
+# ============================================================
+
+# Mastodon instance (pokud všechny účty na jedné)
+mastodon:
+  instance: https://your-mastodon-instance.example
+
+# Nitter instance (Twitter scraping proxy)
+nitter:
+  instance: http://your-nitter-instance:8080
+
+# Twitter URL handling
+twitter:
+  url_domain: xcancel.com
+  rewrite_domains:
+    - twitter.com
+    - x.com
+    - nitter.net
+
+# Bot identity
+bot:
+  user_agent: "Zpravobot/1.0 (+https://your-mastodon-instance.example)"
+  managed_by: "@yourbot@your-mastodon-instance.example"
+
+# Scheduling defaults
+scheduling:
+  priority: normal          # high | normal | low
+  interval_minutes: 10
+  max_posts_per_run: 10
+
+# Processing defaults
+processing:
+  post_length: 500
+  trim_strategy: smart      # smart | sentence | word
+  smart_tolerance_percent: 12
+
+# URL handling
+url:
+  no_trim_domains:
+    # Sociální sítě
+    - facebook.com
+    - www.facebook.com
+    - instagram.com
+    - www.instagram.com
+    # Obecné zkracovače
+    - bit.ly
+    - buff.ly
+    - brnw.ch
+    - cutt.ly
+    - dub.co
+    - goo.gl
+    - ift.tt
+    - is.gd
+    - j.mp
+    - ow.ly
+    - rb.gy
+    - short.io
+    - shorturl.at
+    - smarturl.it
+    - snip.ly
+    - surl.li
+    - t.co
+    - t.ly
+    - tiny.cc
+    - tinyurl.com
+    - v.gd
+    # Platformní zkracovače
+    - amzn.to
+    - fb.me
+    - lnkd.in
+    - on.fb.me
+    - pin.it
+    - redd.it
+    - wp.me
+    - youtu.be
+    - youtube.com
+    # Mediální (Bitly Enterprise)
+    - apne.ws
+    - bbc.in
+    - bloom.bg
+    - cnn.it
+    - econ.st
+    - nyti.ms
+    - politi.co
+    - reut.rs
+    - tcrn.ch
+    - wapo.st
+    # Specifické služby
+    - flashsco.re
+    - piped.video
+    # České/slovenské
+    - 1url.cz
+    - jdem.cz
+    - sdu.sk
+    - sqzr.cz
+
+# Formatting defaults
+formatting:
+  show_platform_emoji: true
+  show_real_name: true
+  prefix_post_url: "\n"
+
+# Target defaults
+target:
+  visibility: public        # public | unlisted | private | direct
+
+# Infrastructure URLs (centralizované, aby nebyly hardcoded v kódu)
+infrastructure:
+  bluesky_api: https://public.api.bsky.app/xrpc
+  bluesky_profile_prefix: https://bsky.app/profile/
+  browserless_api: https://chrome.browserless.io/content
+  webhook_health_url: http://localhost:8080/health

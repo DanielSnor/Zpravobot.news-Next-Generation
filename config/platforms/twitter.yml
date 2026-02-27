@@ -1,0 +1,130 @@
+# ============================================================
+# Zpravobot NG: Platform Configuration - Twitter/X
+# ============================================================
+# Výchozí nastavení pro všechny Twitter/X zdroje.
+# Přepisuje hodnoty z global.yml.
+# Jednotlivé zdroje mohou přepsat jakékoliv nastavení.
+# ============================================================
+
+# ------------------------------------------------------------
+# SOURCE - Konfigurace zdroje dat
+# ------------------------------------------------------------
+source:
+  nitter_instance: "http://xn.zpravobot.news:8080"
+
+# ------------------------------------------------------------
+# FILTERING - Filtrování obsahu
+# ------------------------------------------------------------
+filtering:
+  skip_replies: true                # Přeskočit cizí odpovědi
+  skip_self_replies: false          # Povolit vlastní odpovědi (vlákna)
+  skip_retweets: false              # Přeskočit retweety
+  skip_quotes: false                # Přeskočit quote tweety
+  allow_self_retweets: true         # Povolit retweety vlastních tweetů
+  banned_phrases: []                # Seznam zakázaných frází
+  required_keywords: []             # Požadovaná klíčová slova
+
+# ------------------------------------------------------------
+# THREAD HANDLING - Zpracování vláken
+# ------------------------------------------------------------
+thread_handling:
+  mode: 'individual'                # Režim zpracování vláken
+  fetch_context: false              # Načítat kontext z HTML
+  show_indicator: true              # Zobrazit 🧵 indikátor
+  indicator_position: 'end'         # Pozice indikátoru: start / end
+  cache_enabled: true               # Použít cache pro kontext vláken
+  cache_ttl_hours: 2                # TTL cache v hodinách
+
+# ------------------------------------------------------------
+# NITTER PROCESSING - Zpracování přes Nitter (Tier 2)
+# ------------------------------------------------------------
+# Tier 2 (Nitter fetch) lze zakázat pro zdroje, kde stačí Tier 1
+# Použití: sportovní boty, méně důležité zdroje, snížení zátěže
+#
+# enabled: true   - Nitter fetch povolen (default)
+# enabled: false  - Pouze Tier 1 (IFTTT data), žádné Nitter requesty
+#                   Výhody: rychlejší, nulová zátěž Nitter
+#                   Nevýhody: max 1 obrázek, možné zkrácené texty
+nitter_processing:
+  enabled: true
+
+# ------------------------------------------------------------
+# FORMATTING - Formátování výstupu
+# ------------------------------------------------------------
+# Sjednocená struktura postů napříč platformami:
+#
+# S headerem (repost/quote):
+#   header + "\n" + prefix_post_text + text + "\n" + prefix_post_url + url
+#
+# Bez headeru (regular):
+#   [prefix_post_text if != "\n"] + text + "\n" + prefix_post_url + url
+#
+formatting:
+  platform_emoji: "𝕏"               # Emoji platformy v příspěvku
+  prefix_repost: "𝕏🔁"              # Prefix pro reposty
+  prefix_quote: "𝕏💬"               # Prefix pro quote tweety
+  prefix_thread: "🧵"               # Prefix pro vlákna
+  prefix_video: "🎬"                # Prefix pro videa
+  prefix_self_reference: "svůj post" # Text pro self-reference místo @username
+  move_url_to_end: false            # NEPŘESOUVAT URL na konec
+  
+  # Sjednocené prefixy
+  prefix_post_text: "\n"            # Prefix před textem (extra řádek za headerem)
+  prefix_post_url: "\n"             # Prefix před URL
+  
+  # Zpracování citovaných tweetů
+  include_quoted_text: false        # Zahrnout text citovaného tweetu
+  quoted_text_max_chars: 80         # Max délka citovaného textu
+  
+  # Lokalizované texty pro self-reference
+  self_reference_texts:
+    cs: "svůj post"
+    sk: "vlastný príspevok"
+    en: "own post"
+
+  # URL rewriting
+  url_domain: "nitter.net"
+  rewrite_domains:
+    - "twitter.com"
+    - "x.com"
+    - "xn.zpravobot.news"
+    - "xcancel.com"
+
+# ------------------------------------------------------------
+# URL - Úprava odkazů
+# ------------------------------------------------------------
+url:
+  domain: "nitter.net"
+  replace_from:
+    - "https://twitter.com/"
+    - "https://x.com/"
+  replace_to: "https://nitter.net/"
+
+# ------------------------------------------------------------
+# MENTIONS - Zpracování zmínek
+# ------------------------------------------------------------
+mentions:
+  type: "domain_suffix"
+  value: "twitter.com"
+
+# ------------------------------------------------------------
+# PROCESSING - Zpracování textu
+# ------------------------------------------------------------
+processing:
+  max_length: 2400                  # Maximální délka finálního příspěvku
+  trim_strategy: "smart"            # Strategie zkracování
+  smart_tolerance_percent: 12       # Tolerance pro smart trimming (%)
+
+# ------------------------------------------------------------
+# SCHEDULING - Plánování stahování
+# ------------------------------------------------------------
+scheduling:
+  priority: normal
+  interval_minutes: 15
+  max_posts_per_run: 10
+
+# ------------------------------------------------------------
+# PROFILE SYNC - Synchronizace profilu
+# ------------------------------------------------------------
+profile_sync:
+  retention_days: 90

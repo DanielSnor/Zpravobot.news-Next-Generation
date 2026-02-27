@@ -1,0 +1,82 @@
+# ============================================================
+# Zpravobot NG: Platform Configuration - Facebook
+# ============================================================
+# Výchozí nastavení pro všechny Facebook zdroje.
+# Přepisuje hodnoty z global.yml.
+# Jednotlivé zdroje mohou přepsat jakékoliv nastavení.
+# ============================================================
+
+# ------------------------------------------------------------
+# SOURCE - Konfigurace zdroje dat
+# ------------------------------------------------------------
+source:
+  # Browserless.io API token pro renderování Facebook stránek
+  browserless_token: "${BROWSERLESS_TOKEN}"
+
+  # Facebook cookies pro přihlášení (vyžadováno pro cover photo a website)
+  # Cookies se načítají z ENV nebo přímo z konfigurace
+  facebook_cookies:
+    - name: "datr"
+      value: "${FB_COOKIE_DATR}"
+      domain: ".facebook.com"
+    - name: "c_user"
+      value: "${FB_COOKIE_C_USER}"
+      domain: ".facebook.com"
+    - name: "xs"
+      value: "${FB_COOKIE_XS}"
+      domain: ".facebook.com"
+    - name: "sb"
+      value: "${FB_COOKIE_SB}"
+      domain: ".facebook.com"
+
+# ------------------------------------------------------------
+# MENTIONS - Zpracování zmínek
+# ------------------------------------------------------------
+mentions:
+  type: "domain_suffix"
+  value: "facebook.com"
+
+# ------------------------------------------------------------
+# FORMATTING - Formátování výstupu
+# ------------------------------------------------------------
+formatting:
+  platform_emoji: "📘"              # Emoji platformy v příspěvku
+  prefix_repost: "📘🔁"             # Prefix pro sdílení
+  prefix_post_text: "\n"            # Prefix před textem
+  prefix_post_url: "\n"             # Prefix před URL
+
+# ------------------------------------------------------------
+# PROCESSING - Zpracování textu
+# ------------------------------------------------------------
+processing:
+  max_length: 2400                  # Maximální délka finálního příspěvku
+  trim_strategy: "smart"            # Strategie zkracování
+
+# ------------------------------------------------------------
+# SCHEDULING - Plánování stahování
+# ------------------------------------------------------------
+scheduling:
+  priority: normal
+  interval_minutes: 60              # Facebook se mění méně často
+  max_posts_per_run: 5
+
+# ------------------------------------------------------------
+# PROFILE SYNC - Synchronizace profilu
+# ------------------------------------------------------------
+# Facebook profile sync používá Browserless.io API
+# pro renderování JavaScript-heavy stránek.
+#
+# Syncs:
+# - description/bio
+# - avatar image (profile photo)
+# - cover photo (banner)
+# - website URL (pokud je nastavena na FB stránce)
+#
+profile_sync:
+  enabled: true
+  sync_avatar: true
+  sync_banner: true                 # Cover photo
+  sync_bio: true
+  sync_fields: true
+  language: "cs"
+  retention_days: 90

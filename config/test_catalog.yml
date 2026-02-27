@@ -1,0 +1,690 @@
+# ============================================================
+# Test Catalog for ZBNW-NG Test Runner
+# ============================================================
+#
+# Categories: unit, network, e2e, db
+#
+# Tags: offline, bluesky, twitter, rss, youtube, facebook,
+#       nitter, syndication, mastodon, interactive, visual,
+#       diagnostic, publish, processor, formatter, config, ifttt
+#
+# exit_code_reliable: true if the test correctly exits 1 on failure
+# interactive: true if the test reads from stdin (excluded by default)
+# args: optional CLI arguments to pass to the test
+# timeout: optional per-test timeout override (seconds)
+#
+# ============================================================
+
+defaults:
+  timeout_unit: 30
+  timeout_network: 60
+  timeout_e2e: 120
+  timeout_db: 60
+
+tests:
+  # =====================================================
+  # OFFLINE UNIT TESTS
+  # =====================================================
+
+  test_content_processor:
+    file: test/test_content_processor.rb
+    category: unit
+    tags: [offline, processor]
+    exit_code_reliable: true
+    description: "ContentProcessor trimming and boundary detection"
+
+  test_html_cleaner:
+    file: test/test_html_cleaner.rb
+    category: unit
+    tags: [offline, processor]
+    exit_code_reliable: true
+    description: "HTML entity decoding and tag stripping"
+
+  test_url_processor:
+    file: test/test_url_processor.rb
+    category: unit
+    tags: [offline, processor]
+    exit_code_reliable: true
+    description: "URL param trimming, truncation detection, dedup"
+
+  test_facebook_processor:
+    file: test/test_facebook_processor.rb
+    category: unit
+    tags: [offline, processor, facebook]
+    exit_code_reliable: true
+    description: "Facebook em-dash duplicate removal"
+
+  test_fb_truncated_urls:
+    file: test/test_fb_truncated_urls.rb
+    category: unit
+    tags: [offline, processor, facebook]
+    exit_code_reliable: true
+    description: "Facebook truncated URL handling"
+
+  test_edit_detection:
+    file: test/test_edit_detection.rb
+    category: unit
+    tags: [offline, processor]
+    exit_code_reliable: true
+    description: "Edit detection with mock state manager"
+
+  test_video_tweet_text:
+    file: test/test_video_tweet_text.rb
+    category: unit
+    tags: [offline, formatter, twitter]
+    exit_code_reliable: true
+    description: "Video tweet text extraction patterns"
+
+  test_content_filter:
+    file: test/test_content_filter.rb
+    category: unit
+    tags: [offline, processor]
+    exit_code_reliable: false
+    description: "Content filter: banned phrases, regex, OR/AND/NOT"
+
+  test_post_processor:
+    file: test/test_post_processor.rb
+    category: unit
+    tags: [offline, processor]
+    exit_code_reliable: false
+    description: "PostProcessor pipeline with mocks"
+
+  test_media_count_overflow:
+    file: test/test_media_count_overflow.rb
+    category: unit
+    tags: [offline, processor, twitter, nitter]
+    exit_code_reliable: true
+    description: "Media count overflow: parser dedup + upload guard (MAX_MEDIA_COUNT)"
+
+  test_domain_suffix:
+    file: test/test_domain_suffix.rb
+    category: unit
+    tags: [offline, formatter]
+    exit_code_reliable: false
+    description: "Domain suffix matching in mentions"
+
+  test_domain_fixes:
+    file: test/test_domain_fixes.rb
+    category: unit
+    tags: [offline, processor]
+    exit_code_reliable: false
+    description: "URL domain fix rules (old vs new)"
+
+  test_url_domain_fixes:
+    file: test/test_url_domain_fixes.rb
+    category: unit
+    tags: [offline, processor]
+    exit_code_reliable: false
+    description: "URL domain fix integration"
+
+  test_repost_quote_format:
+    file: test/test_repost_quote_format.rb
+    category: unit
+    tags: [offline, formatter]
+    exit_code_reliable: true
+    description: "Repost and quote tweet formatting"
+
+  test_max_length_fix:
+    file: test/test_max_length_fix.rb
+    category: unit
+    tags: [offline, formatter]
+    exit_code_reliable: true
+    description: "Max length enforcement in formatters"
+
+  test_truncation:
+    file: test/test_truncation.rb
+    category: unit
+    tags: [offline, formatter, twitter]
+    exit_code_reliable: false
+    description: "Smart truncation for 500-char limit"
+
+  test_ifttt_parity:
+    file: test/test_ifttt_parity.rb
+    category: unit
+    tags: [offline, formatter, twitter, bluesky, ifttt]
+    exit_code_reliable: false
+    description: "IFTTT parity: self-reference, URL replace, domain fixes"
+
+  test_facets:
+    file: test/test_facets.rb
+    category: unit
+    tags: [offline, bluesky]
+    exit_code_reliable: false
+    description: "Bluesky facet resolution"
+
+  test_facet_expansion:
+    file: test/test_facet_expansion.rb
+    category: unit
+    tags: [offline, bluesky]
+    exit_code_reliable: false
+    description: "Bluesky facet link expansion"
+
+  test_formatter_mentions:
+    file: test/test_formatter_mentions.rb
+    category: unit
+    tags: [offline, formatter]
+    exit_code_reliable: false
+    description: "Mention formatting across platforms"
+
+  # test_mention_formatter removed - MentionFormatter was refactored into UniversalFormatter
+
+  test_tier3_force_read_more:
+    file: test/test_tier3_force_read_more.rb
+    category: unit
+    tags: [offline, twitter, formatter]
+    exit_code_reliable: false
+    description: "Tier 3 force-read-more handling"
+
+  test_ifttt_hybrid:
+    file: test/test_ifttt_hybrid.rb
+    category: unit
+    tags: [offline, twitter, ifttt]
+    exit_code_reliable: false
+    description: "IFTTT hybrid adapter tier classification"
+
+  test_config_loader:
+    file: test/test_config_loader.rb
+    category: unit
+    tags: [offline, config]
+    exit_code_reliable: false
+    description: "ConfigLoader source enumeration and merging"
+
+  test_yaml_quote:
+    file: test/test_yaml_quote.rb
+    category: unit
+    tags: [offline, config]
+    exit_code_reliable: true
+    description: "yaml_quote: safe YAML quoting for special chars, quotes, unicode"
+
+  test_base_adapter:
+    file: test/test_base_adapter.rb
+    category: unit
+    tags: [offline, adapter]
+    exit_code_reliable: true
+    description: "BaseAdapter abstract contract, config, subclass behavior"
+
+  test_models:
+    file: test/test_models.rb
+    category: unit
+    tags: [offline, model]
+    exit_code_reliable: true
+    description: "Post, Author, Media models: constructors, type checks, serialization"
+
+  test_http_client_unit:
+    file: test/test_http_client_unit.rb
+    category: unit
+    tags: [offline, util]
+    exit_code_reliable: true
+    description: "HttpClient: build_http, constants, SSL detection (no network)"
+
+  test_format_helpers:
+    file: test/test_format_helpers.rb
+    category: unit
+    tags: [offline, util]
+    exit_code_reliable: true
+    description: "FormatHelpers: clean_text normalization, format_bytes"
+
+  test_hash_helpers:
+    file: test/test_hash_helpers.rb
+    category: unit
+    tags: [offline, util]
+    exit_code_reliable: true
+    description: "HashHelpers: symbolize_keys, deep_merge, deep_merge_all"
+
+  test_punycode:
+    file: test/test_punycode.rb
+    category: unit
+    tags: [offline, util]
+    exit_code_reliable: true
+    description: "PunycodeDecoder: IDN domain decoding (punycode → Unicode)"
+
+  test_universal_formatter_unit:
+    file: test/test_universal_formatter_unit.rb
+    category: unit
+    tags: [offline, formatter]
+    exit_code_reliable: true
+    description: "UniversalFormatter: all post types, URL rewrite, mentions, dedup, tier 3"
+
+  test_adapters_unit:
+    file: test/test_adapters_unit.rb
+    category: unit
+    tags: [offline, adapter, twitter, bluesky, rss, youtube]
+    exit_code_reliable: true
+    description: "Adapter internals: config validation, URL fixing, parsing helpers (no network)"
+
+  test_error_handling:
+    file: test/test_error_handling.rb
+    category: unit
+    tags: [offline, processor, formatter, model]
+    exit_code_reliable: true
+    description: "Error handling: nil/empty inputs, invalid regex, malformed HTML, edge cases"
+
+  # =====================================================
+  # PHASE 10 — New unit tests for key components
+  # =====================================================
+
+  test_threading_support:
+    file: test/test_threading_support.rb
+    category: unit
+    tags: [offline, processor]
+    exit_code_reliable: true
+    description: "ThreadingSupport: cache, DB fallback, author extraction, thread detection"
+
+  test_check_result:
+    file: test/test_check_result.rb
+    category: unit
+    tags: [offline, health]
+    exit_code_reliable: true
+    description: "CheckResult: constructor, level checks, icon, to_h, LEVELS constant"
+
+  test_alert_state_manager:
+    file: test/test_alert_state_manager.rb
+    category: unit
+    tags: [offline, health]
+    exit_code_reliable: true
+    description: "AlertStateManager: state persistence, analyze, update_state, day/night intervals"
+
+  test_runner_health_check:
+    file: test/test_runner_health_check.rb
+    category: unit
+    tags: [offline, health]
+    exit_code_reliable: true
+    description: "RunnerHealthCheck: crash detection, staleness, consecutive crashes, thresholds"
+
+  test_source_wizard_helpers:
+    file: test/test_source_wizard_helpers.rb
+    category: unit
+    tags: [offline, config]
+    exit_code_reliable: true
+    description: "SourceGenerator: sanitize_handle, parse_categories, sanitize_id, extract_domain, yaml_quote"
+
+  test_mastodon_publisher:
+    file: test/test_mastodon_publisher.rb
+    category: unit
+    tags: [offline, mastodon, publisher]
+    exit_code_reliable: true
+    description: "MastodonPublisher: constants, validation, parse_error, content-based MIME detection, filename correction (no HTTP)"
+
+  test_twitter_thread_processor:
+    file: test/test_twitter_thread_processor.rb
+    category: unit
+    tags: [offline, twitter, processor]
+    exit_code_reliable: true
+    description: "TwitterThreadProcessor: has_thread_chain?, extract_thread_chain, HTML parsing (no HTTP)"
+
+  test_logging:
+    file: test/test_logging.rb
+    category: unit
+    tags: [offline, util]
+    exit_code_reliable: true
+    description: "Logging: format_message, log_path_for_date, setup, MultiLogger"
+
+  test_command_handlers:
+    file: test/test_command_handlers.rb
+    category: unit
+    tags: [offline, monitoring]
+    exit_code_reliable: true
+    description: "CommandHandlers: dispatch, help, constants, check validation"
+
+  test_errors:
+    file: test/test_errors.rb
+    category: unit
+    tags: [offline, model]
+    exit_code_reliable: true
+    description: "Error hierarchy: Zpravobot::Error subclasses, message propagation, rescue matching"
+
+  test_http_client_extended:
+    file: test/test_http_client_extended.rb
+    category: unit
+    tags: [offline, util]
+    exit_code_reliable: true
+    description: "HttpClient extended: post_json, put_json, delete, download, request_with_retry (no network)"
+
+  test_pipeline_steps:
+    file: test/test_pipeline_steps.rb
+    category: unit
+    tags: [offline, processor]
+    exit_code_reliable: true
+    description: "PipelineSteps: DeduplicationStep, EditDetectionStep, ContentFilterStep, UrlProcessingStep"
+
+  test_state_repositories:
+    file: test/test_state_repositories.rb
+    category: unit
+    tags: [offline, database]
+    exit_code_reliable: true
+    description: "State repositories: PublishedPostsRepository, SourceStateRepository, ActivityLogger, EditBufferManager"
+
+  test_parallel_media_upload:
+    file: test/test_parallel_media_upload.rb
+    category: unit
+    tags: [offline, mastodon, publisher]
+    exit_code_reliable: true
+    description: "Parallel media upload: order preservation, partial failure, MAX_MEDIA_COUNT, threading"
+
+  test_pipeline_integration:
+    file: test/test_pipeline_integration.rb
+    category: unit
+    tags: [offline, processor, formatter, integration]
+    exit_code_reliable: true
+    description: "Pipeline integration: full processing for Twitter, Bluesky, RSS, YouTube → @betabot"
+
+  test_config_split:
+    file: test/test_config_split.rb
+    category: unit
+    tags: [offline, config]
+    exit_code_reliable: true
+    description: "ConfigMerger, CredentialsResolver, SourceFinder (Phase 14.1 extraction)"
+
+  test_webhook_split:
+    file: test/test_webhook_split.rb
+    category: unit
+    tags: [offline, ifttt, processor]
+    exit_code_reliable: true
+    description: "WebhookPayloadParser, WebhookEditHandler, WebhookThreadHandler, WebhookPublisher + BUG-7 bot_id lookup + BUG-2 nil guard"
+
+  # =====================================================
+  # PHASE 15 — Tests for remaining untested files
+  # =====================================================
+
+  test_twitter_tweet_processor:
+    file: test/test_twitter_tweet_processor.rb
+    category: unit
+    tags: [offline, twitter, processor, nitter, ifttt]
+    exit_code_reliable: true
+    description: "TwitterTweetProcessor: tier determination, Nitter retry, syndication fallback, threading, PostProcessor result propagation (TASK-10)"
+
+  test_command_listener:
+    file: test/test_command_listener.rb
+    category: unit
+    tags: [offline, monitoring]
+    exit_code_reliable: true
+    description: "CommandListener: parse_command, authorization, rate limiting, split_response (no HTTP)"
+
+  test_ifttt_queue_processor:
+    file: test/test_ifttt_queue_processor.rb
+    category: unit
+    tags: [offline, ifttt, processor]
+    exit_code_reliable: true
+    description: "IftttQueueProcessor: partition, extract helpers, detect authors, constants (no DB)"
+
+  test_recurring_warnings_check:
+    file: test/test_recurring_warnings_check.rb
+    category: unit
+    tags: [offline, health]
+    exit_code_reliable: true
+    description: "RecurringWarningsCheck: warning detection, normalization, grouping, thresholds"
+
+  test_broadcaster:
+    file: test/test_broadcaster.rb
+    category: unit
+    tags: [offline, broadcast, mastodon]
+    exit_code_reliable: true
+    description: "Broadcaster: account resolution, filtering, formatting, validation"
+
+  test_tlambot:
+    file: test/test_tlambot.rb
+    category: unit
+    tags: [offline, broadcast, mastodon, webhook]
+    exit_code_reliable: true
+    description: "TlambotWebhookHandler: payload parsing, HMAC signature, mention routing, text cleaning"
+
+  test_repost_author_attribution:
+    file: test/test_repost_author_attribution.rb
+    category: unit
+    tags: [offline, twitter, ifttt, formatter, adapter]
+    exit_code_reliable: true
+    description: "Repost author attribution: RT author/reposted_by semantics across Tier 1/2/3, self_repost?, header formatting"
+
+  test_twitter_profile_syncer:
+    file: test/test_twitter_profile_syncer.rb
+    category: unit
+    tags: [offline, twitter, syncer]
+    exit_code_reliable: true
+    description: "TwitterProfileSyncer: cache_key normalization (Nitter URL stability), resolve_nitter_url, parse_nitter_profile (TASK-1)"
+
+  test_profile_syncer_build_fields:
+    file: test/test_profile_syncer_build_fields.rb
+    category: unit
+    tags: [offline, twitter, bluesky, facebook, syncer]
+    exit_code_reliable: true
+    description: "BaseProfileSyncer: build_managed_by_value, platform labels, multi-platform, localization, build_fields output (TASK-2)"
+
+  test_rss_profile_sync:
+    file: test/test_rss_profile_sync.rb
+    category: unit
+    tags: [offline, rss, syncer]
+    exit_code_reliable: true
+    description: "ProfileSyncRunner: sync_rss delegation to twitter/bluesky/facebook syncer, run_syncer, profile_sync_enabled? (TASK-3)"
+
+  test_manage_source:
+    file: test/test_manage_source.rb
+    category: unit
+    tags: [offline, config]
+    exit_code_reliable: true
+    description: "SourceManager: pause/resume/retire YAML edit, file move, InitTimeHelpers, ProblematicSourcesCheck backward compat (TASK-4)"
+
+  test_local_mentions:
+    file: test/test_local_mentions.rb
+    category: unit
+    tags: [offline, twitter, formatter, config]
+    exit_code_reliable: true
+    description: "Local mention transformation: domain_suffix_with_local in UniversalFormatter, ConfigLoader#twitter_handle_to_mastodon_map (TASK-7)"
+
+  # =====================================================
+  # VISUAL / DIAGNOSTIC (no real assertions)
+  # =====================================================
+
+  test_universal_formatter:
+    file: test/test_universal_formatter.rb
+    category: unit
+    tags: [offline, formatter, visual]
+    exit_code_reliable: false
+    description: "Visual: UniversalFormatter output for all platforms"
+
+  test_bluesky_formatter:
+    file: test/test_bluesky_formatter.rb
+    category: network
+    tags: [bluesky, formatter, visual]
+    exit_code_reliable: false
+    description: "Visual: BlueskyFormatter output with live data"
+
+  # =====================================================
+  # NETWORK TESTS (need live API / internet)
+  # =====================================================
+
+  test_bluesky:
+    file: test/test_bluesky.rb
+    category: network
+    tags: [bluesky, api]
+    exit_code_reliable: false
+    description: "Bluesky adapter against live profiles"
+
+  test_bluesky_adapter_v2:
+    file: test/test_bluesky_adapter_v2.rb
+    category: network
+    tags: [bluesky, api]
+    exit_code_reliable: true
+    description: "BlueskyAdapter v2: profile and custom feed modes"
+
+  test_bluesky_feed:
+    file: test/test_bluesky_feed.rb
+    category: network
+    tags: [bluesky, api]
+    exit_code_reliable: true
+    description: "Bluesky custom feed API"
+
+  test_bluesky_threads:
+    file: test/test_bluesky_threads.rb
+    category: network
+    tags: [bluesky, api]
+    exit_code_reliable: false
+    args: ["--offline"]
+    description: "Bluesky thread detection (offline mode available)"
+
+  test_nitter:
+    file: test/test_nitter.rb
+    category: network
+    tags: [twitter, nitter]
+    exit_code_reliable: false
+    description: "Nitter instance connectivity and RSS"
+
+  test_video_tweet_live:
+    file: test/test_video_tweet_live.rb
+    category: network
+    tags: [twitter, nitter]
+    exit_code_reliable: true
+    description: "Live video tweet fetch from Nitter"
+
+  test_syndication_api:
+    file: test/test_syndication_api.rb
+    category: network
+    tags: [twitter, syndication, diagnostic]
+    exit_code_reliable: false
+    description: "Twitter syndication API single tweet (needs tweet ID arg)"
+
+  test_syndication_batch:
+    file: test/test_syndication_batch.rb
+    category: network
+    tags: [twitter, syndication]
+    exit_code_reliable: false
+    description: "Twitter syndication API batch reliability"
+
+  test_syndication_video:
+    file: test/test_syndication_video.rb
+    category: network
+    tags: [twitter, syndication, visual]
+    exit_code_reliable: false
+    description: "Syndication API video tweet structure"
+
+  test_tco_expand:
+    file: test/test_tco_expand.rb
+    category: network
+    tags: [twitter]
+    exit_code_reliable: false
+    description: "t.co URL expansion via redirect following"
+
+  test_twitter_profile:
+    file: test/test_twitter_profile.rb
+    category: network
+    tags: [twitter, nitter]
+    exit_code_reliable: false
+    description: "Twitter profile parsing from Nitter HTML"
+
+  test_thread_detection:
+    file: test/test_thread_detection.rb
+    category: network
+    tags: [twitter, nitter]
+    exit_code_reliable: false
+    description: "Twitter thread detection via Nitter"
+
+  test_rss:
+    file: test/test_rss.rb
+    category: network
+    tags: [rss]
+    exit_code_reliable: false
+    description: "RSS adapter against live feeds"
+
+  test_youtube:
+    file: test/test_youtube.rb
+    category: network
+    tags: [youtube]
+    exit_code_reliable: false
+    description: "YouTube adapter channel fetch"
+
+  test_with_real_posts:
+    file: test/test_with_real_posts.rb
+    category: network
+    tags: [bluesky, formatter, visual]
+    exit_code_reliable: false
+    description: "Visual: formatter with real Bluesky posts"
+
+  test_zaletsi_expansion:
+    file: test/test_zaletsi_expansion.rb
+    category: network
+    tags: [bluesky, processor]
+    exit_code_reliable: false
+    description: "Zaletsi.cz URL expansion via Bluesky feed"
+
+  test_tier1_5:
+    file: test/test_tier1_5.rb
+    category: network
+    tags: [twitter, syndication]
+    exit_code_reliable: false
+    description: "Tier 1.5 syndication media fetcher"
+
+  quick_thread_test:
+    file: test/quick_thread_test.rb
+    category: network
+    tags: [bluesky, api]
+    exit_code_reliable: false
+    description: "Quick Bluesky thread detection test"
+
+  # =====================================================
+  # DATABASE TESTS (need PostgreSQL)
+  # =====================================================
+
+  test_state_manager:
+    file: test/test_state_manager.rb
+    category: db
+    tags: [database, postgres]
+    exit_code_reliable: true
+    description: "StateManager CRUD against PostgreSQL"
+
+  test_orchestrator:
+    file: test/test_orchestrator.rb
+    category: db
+    tags: [database, postgres]
+    exit_code_reliable: false
+    description: "Orchestrator dry-run with database"
+
+  # =====================================================
+  # E2E / PUBLISH TESTS (interactive, publish to Mastodon)
+  # =====================================================
+
+  test_bluesky_e2e:
+    file: test/test_bluesky_e2e.rb
+    category: e2e
+    tags: [bluesky, mastodon, publish, interactive]
+    interactive: true
+    exit_code_reliable: true
+    description: "Bluesky -> Mastodon full pipeline"
+
+  test_bluesky_media_e2e:
+    file: test/test_bluesky_media_e2e.rb
+    category: e2e
+    tags: [bluesky, mastodon, publish, interactive]
+    interactive: true
+    exit_code_reliable: false
+    description: "Bluesky -> Mastodon with media upload"
+
+  test_publish_rss:
+    file: test/test_publish_rss.rb
+    category: e2e
+    tags: [rss, mastodon, publish, interactive]
+    interactive: true
+    exit_code_reliable: true
+    description: "RSS -> Mastodon publish pipeline"
+
+  test_publish_rss_with_media:
+    file: test/test_publish_rss_with_media.rb
+    category: e2e
+    tags: [rss, mastodon, publish, interactive]
+    interactive: true
+    exit_code_reliable: false
+    description: "RSS -> Mastodon with media upload"
+
+  test_youtube_publish:
+    file: test/test_youtube_publish.rb
+    category: e2e
+    tags: [youtube, mastodon, publish, interactive]
+    interactive: true
+    exit_code_reliable: false
+    description: "YouTube -> Mastodon publish pipeline"
+
+  test_profile_sync:
+    file: test/test_profile_sync.rb
+    category: e2e
+    tags: [bluesky, mastodon, publish, interactive]
+    interactive: true
+    exit_code_reliable: false
+    description: "Profile sync: source -> Mastodon"

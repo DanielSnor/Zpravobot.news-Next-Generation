@@ -1,0 +1,82 @@
+# ============================================================
+# Zpravobot NG: Platform Configuration - Bluesky
+# ============================================================
+# Výchozí nastavení pro všechny Bluesky zdroje.
+# Přepisuje hodnoty z global.yml.
+# Jednotlivé zdroje mohou přepsat jakékoliv nastavení.
+# ============================================================
+
+# ------------------------------------------------------------
+# FILTERING - Filtrování obsahu
+# ------------------------------------------------------------
+filtering:
+  skip_replies: true                # Přeskočit cizí odpovědi
+  skip_retweets: false              # Přeskočit reposty
+  skip_quotes: false                # Přeskočit quote posty
+  allow_self_retweets: true         # Povolit reposty vlastních postů
+  banned_phrases: []                # Seznam zakázaných frází
+  required_keywords: []             # Požadovaná klíčová slova
+
+# ------------------------------------------------------------
+# FORMATTING - Formátování výstupu
+# ------------------------------------------------------------
+# Sjednocená struktura postů napříč platformami:
+#
+# S headerem (repost/quote):
+#   header + "\n" + prefix_post_text + text + "\n" + prefix_post_url + url
+#
+# Bez headeru (regular):
+#   [prefix_post_text if != "\n"] + text + "\n" + prefix_post_url + url
+#
+formatting:
+  platform_emoji: "🦋"              # Emoji platformy v příspěvku
+  prefix_repost: "🦋🔁"             # Prefix pro reposty
+  prefix_quote: "🦋💬"              # Prefix pro quote posty
+  prefix_self_reference: "svůj post" # Text pro self-reference místo @username
+  move_url_to_end: true             # Přesunout URL na konec (Bluesky link cards)
+  
+  # Sjednocené prefixy
+  prefix_post_text: "\n"            # Prefix před textem (extra řádek za headerem)
+  prefix_post_url: "\n"             # Prefix před URL
+  
+  # Lokalizované texty pro self-reference
+  self_reference_texts:
+    cs: "svůj post"
+    sk: "vlastný príspevok"
+    en: "own post"
+
+# ------------------------------------------------------------
+# URL - Úprava odkazů
+# ------------------------------------------------------------
+url:
+  replace_from: []                  # Seznam URL k nahrazení (regex)
+  replace_to: ""                    # Náhradní URL
+  domain_fixes: []                  # Domény bez https:// (automaticky se doplní)
+
+# ------------------------------------------------------------
+# MENTIONS - Zpracování zmínek
+# ------------------------------------------------------------
+mentions:
+  type: prefix                      # Typ transformace zmínek
+  value: "https://bsky.app/profile/" # Prefix pro transformaci
+
+# ------------------------------------------------------------
+# PROCESSING - Zpracování textu
+# ------------------------------------------------------------
+processing:
+  max_length: 500                   # Maximální délka finálního příspěvku
+  trim_strategy: smart              # Strategie zkracování: smart / truncate
+
+# ------------------------------------------------------------
+# SCHEDULING - Plánování stahování
+# ------------------------------------------------------------
+scheduling:
+  priority: normal                  # Priorita: low / normal / high
+  interval_minutes: 10              # Interval kontroly nového obsahu
+  max_posts_per_run: 10             # Max příspěvků za jedno spuštění
+
+# ------------------------------------------------------------
+# PROFILE SYNC - Synchronizace profilu
+# ------------------------------------------------------------
+profile_sync:
+  retention_days: 90

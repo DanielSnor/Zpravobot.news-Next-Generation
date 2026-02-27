@@ -1,0 +1,82 @@
+# ==================================
+# IFTTT Webhook Server (watchdog) - prod & test
+# ==================================
+
+# Kontroluje každou minutu, zda webhook server běží
+* * * * * /app/data/zbnw-ng/cron_webhook.sh
+
+# ==================================
+# IFTTT Queue Processor (Twitter) - prod & test
+# ==================================
+
+# Zpracovává příchozí prod webhooky každé 2 minuty
+*/2 * * * * /app/data/zbnw-ng/cron_ifttt.sh
+
+# Zpracovává failed webhooky každou hodinu (v :00)
+0 * * * * /app/data/zbnw-ng/cron_retry_failed.sh
+
+# ==================================
+# Content Sync (Bluesky, RSS, YouTube) - prod & test
+# ==================================
+
+# Twitter se zpracovává přes IFTTT pipeline výše
+*/10 * * * * /app/data/zbnw-ng/cron_zbnw.sh --verbose --exclude-platform twitter
+# */8 * * * * /app/data/zbnw-ng/cron_zbnw.sh --platform bluesky
+# */8 * * * * /app/data/zbnw-ng/cron_zbnw.sh --platform youtube
+
+# Test: Twitter RSS polling (TASK-10 — TwitterTweetProcessor)
+*/5 * * * * /app/data/zbnw-ng-test/cron_zbnw.sh --verbose --platform twitter
+
+# Test: ostatní platformy
+0 * * * * /app/data/zbnw-ng-test/cron_zbnw.sh --verbose --exclude-platform twitter
+
+# ==================================
+# Profile Sync - prod
+# ==================================
+
+# Bluesky profily - 1x denně v 1:00 (má nativní API)
+0 1 * * * /app/data/zbnw-ng/cron_profile_sync.sh --platform bluesky
+
+# Facebook profily - 1x za 3 dny ve 2:00 (Facebook scraping, šetříme)
+0 2 */3 * * /app/data/zbnw-ng/cron_profile_sync.sh --platform facebook
+
+# Twitter profily - 3 skupiny rotující po dnech, ve 3:00 (Nitter scraping, šetříme)
+# Po,Čt = skupina 0, Út,Pá = skupina 1, St,So = skupina 2, Ne = volno
+0 3 * * 1,4  /app/data/zbnw-ng/cron_profile_sync.sh --platform twitter --group 0
+0 3 * * 2,5  /app/data/zbnw-ng/cron_profile_sync.sh --platform twitter --group 1
+0 3 * * 3,6  /app/data/zbnw-ng/cron_profile_sync.sh --platform twitter --group 2
+
+# RSS profily - 1x týdně v neděli ve 3:00 (deleguje na BS/FB/TW syncery)
+0 3 * * 0    /app/data/zbnw-ng/cron_profile_sync.sh --platform rss
+
+# ==================================
+# Tlambot - Broadcasting - prod
+# ==================================
+
+# Naslouchač každých 5 minut - zkontroluje, jestli někdo nepíše  
+
+# ==================================
+# Údržbot - Health Monitor - prod
+# ==================================
+
+# Naslouchač každých 5 minut - zkontroluje, jestli někdo nepíše  
+*/5 * * * * /app/data/zbnw-ng/cron_command_listener.sh
+
+# Health check každých 10 minut - alert jen při problému
+*/10 * * * * /app/data/zbnw-ng/cron_health.sh --alert --save
+
+# Heartbeat jednou denně v 8:00 - pošle se jen když je vše OK  
+0 8 * * * /app/data/zbnw-ng/cron_health.sh --heartbeat
+
+# ==================================
+# Maintenance - prod & test
+# ==================================
+
+# Log rotation - denně v 04:00 (mazat *.log starší než 7 dní)
+# Platí pro všechny logy: runner_*, webhook_*, ifttt_*, profile_sync_*
+0 4 * * * find /app/data/zbnw-ng/logs -name "*.log" -mtime +7 -delete 2>/dev/null
+0 4 * * * find /app/data/zbnw-ng-test/logs -name "*.log" -mtime +7 -delete 2>/dev/null
+
+# Processed Queue clean-up - denně v 04:00 (mazat *.json starší než 7 dní)
+0 4 * * * find /app/data/zbnw-ng/queue/ifttt/processed -name "*.json" -mtime +7 -delete 2>/dev/null
+0 4 * * * find /app/data/zbnw-ng-test/queue/ifttt/processed -name "*.json" -mtime +7 -delete 2>/dev/null

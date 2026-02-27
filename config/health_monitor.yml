@@ -1,0 +1,109 @@
+# ============================================================
+# Údržbot - Zpravobot Health Monitor Configuration
+# ============================================================
+# Umístění: /app/data/zbnw-ng/config/health_monitor.yml
+#
+# Alert bot: @udrzbot@zpravobot.news
+#
+# Všechny hodnoty mají rozumné výchozí hodnoty v kódu,
+# tento soubor slouží k jejich přepsání.
+# ============================================================
+
+# Komponenty URLs
+webhook_url: 'http://localhost:8089/health'
+nitter_url: 'http://xn.zpravobot.news:8080'
+mastodon_instance: 'https://zpravobot.news'
+
+# Alert bot konfigurace
+# Token nastavit jako env var: ZPRAVOBOT_MONITOR_TOKEN
+alert_visibility: 'private'  # 'private' = followers-only, 'direct' = DM, 'unlisted', 'public'
+
+# Prahy pro alarmy
+# Tyto hodnoty lze doladit podle reálného provozu
+thresholds:
+  # Timeouty (sekundy)
+  webhook_timeout: 5
+  nitter_timeout: 10
+  
+  # IFTTT (minuty)
+  ifttt_no_webhook_minutes: 120      # 2 hodiny bez webhooku = warning
+  
+  # Queue
+  queue_stale_minutes: 30            # Položka čeká > 30 min = warning
+  queue_max_pending: 100             # Více než 100 pending = critical
+  
+  # Publikování
+  no_publish_minutes: 60             # 1 hodina bez publikování = warning
+  
+  # Chyby zdrojů
+  error_threshold: 5                 # 5+ po sobě jdoucích chyb = warning
+  
+  # Nitter account keywords (hledáme v error messages)
+  nitter_error_keywords:
+    - rate_limit
+    - rate limit
+    - guest_account
+    - guest account  
+    - unauthorized
+    - suspended
+    - banned
+    - blocked
+    - Too Many Requests
+    - 429
+  
+  # Aktivita
+  activity_baseline_variance: 0.8    # 50% pokles oproti baseline = warning
+
+  # Runner zdraví (detekce crashů)
+  runner_stale_minutes: 30           # 30 min bez úspěšného runu = warning
+  runner_critical_minutes: 60        # 60 min bez úspěšného runu = critical
+  runner_consecutive_crashes: 3      # 3+ po sobě jdoucích crashů = warning
+
+  # Opakující se warningy
+  recurring_warn_threshold: 10       # 10+/h stejný WARN pattern = warning
+  recurring_warn_critical: 100       # 100+/h stejný WARN pattern = critical
+
+# Paths a Database: nastavuje se přes env.sh (ZBNW_DIR, PGHOST, PGDATABASE, PGUSER, PGPASSWORD, ZPRAVOBOT_SCHEMA)
+
+# ============================================================
+# Command Listener (interaktivní příkazy přes Mastodon mentions)
+# ============================================================
+command_listener:
+  # Účty s přístupem k příkazům (lokální username nebo user@domain)
+  allowed_accounts:
+    - 'danielsnor'
+    - 'danielsnor@mastodon.social'
+    - 'zpravobot'
+    - 'archos@mastodon.arch-linux.cz'
+    - 'cynik_obecny@mamutovo.cz'
+
+  # Max příkazů na účet za jeden poll cyklus
+  rate_limit_per_cycle: 3
+
+  # Viditelnost odpovědí ('direct' = DM)
+  # Bot akceptuje pouze příkazy z mentions-only (DM) postů — veřejné mentions ignoruje
+  response_visibility: 'direct'
+
+  # Username bota (pro odstranění z mention textu)
+  bot_account: 'udrzbot'
+
+  # Max notifikací na jedno načtení
+  poll_limit: 30
+
+# ============================================================
+# Cron příklady
+# ============================================================
+#
+# Health check každých 10 minut (alert jen při problému):
+#   */10 * * * * cd /app/data/zbnw-ng && ruby bin/health_monitor.rb --alert --save
+#
+# Heartbeat jednou denně ráno:
+#   0 8 * * * cd /app/data/zbnw-ng && ruby bin/health_monitor.rb --heartbeat
+#
+# Detailní report každou hodinu (bez alertu):
+#   0 * * * * cd /app/data/zbnw-ng && ruby bin/health_monitor.rb --details --save
+#
+# Command listener každých 5 minut:
+#   */5 * * * * cd /app/data/zbnw-ng && ./cron_command_listener.sh
+#
+# ============================================================

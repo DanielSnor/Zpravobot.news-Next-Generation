@@ -1,0 +1,85 @@
+# ============================================================
+# Zpravobot NG: Platform Configuration - YouTube
+# ============================================================
+# Výchozí nastavení pro všechny YouTube zdroje.
+# Přepisuje hodnoty z global.yml.
+# Jednotlivé zdroje mohou přepsat jakékoliv nastavení.
+# ============================================================
+
+# ------------------------------------------------------------
+# FILTERING - Filtrování obsahu
+# ------------------------------------------------------------
+filtering:
+  skip_replies: false       # N/A pro YouTube
+  skip_retweets: false      # N/A pro YouTube
+  skip_quotes: false        # N/A pro YouTube
+  banned_phrases: []        # Seznam zakázaných frází
+  required_keywords: []     # Požadovaná klíčová slova
+
+# ------------------------------------------------------------
+# CONTENT - Zpracování obsahu
+# ------------------------------------------------------------
+content:
+  show_title_as_content: false
+  combine_title_and_content: true   # Titulek + separator + popis
+  title_separator: " — "
+  max_input_chars: 1000             # Pre-truncation pro úsporu paměti
+
+# ------------------------------------------------------------
+# FORMATTING - Formátování výstupu
+# ------------------------------------------------------------
+# Sjednocená struktura postů napříč platformami:
+#
+# YouTube nemá header (repost/quote), takže:
+#   [prefix_post_text if != "\n"] + text + "\n" + prefix_post_url + url
+#
+formatting:
+  platform_emoji: "📺"              # Emoji platformy v příspěvku
+  move_url_to_end: true             # Přesunout URL na konec příspěvku
+  
+  # Sjednocené prefixy
+  prefix_post_text: ""              # Prefix před textem (prázdný pro YouTube)
+  prefix_post_url: "\n📺 "          # Prefix před URL videa (extra řádek + emoji)
+
+# ------------------------------------------------------------
+# THUMBNAIL - Zpracování náhledů
+# ------------------------------------------------------------
+thumbnail:
+  upload_as_media: true             # Upload thumbnail jako Mastodon média
+
+# ------------------------------------------------------------
+# URL - Úprava odkazů
+# ------------------------------------------------------------
+url:
+  replace_from: []
+  replace_to: ""
+  domain_fixes: []
+
+# ------------------------------------------------------------
+# MENTIONS - Zpracování zmínek
+# ------------------------------------------------------------
+mentions:
+  type: none
+  value: ""
+
+# ------------------------------------------------------------
+# PROCESSING - Zpracování textu
+# ------------------------------------------------------------
+processing:
+  max_length: 250                   # Maximální délka finálního příspěvku
+  trim_strategy: smart              # Strategie zkracování
+
+# ------------------------------------------------------------
+# SCHEDULING - Plánování stahování
+# ------------------------------------------------------------
+scheduling:
+  priority: normal
+  interval_minutes: 30
+  max_posts_per_run: 3
+  skip_hours: [5, 6, 7, 8]  # YouTube API má ranní maintenance window (~05:00-09:00 CET)
+
+# ------------------------------------------------------------
+# PROFILE SYNC - Synchronizace profilu
+# ------------------------------------------------------------
+profile_sync:
+  retention_days: 180
