@@ -206,7 +206,7 @@ bin/                          # Vstupní body (8 skriptů)
   create_source.rb            # Interaktivní průvodce konfigurací zdrojů
   force_update_source.rb      # Reset stavu zdroje pro okamžité zpracování
 
-lib/                          # Zdrojový kód (79 souborů)
+lib/                          # Zdrojový kód (98 souborů)
   orchestrator.rb             # Koordinace systému
   logging.rb                  # Centralizované denní rotující logy
   errors.rb                   # Hierarchie chyb (Zpravobot::Error)
@@ -397,7 +397,7 @@ ruby bin/run_tests.rb --list       # Výpis testů bez spuštění
 
 **Registr testů:** `config/test_catalog.yml` — kategorie (unit/network/e2e/db), tagy, timeouty.
 
-**Aktuální stav:** 40/40 unit testů PASS, 199 assertů, celkem 71 testových souborů.
+**Aktuální stav:** 62/62 unit testů PASS, 1 863 assertů, celkem 91 testových souborů.
 
 ## Monitoring (Údržbot)
 
@@ -662,15 +662,15 @@ ruby bin/run_tests.rb --tag bluesky # Tests by tag
 ruby bin/run_tests.rb --file edit  # Tests matching "edit"
 ```
 
-- 85 test files (57 unit, 18 network, 2 db, 6 e2e)
-- 1667 assertions, all passing
+- 91 test files (62 unit, 18 network, 2 db, 6 e2e)
+- 1963 assertions, all passing
 - Test catalog: `config/test_catalog.yml`
 
 ## Project Structure
 
 ```
 bin/          10 entry point scripts
-lib/          94 library files (~20K LOC)
+lib/          98 library files (~20K LOC)
   adapters/     Source adapters (Twitter, Bluesky, RSS, YouTube)
   broadcast/    Broadcast system (multi-account messaging)
   config/       Configuration loading, merging, resolution
