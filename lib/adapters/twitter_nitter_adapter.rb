@@ -495,7 +495,7 @@ module Adapters
             # IFTTT reliably provides quote URL in first_link_url
             if post.quoted_post.nil? && first_link && first_link.match?(%r{(?:twitter\.com|x\.com)/\w+/status/\d+$})
               post.is_quote = true
-              post.quoted_post = { url: first_link }
+              post.quoted_post = build_quoted_post(first_link)
               log "Tier 2: Set quoted_post from IFTTT first_link_url: #{first_link}"
             end
 

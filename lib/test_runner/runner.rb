@@ -159,7 +159,10 @@ module TestRunner
       begin
         pid = nil
         Timeout.timeout(timeout_sec) do
-          Open3.popen3(*cmd, chdir: @project_root) do |stdin, stdout, stderr, wait_thr|
+          ruby_ver = RbConfig::CONFIG['ruby_version']
+          vendor_gem_path = File.join(@project_root, 'vendor', 'bundle', 'ruby', ruby_ver)
+          subprocess_env = File.directory?(vendor_gem_path) ? { 'GEM_PATH' => vendor_gem_path } : {}
+          Open3.popen3(subprocess_env, *cmd, chdir: @project_root) do |stdin, stdout, stderr, wait_thr|
             pid = wait_thr.pid
             stdin.close
             # Read stdout and stderr in threads to avoid deadlock

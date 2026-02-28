@@ -263,7 +263,10 @@ module Adapters
 
     # Detect quote tweet from HTML
     def detect_quote_from_html(html)
-      html.include?('class="quote') || html.include?('quote-link')
+      html.include?('class="quote') ||
+        html.include?("class='quote") ||
+        html.include?('quote-link') ||
+        html.match?(/class="[^"]*\bquote\b/)
     end
 
     # Extract quoted post info from HTML
