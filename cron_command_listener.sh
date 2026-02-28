@@ -15,7 +15,7 @@ source "${SCRIPT_DIR}/env.sh"
 cd "$ZBNW_DIR" || exit 1
 
 # 1. Udrzbot — command listener
-ruby bin/command_listener.rb "$@" >> "${ZBNW_LOG_DIR}/command_listener.log" 2>&1
+bundle exec ruby bin/command_listener.rb "$@" >> "${ZBNW_LOG_DIR}/command_listener.log" 2>&1
 
 # 2. Tlambot — broadcast queue processor
-ruby bin/process_broadcast_queue.rb >> "${ZBNW_LOG_DIR}/broadcast_queue.log" 2>&1
+bundle exec ruby bin/process_broadcast_queue.rb >> "${ZBNW_LOG_DIR}/broadcast_queue.log" 2>&1

@@ -23,4 +23,4 @@ if [ "$CANDIDATE_COUNT" -eq 0 ]; then
 fi
 
 cd "$ZBNW_DIR" || exit 1
-ruby bin/retry_failed_queue.rb >> "$LOG_FILE" 2>&1
+bundle exec ruby bin/retry_failed_queue.rb >> "$LOG_FILE" 2>&1
