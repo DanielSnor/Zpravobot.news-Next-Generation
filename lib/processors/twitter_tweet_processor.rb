@@ -138,6 +138,8 @@ module Processors
       # Basic threading: fetch Nitter → resolve parent via ThreadingSupport
       post = fetch_from_nitter_with_retry(post_id, username, source_config)
       if post
+        correct_repost_from_fallback(post, fallback_post, source_id)
+        correct_quote_from_fallback(post, fallback_post, source_id)
         in_reply_to_id = resolve_thread_parent(source_id, post)
         return [post, in_reply_to_id]
       end
@@ -187,7 +189,11 @@ module Processors
 
       # Fetch main tweet (Nitter → Syndication → fallback_post)
       post = fetch_from_nitter_with_retry(post_id, username, source_config)
-      return [post, in_reply_to_id] if post
+      if post
+        correct_repost_from_fallback(post, fallback_post, source_id)
+        correct_quote_from_fallback(post, fallback_post, source_id)
+        return [post, in_reply_to_id]
+      end
 
       log_warn("[#{source_id}] Nitter failed in advanced threading → trying Syndication")
       syndication_post = fetch_from_syndication(post_id, username, source_config, fallback_post)
@@ -391,6 +397,37 @@ module Processors
         instance_url: instance_url,
         access_token: token
       )
+    end
+
+    # Oprav is_repost metadata z fallback_post pokud Nitter HTML toto nezachytil.
+    #
+    # Nitter při renderování retweet URL zobrazí originální tweet — jeho <title>
+    # neobsahuje "RT by @..." formát, takže detect_repost vrátí false. Správný
+    # is_repost signál je v fallback_post (z IFTTT textu nebo RSS titulku).
+    #
+    # Odpovídá korekci v TwitterNitterAdapter Tier 2 (řádky 502-523).
+    def correct_repost_from_fallback(post, fallback_post, source_id)
+      return unless fallback_post&.is_repost && !post.is_repost
+
+      post.is_repost   = true
+      post.reposted_by = fallback_post.reposted_by
+      post.author      = fallback_post.author if fallback_post.author
+      log_info("[#{source_id}] Corrected is_repost from fallback_post (Nitter HTML didn't detect RT)")
+    end
+
+    # Oprav is_quote metadata z fallback_post pokud Nitter HTML toto nezachytil.
+    #
+    # Nitter HTML detekuje quote přes CSS class "quote-link" — pokud HTML
+    # má jiný formát nebo je neúplný, detect_quote_from_html vrátí false.
+    # Správný is_quote signál je v fallback_post (z IFTTT first_link_url nebo RSS).
+    #
+    # Analogie k correct_repost_from_fallback / TwitterNitterAdapter Tier 2 (řádky 494-500).
+    def correct_quote_from_fallback(post, fallback_post, source_id)
+      return unless fallback_post&.is_quote && !post.is_quote
+
+      post.is_quote    = true
+      post.quoted_post = fallback_post.quoted_post
+      log_info("[#{source_id}] Corrected is_quote from fallback_post (Nitter HTML didn't detect quote)")
     end
 
     # Lazy-init PostProcessor (sdílený napříč všemi process() calls)
