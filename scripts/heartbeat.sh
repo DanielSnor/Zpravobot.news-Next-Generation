@@ -26,4 +26,4 @@ source "${ZBNW_ROOT}/env.sh"
 cd "$ZBNW_DIR" || exit 1
 
 # Předat --heartbeat + případné další argumenty (--save, --details)
-ruby bin/health_monitor.rb --heartbeat "$@" >> "${ZBNW_LOG_DIR}/health_monitor.log" 2>&1
+bundle exec ruby bin/health_monitor.rb --heartbeat "$@" >> "${ZBNW_LOG_DIR}/health_monitor.log" 2>&1

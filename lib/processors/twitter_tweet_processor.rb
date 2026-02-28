@@ -264,7 +264,7 @@ module Processors
     def build_syndication_post(post_id, username, source_config, syndication, fallback_post)
       syndi_username = syndication[:username] || username
       display_name   = syndication[:display_name] || syndi_username
-      url_domain     = source_config.dig(:url, :replace_to) || 'x.com'
+      url_domain     = (source_config.dig(:url, :replace_to) || 'x.com').sub(%r{^https?://}, '').chomp('/')
       tweet_url      = "https://#{url_domain}/#{syndi_username}/status/#{post_id}"
 
       # Media

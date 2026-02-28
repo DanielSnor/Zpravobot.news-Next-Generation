@@ -35,7 +35,7 @@ process_queue() {
 
     echo "[$(date '+%Y-%m-%d %H:%M:%S')] [${label}] Processing ${pending_count} pending webhooks..."
 
-    IFTTT_QUEUE_DIR="$queue_dir" ruby lib/webhook/ifttt_queue_processor.rb 2>&1 | tee -a "$log_file"
+    IFTTT_QUEUE_DIR="$queue_dir" bundle exec ruby lib/webhook/ifttt_queue_processor.rb 2>&1 | tee -a "$log_file"
 
     echo "[$(date '+%Y-%m-%d %H:%M:%S')] [${label}] Queue processing complete"
 }
