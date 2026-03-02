@@ -40,6 +40,7 @@ require_relative '../lib/syncers/bluesky_profile_syncer'
 require_relative '../lib/syncers/twitter_profile_syncer'
 require_relative '../lib/syncers/facebook_profile_syncer'
 require_relative '../lib/syncers/instagram_profile_syncer'
+require_relative '../lib/syncers/youtube_profile_syncer'
 
 # ============================================================
 # Lockfile - prevents overlapping runs
@@ -70,7 +71,7 @@ end
 # Main runner class
 # ============================================================
 class ProfileSyncRunner
-  VALID_PLATFORMS = %w[twitter bluesky facebook instagram rss].freeze
+  VALID_PLATFORMS = %w[twitter bluesky facebook instagram youtube rss].freeze
   VALID_GROUPS = [0, 1, 2].freeze
   NUM_GROUPS = 3
 
@@ -78,6 +79,7 @@ class ProfileSyncRunner
     @options = options
     @config_loader = Config::ConfigLoader.new
     @stats = { synced: 0, skipped: 0, errors: 0 }
+    @account_platforms = {}
   end
 
   def run
@@ -92,6 +94,7 @@ class ProfileSyncRunner
     Logging.info('=' * 60)
 
     sources = load_sources
+    build_account_platforms
 
     sources.each do |source|
       break if $shutdown_requested
@@ -177,21 +180,7 @@ class ProfileSyncRunner
   def sync_source(source)
     Logging.info("[#{source.id}] Syncing profile...")
 
-    # Determine effective platform:
-    # - _facebook / _instagram suffixed sources are RSS feeds but sync as their own platform
-    # - rss_source_type override also supported for explicit config
-    effective_platform = if source.platform == 'rss'
-                           id = source.id.to_s
-                           if id.end_with?('_facebook') || source.rss_source_type == 'facebook'
-                             'facebook'
-                           elsif id.end_with?('_instagram')
-                             'instagram'
-                           else
-                             'rss'
-                           end
-                         else
-                           source.platform
-                         end
+    effective_platform = effective_platform_for(source)
 
     case effective_platform
     when 'bluesky'
@@ -202,6 +191,8 @@ class ProfileSyncRunner
       sync_facebook(source)
     when 'instagram'
       sync_instagram(source)
+    when 'youtube'
+      sync_youtube(source)
     when 'rss'
       sync_rss(source)
     else
@@ -213,6 +204,46 @@ class ProfileSyncRunner
     Logging.error("[#{source.id}] Error: #{e.message}")
     Logging.debug(e.backtrace.first) if ENV['DEBUG']
     @stats[:errors] += 1
+  end
+
+  # Returns the canonical platform key for a source, resolving RSS suffixes.
+  # Used both for routing in sync_source and for building the account_platforms map.
+  def effective_platform_for(source)
+    return source.platform unless source.platform == 'rss'
+
+    id = source.id.to_s
+    if id.end_with?('_facebook') || source.rss_source_type == 'facebook'
+      'facebook'
+    elsif id.end_with?('_instagram')
+      'instagram'
+    else
+      'rss'
+    end
+  end
+
+  # Build a map of mastodon_account → [sorted platform keys] from ALL enabled sources.
+  # Used to populate the spravuje: field with all platforms a bot aggregates from.
+  def build_account_platforms
+    platform_order = Syncers::BaseProfileSyncer::PLATFORM_LABELS.keys
+
+    raw = @config_loader.load_all_sources
+    raw.each do |raw_source|
+      source = raw_source.is_a?(Hash) ? Config::SourceConfig.new(raw_source) : raw_source
+      next unless source.respond_to?(:enabled?) && source.enabled?
+      next if source.id.to_s.start_with?('!') || source.id.to_s.include?('example')
+
+      account = source.mastodon_account
+      next unless account
+
+      platform = effective_platform_for(source)
+      @account_platforms[account] ||= []
+      @account_platforms[account] |= [platform]
+    end
+
+    # Sort platforms by canonical order (twitter, bluesky, facebook, instagram, youtube, rss)
+    @account_platforms.transform_values! do |platforms|
+      platforms.sort_by { |p| platform_order.index(p) || 999 }
+    end
   end
 
   def sync_bluesky(source)
@@ -232,7 +263,8 @@ class ProfileSyncRunner
       mastodon_token: source.mastodon_token,
       language: sync_config.fetch(:language, 'cs'),
       retention_days: sync_config.fetch(:retention_days, 90),
-      mentions_config: mentions_config
+      mentions_config: mentions_config,
+      source_platforms: @account_platforms[source.mastodon_account]
     )
 
     run_syncer(source, syncer, sync_config)
@@ -252,7 +284,8 @@ class ProfileSyncRunner
       mastodon_token: source.mastodon_token,
       language: sync_config.fetch(:language, 'cs'),
       retention_days: sync_config.fetch(:retention_days, 90),
-      mentions_config: mentions_config
+      mentions_config: mentions_config,
+      source_platforms: @account_platforms[source.mastodon_account]
     )
 
     run_syncer(source, syncer, sync_config)
@@ -285,7 +318,8 @@ class ProfileSyncRunner
       facebook_cookies: facebook_cookies,
       language: sync_config.fetch(:language, 'cs'),
       retention_days: sync_config.fetch(:retention_days, 90),
-      mentions_config: mentions_config
+      mentions_config: mentions_config,
+      source_platforms: @account_platforms[source.mastodon_account]
     )
 
     run_syncer(source, syncer, sync_config)
@@ -329,7 +363,35 @@ class ProfileSyncRunner
       instagram_cookies: instagram_cookies,
       language: sync_config.fetch(:language, 'cs'),
       retention_days: sync_config.fetch(:retention_days, 90),
-      mentions_config: mentions_config
+      mentions_config: mentions_config,
+      source_platforms: @account_platforms[source.mastodon_account]
+    )
+
+    run_syncer(source, syncer, sync_config)
+  end
+
+  def sync_youtube(source)
+    sync_config = source.data.dig(:profile_sync) || {}
+
+    # Profile sync is opt-in for YouTube: only sources with source.handle are synced.
+    # Supplementary sources (channel_id only) are silently skipped.
+    youtube_handle = source.source_handle
+    unless youtube_handle
+      @stats[:skipped] += 1
+      return
+    end
+
+    platform_config = @config_loader.load_platform_config('youtube')
+    mentions_config = platform_config[:mentions] || { type: 'none', value: '' }
+
+    syncer = Syncers::YoutubeProfileSyncer.new(
+      youtube_handle: youtube_handle,
+      mastodon_instance: source.mastodon_instance,
+      mastodon_token: source.mastodon_token,
+      language: sync_config.fetch(:language, 'cs'),
+      retention_days: sync_config.fetch(:retention_days, 180),
+      mentions_config: mentions_config,
+      source_platforms: @account_platforms[source.mastodon_account]
     )
 
     run_syncer(source, syncer, sync_config)
@@ -372,7 +434,8 @@ class ProfileSyncRunner
       mastodon_token: source.mastodon_token,
       language: sync_config.fetch(:language, 'cs'),
       retention_days: sync_config.fetch(:retention_days, 90),
-      mentions_config: mentions_config
+      mentions_config: mentions_config,
+      source_platforms: @account_platforms[source.mastodon_account]
     )
 
     run_syncer(source, syncer, sync_config)
@@ -391,7 +454,8 @@ class ProfileSyncRunner
       mastodon_token: source.mastodon_token,
       language: sync_config.fetch(:language, 'cs'),
       retention_days: sync_config.fetch(:retention_days, 90),
-      mentions_config: mentions_config
+      mentions_config: mentions_config,
+      source_platforms: @account_platforms[source.mastodon_account]
     )
 
     run_syncer(source, syncer, sync_config)
@@ -419,7 +483,8 @@ class ProfileSyncRunner
       facebook_cookies: facebook_cookies,
       language: sync_config.fetch(:language, 'cs'),
       retention_days: sync_config.fetch(:retention_days, 90),
-      mentions_config: mentions_config
+      mentions_config: mentions_config,
+      source_platforms: @account_platforms[source.mastodon_account]
     )
 
     run_syncer(source, syncer, sync_config)
