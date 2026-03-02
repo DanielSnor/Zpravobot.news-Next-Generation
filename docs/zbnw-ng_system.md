@@ -1,6 +1,6 @@
 # ZBNW-NG (Zpravobot Next Generation) – Systémová dokumentace
 
-> **Poslední aktualizace:** 2026-02-27
+> **Poslední aktualizace:** 2026-03-02
 > **Stav:** Produkční
 > **Umístění:** `/app/data/zbnw-ng/` (produkce), `/app/data/zbnw-ng-test/` (test)
 
@@ -604,14 +604,18 @@ IftttQueueProcessor    Orchestrator::Runner
 - Data: Pouze z IFTTT payloadu
 - Výhody: Nejrychlejší
 
-**Tier 1.5: Syndication API** (`nitter_processing: false`, text zkrácen/media)
-- Kdy: `nitter_processing: false` ale text je zkrácený nebo chybí média
-- Data: Twitter Syndication API (neoficiální) — media + plný text bez Twitter Blue limit
+**Tier 1.5: Syndication API** (`nitter_processing: false`)
+- Kdy: `nitter_processing: false` — pro všechny posty přes `TwitterTweetProcessor`
+- Data: Twitter Syndication API (neoficiální) — text + media
+- Media: skutečné mp4 (`type: 'video'`) pro video tweety; JPEG foto jinak
+- Text: t.co expand + strip media URL + FormatHelpers.clean_text
+- Fallback: fallback_post (IFTTT data) pokud Syndication selže
 - Bez Nitter závislosti
 
-**Tier 2: Nitter HTML fetch** (`nitter_processing: true`, Nitter dostupný)
+**Tier 2: Nitter HTML fetch + video enrichment** (`nitter_processing: true`, Nitter dostupný)
 - Kdy: `nitter_processing: true` a Nitter instance odpoví
 - Data: IFTTT trigger + plná data z Nitter HTML scraping
+- Video enrichment: pokud detekováno video a Nitter nemá přímé mp4, zavolá Syndication API pro mp4
 - Retry: 3 pokusy s exponenciálním backoff
 
 **Tier 3.5: Syndication fallback** (`nitter_processing: true`, Nitter selhal)

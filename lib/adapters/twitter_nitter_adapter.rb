@@ -436,7 +436,7 @@ module Adapters
         return send(fallback_method, ifttt_data, bot_config)
       end
 
-      log "Tier #{tier} success: #{syndication[:photos].count} photos, video: #{syndication[:video_thumbnail] ? 'yes' : 'no'}"
+      log "Tier #{tier} success: #{syndication[:photos].count} photos, video_thumbnail: #{syndication[:video_thumbnail] ? 'yes' : 'no'}, video_url: #{syndication[:video_url] ? 'yes' : 'no'}"
       build_syndication_post(ifttt_data, syndication, tier: tier, raw_extra: raw_extra)
     end
 
@@ -719,7 +719,7 @@ module Adapters
       post_type = detect_post_type(ifttt_data[:text], first_link)
 
       # Detect video
-      has_video = syndication[:video_thumbnail] ||
+      has_video = syndication[:video_url] || syndication[:video_thumbnail] ||
                   (first_link && first_link.match?(%r{/video/\d*$}))
 
       # Build media array
@@ -728,8 +728,12 @@ module Adapters
         media << Media.new(type: 'image', url: photo_url, alt_text: '')
       end
 
-      if syndication[:video_thumbnail] && media.empty?
-        media << Media.new(type: 'image', url: syndication[:video_thumbnail], alt_text: 'Video thumbnail')
+      if syndication[:video_url]
+        alt = (syndication[:text] || ifttt_data[:text]).to_s.strip
+        media << Media.new(type: 'video', url: syndication[:video_url], alt_text: alt)
+      elsif syndication[:video_thumbnail] && media.empty?
+        alt = (syndication[:text] || ifttt_data[:text]).to_s.strip
+        media << Media.new(type: 'image', url: syndication[:video_thumbnail], alt_text: alt)
       end
 
       # Remove video URL from text

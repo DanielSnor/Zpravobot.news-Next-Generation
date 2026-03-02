@@ -65,7 +65,7 @@ module Services
         result = try_fetch
         
         if result[:success]
-          log "Success! Photos: #{result[:photos].count}, Video: #{result[:video_thumbnail] ? 'yes' : 'no'}", level: :success
+          log "Success! Photos: #{result[:photos].count}, Video: #{result[:video_thumbnail] ? 'yes' : 'no'}, mp4: #{result[:video_url] ? 'yes' : 'no'}", level: :success
           return result
         end
         
@@ -156,6 +156,7 @@ module Services
         text: data['text'],
         photos: extract_photos(data),
         video_thumbnail: extract_video_thumbnail(data),
+        video_url: extract_video_url(data),
         display_name: data.dig('user', 'name'),
         username: data.dig('user', 'screen_name'),
         created_at: data['created_at'],
@@ -188,6 +189,23 @@ module Services
       photos.uniq
     end
     
+    # Extract best-quality mp4 video URL from response
+    #
+    # @param data [Hash] Parsed JSON
+    # @return [String, nil] mp4 URL or nil
+    def extract_video_url(data)
+      variants = data.dig('video', 'variants') || []
+      mp4s = variants.select { |v| v['type'] == 'video/mp4' }
+      return nil if mp4s.empty?
+
+      # Nejvyšší rozlišení podle WxH v URL
+      best = mp4s.max_by do |v|
+        m = v['src'].to_s.match(%r{/(\d+)x(\d+)/})
+        m ? m[1].to_i * m[2].to_i : 0
+      end
+      best&.dig('src')
+    end
+
     # Extract video thumbnail URL from response
     #
     # @param data [Hash] Parsed JSON
@@ -215,6 +233,7 @@ module Services
         text: nil,
         photos: [],
         video_thumbnail: nil,
+        video_url: nil,
         display_name: nil,
         username: nil,
         created_at: nil,

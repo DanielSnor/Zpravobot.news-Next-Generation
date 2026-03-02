@@ -228,19 +228,31 @@ result1 = quiet { proc1.process(post_id: '111', username: 'testuser', source_con
 test "nitter enabled: returns :published", :published, result1
 test "nitter enabled: PostProcessor dostane Nitter post", nitter_post, pp1.last_post
 
-# nitter_processing: disabled → fallback_post použit přímo
+# nitter_processing: disabled → Syndication nil → fallback_post použit (Tier 3)
 pp2 = TrackingPostProcessor.new
 proc2 = make_processor(post_processor: pp2)
 fallback = make_post(id: '222', text: 'IFTTT fallback')
 cfg_no_nitter = source_config(nitter_processing: { enabled: false })
+stub_fetches(proc2, nitter_result: nil, syndication_result: nil)
 
 result2 = quiet { proc2.process(post_id: '222', username: 'testuser', source_config: cfg_no_nitter, fallback_post: fallback) }
-test "nitter disabled: returns :published (fallback_post)", :published, result2
-test "nitter disabled: PostProcessor dostane fallback_post", fallback, pp2.last_post
+test "nitter disabled, Syndication nil: returns :published (fallback_post)", :published, result2
+test "nitter disabled, Syndication nil: PostProcessor dostane fallback_post", fallback, pp2.last_post
 
-# nitter_processing: disabled, bez fallback_post → :skipped
+# nitter_processing: disabled, Syndication OK → Syndication post použit (Tier 1.5)
+syndication_no_nitter = make_post(id: '222b', text: 'Syndication Tier 1.5')
+pp2b = TrackingPostProcessor.new
+proc2b = make_processor(post_processor: pp2b)
+stub_fetches(proc2b, nitter_result: nil, syndication_result: syndication_no_nitter)
+
+result2b = quiet { proc2b.process(post_id: '222b', username: 'testuser', source_config: cfg_no_nitter, fallback_post: fallback) }
+test "nitter disabled, Syndication OK: returns :published (Tier 1.5)", :published, result2b
+test "nitter disabled, Syndication OK: PostProcessor dostane Syndication post", syndication_no_nitter, pp2b.last_post
+
+# nitter_processing: disabled, bez fallback_post, Syndication nil → :skipped
 pp3 = TrackingPostProcessor.new
 proc3 = make_processor(post_processor: pp3)
+stub_fetches(proc3, nitter_result: nil, syndication_result: nil)
 result3 = quiet { proc3.process(post_id: '333', username: 'testuser', source_config: cfg_no_nitter) }
 test "nitter disabled, no fallback_post: returns :skipped", :skipped, result3
 test "nitter disabled, no fallback_post: PostProcessor nevolán", 0, pp3.call_count

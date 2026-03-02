@@ -65,7 +65,7 @@ module Syncers
 
     def initialize(mastodon_instance:, mastodon_token:,
                    language: 'cs', retention_days: 90, cache_dir: nil, use_cache: true,
-                   mentions_config: nil)
+                   mentions_config: nil, source_platforms: nil)
       @mastodon_instance = mastodon_instance.chomp('/')
       @mastodon_token = mastodon_token
       @language = FIELD_LABELS.key?(language) ? language : 'cs'
@@ -73,6 +73,7 @@ module Syncers
       @cache_dir = cache_dir || DEFAULT_CACHE_DIR
       @use_cache = use_cache
       @mentions_config = mentions_config || default_mentions_config
+      @source_platforms = source_platforms
 
       ensure_cache_dir if use_cache
     end
@@ -172,7 +173,7 @@ module Syncers
         log '  Fetching current Mastodon profile fields...'
         current_fields = fetch_mastodon_fields
 
-        new_fields = build_fields(profile[:handle], current_fields, profile)
+        new_fields = build_fields(profile[:handle], current_fields, profile.merge(source_platforms: @source_platforms))
 
         new_fields.each_with_index do |field, idx|
           params[:"fields_attributes[#{idx}][name]"] = field[:name]
