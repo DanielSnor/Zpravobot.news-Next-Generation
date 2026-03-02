@@ -39,6 +39,7 @@ require_relative '../lib/config/config_loader'
 require_relative '../lib/syncers/bluesky_profile_syncer'
 require_relative '../lib/syncers/twitter_profile_syncer'
 require_relative '../lib/syncers/facebook_profile_syncer'
+require_relative '../lib/syncers/instagram_profile_syncer'
 
 # ============================================================
 # Lockfile - prevents overlapping runs
@@ -69,7 +70,7 @@ end
 # Main runner class
 # ============================================================
 class ProfileSyncRunner
-  VALID_PLATFORMS = %w[twitter bluesky facebook rss].freeze
+  VALID_PLATFORMS = %w[twitter bluesky facebook instagram rss].freeze
   VALID_GROUPS = [0, 1, 2].freeze
   NUM_GROUPS = 3
 
@@ -199,6 +200,8 @@ class ProfileSyncRunner
       sync_twitter(source)
     when 'facebook'
       sync_facebook(source)
+    when 'instagram'
+      sync_instagram(source)
     when 'rss'
       sync_rss(source)
     else
@@ -280,6 +283,50 @@ class ProfileSyncRunner
       mastodon_token: source.mastodon_token,
       browserless_token: browserless_token,
       facebook_cookies: facebook_cookies,
+      language: sync_config.fetch(:language, 'cs'),
+      retention_days: sync_config.fetch(:retention_days, 90),
+      mentions_config: mentions_config
+    )
+
+    run_syncer(source, syncer, sync_config)
+  end
+
+  def sync_instagram(source)
+    sync_config = source.data.dig(:profile_sync) || {}
+
+    # Pro RSS _instagram zdroje: handle z profile_sync.social_profile.handle
+    # Pro nativní instagram platform (budoucí): přímo source.source_handle
+    instagram_handle = if source.platform == 'rss'
+                         social_profile = sync_config[:social_profile]
+                         unless social_profile && social_profile[:handle]
+                           Logging.warn("[#{source.id}] Instagram profile sync: no social_profile.handle configured, skipping")
+                           @stats[:skipped] += 1
+                           return
+                         end
+                         social_profile[:handle].to_s
+                       else
+                         source.source_handle
+                       end
+
+    platform_config = @config_loader.load_platform_config('instagram')
+    mentions_config = platform_config[:mentions] || { type: 'domain_suffix', value: 'instagram.com' }
+
+    raw_token = platform_config.dig(:source, :browserless_token)
+    browserless_token = resolve_env_value(raw_token) || ENV['BROWSERLESS_TOKEN']
+    raise 'BROWSERLESS_TOKEN not configured' if browserless_token.nil? || browserless_token.empty?
+
+    instagram_cookies = build_instagram_cookies(platform_config)
+    raise 'Instagram cookies not configured' if instagram_cookies.empty?
+
+    global = @config_loader.load_global_config
+
+    syncer = Syncers::InstagramProfileSyncer.new(
+      instagram_handle: instagram_handle,
+      browserless_api: global.dig(:infrastructure, :browserless_api),
+      mastodon_instance: source.mastodon_instance,
+      mastodon_token: source.mastodon_token,
+      browserless_token: browserless_token,
+      instagram_cookies: instagram_cookies,
       language: sync_config.fetch(:language, 'cs'),
       retention_days: sync_config.fetch(:retention_days, 90),
       mentions_config: mentions_config
@@ -402,6 +449,18 @@ class ProfileSyncRunner
         name: cookie[:name],
         value: resolve_env_value(cookie[:value]),
         domain: cookie[:domain] || '.facebook.com'
+      }
+    end.reject { |c| c[:value].nil? || c[:value].empty? || c[:value].start_with?('${') }
+  end
+
+  def build_instagram_cookies(platform_config)
+    cookies_config = platform_config.dig(:source, :instagram_cookies) || []
+
+    cookies_config.map do |cookie|
+      {
+        name: cookie[:name],
+        value: resolve_env_value(cookie[:value]),
+        domain: cookie[:domain] || '.instagram.com'
       }
     end.reject { |c| c[:value].nil? || c[:value].empty? || c[:value].start_with?('${') }
   end

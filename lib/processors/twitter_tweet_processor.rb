@@ -46,6 +46,9 @@ require_relative '../services/syndication_media_fetcher'
 require_relative '../models/post'
 require_relative '../models/author'
 require_relative '../models/media'
+require_relative '../utils/format_helpers'
+require_relative '../utils/http_client'
+require_relative '../utils/punycode'
 require_relative 'twitter_thread_processor'
 require_relative 'post_processor'
 
@@ -92,9 +95,14 @@ module Processors
       post, in_reply_to_id = if nitter_enabled
         fetch_and_resolve(post_id, username, source_config, fallback_post)
       else
-        # Nitter disabled → použij fallback_post přímo
-        log_info("[#{source_id}] Nitter disabled → using fallback_post directly")
-        if fallback_post
+        # Nitter disabled → Tier 1.5: Syndication API, fallback na IFTTT data
+        log_info("[#{source_id}] Nitter disabled → trying Syndication (Tier 1.5)")
+        syndication_post = fetch_from_syndication(post_id, username, source_config, fallback_post)
+        if syndication_post
+          in_reply = resolve_thread_parent(source_id, syndication_post)
+          [syndication_post, in_reply]
+        elsif fallback_post
+          log_info("[#{source_id}] Syndication failed → fallback_post (Tier 3)")
           in_reply = resolve_thread_parent(source_id, fallback_post)
           [fallback_post, in_reply]
         else
@@ -140,6 +148,7 @@ module Processors
       if post
         correct_repost_from_fallback(post, fallback_post, source_id)
         correct_quote_from_fallback(post, fallback_post, source_id)
+        enrich_video_from_syndication(post, post_id, source_config) if post.has_video
         in_reply_to_id = resolve_thread_parent(source_id, post)
         return [post, in_reply_to_id]
       end
@@ -192,6 +201,7 @@ module Processors
       if post
         correct_repost_from_fallback(post, fallback_post, source_id)
         correct_quote_from_fallback(post, fallback_post, source_id)
+        enrich_video_from_syndication(post, post_id, source_config) if post.has_video
         return [post, in_reply_to_id]
       end
 
@@ -254,7 +264,7 @@ module Processors
       result    = Services::SyndicationMediaFetcher.fetch(post_id)
       return nil unless result[:success]
 
-      log_info("[#{source_id}] Syndication OK: #{result[:photos].count} photos, video: #{result[:video_thumbnail] ? 'yes' : 'no'}")
+      log_info("[#{source_id}] Syndication OK: #{result[:photos].count} photos, video_thumbnail: #{result[:video_thumbnail] ? 'yes' : 'no'}, video_url: #{result[:video_url] ? 'yes' : 'no'}")
       build_syndication_post(post_id, username, source_config, result, fallback_post)
     rescue StandardError => e
       log_error("[#{source_id}] Syndication error: #{e.message}")
@@ -273,13 +283,24 @@ module Processors
       url_domain     = (source_config.dig(:url, :replace_to) || 'x.com').sub(%r{^https?://}, '').chomp('/')
       tweet_url      = "https://#{url_domain}/#{syndi_username}/status/#{post_id}"
 
+      # Text cleanup: expand t.co links, strip media URLs, normalize whitespace
+      raw_text = syndication[:text] || ''
+      expanded = expand_tco_links(raw_text)
+      expanded = expanded.gsub(%r{https?://[^\s]+/(?:photo|video)/\d+}, '').strip
+      expanded = expanded.gsub(%r{https?://nitter\.[^\s]+/status/\d+}, '').strip
+      final_text = FormatHelpers.clean_text(expanded)
+
       # Media
       media = []
       syndication[:photos].each do |photo_url|
         media << Media.new(type: 'image', url: photo_url, alt_text: '')
       end
-      if syndication[:video_thumbnail] && media.empty?
-        media << Media.new(type: 'image', url: syndication[:video_thumbnail], alt_text: 'Video thumbnail')
+      if syndication[:video_url]
+        alt = (syndication[:text] || fallback_post&.text).to_s.strip
+        media << Media.new(type: 'video', url: syndication[:video_url], alt_text: alt)
+      elsif syndication[:video_thumbnail] && media.empty?
+        alt = (syndication[:text] || fallback_post&.text).to_s.strip
+        media << Media.new(type: 'image', url: syndication[:video_thumbnail], alt_text: alt)
       end
 
       # Typové příznaky z fallback_post (IFTTT/RSS jsou autoritativnější)
@@ -288,7 +309,7 @@ module Processors
       is_quote    = fallback_post&.is_quote     || false
       reposted_by = fallback_post&.reposted_by
       quoted_post = fallback_post&.quoted_post
-      has_video   = !syndication[:video_thumbnail].nil? || (fallback_post&.has_video || false)
+      has_video   = !syndication[:video_url].nil? || !syndication[:video_thumbnail].nil? || (fallback_post&.has_video || false)
 
       # Pro reposts: originální autor z fallback_post; jinak autor ze Syndication
       author = if is_repost && fallback_post&.author
@@ -313,7 +334,7 @@ module Processors
         id: post_id,
         platform: 'twitter',
         url: tweet_url,
-        text: syndication[:text] || '',
+        text: final_text,
         author: author,
         published_at: published_at,
         media: media,
@@ -397,6 +418,53 @@ module Processors
         instance_url: instance_url,
         access_token: token
       )
+    end
+
+    # Tier 2: obohať video post o skutečné mp4 z Syndication API.
+    #
+    # Pokud Nitter HTML parser extrahoval <source type="video/mp4"> (type: 'video'),
+    # mp4 už máme → nic nepřepisuji.
+    # Pokud detekoval video ale má jen thumbnail (type: 'video_thumbnail') nebo nic,
+    # stáhneme mp4 z Syndication API.
+    #
+    # @param post [Post]  Post po Nitter fetchi
+    # @param post_id [String]  Tweet ID
+    # @param source_config [Hash]  Source config
+    def enrich_video_from_syndication(post, post_id, source_config)
+      source_id = source_config[:id]
+      # Nitter už má skutečné mp4 ze <source> tagu → nepřepisovat
+      return if post.media.any? { |m| m.type == 'video' }
+
+      result = Services::SyndicationMediaFetcher.fetch(post_id)
+      return unless result[:success] && result[:video_url]
+
+      alt = post.text.to_s.strip
+      log_info("[#{source_id}] Tier 2: Syndication mp4 obtained, replacing video_thumbnail")
+      post.media = [Media.new(type: 'video', url: result[:video_url], alt_text: alt)]
+    rescue StandardError => e
+      log_warn("[#{source_id}] Syndication video enrichment failed: #{e.message}")
+    end
+
+    # Expanduj všechny t.co linky v textu na jejich skutečné cílové URL
+    def expand_tco_links(text)
+      return text unless text
+
+      text.gsub(%r{https?://t\.co/\S+}) do |tco_url|
+        expand_tco(tco_url) || tco_url
+      end
+    end
+
+    # Expanduj jedno t.co na jeho cílové URL (HTTP HEAD follow-redirect)
+    def expand_tco(tco_url)
+      return nil unless tco_url&.match?(%r{https?://t\.co/})
+
+      response = HttpClient.head(tco_url, open_timeout: 3, read_timeout: 3)
+      case response
+      when Net::HTTPRedirection
+        PunycodeDecoder.decode_url(response['location'])
+      end
+    rescue StandardError
+      nil
     end
 
     # Oprav is_repost metadata z fallback_post pokud Nitter HTML toto nezachytil.

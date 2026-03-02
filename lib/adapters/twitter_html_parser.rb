@@ -48,10 +48,14 @@ module Adapters
       title = title_match ? title_match[1] : ''
 
       is_repost = detect_repost(title)
-      is_quote = detect_quote_from_html(html)
       reply_info = detect_reply_with_thread(title)
 
-      quoted_post = is_quote ? extract_quoted_post_from_html(html) : nil
+      # is_quote je pravda pouze pokud se podaří extrahovat validní quoted post
+      # (quote-link anchor existuje A href matchuje /username/status/ID pattern).
+      # Chrání před false positives: Nitter používá class="quote-link" i pro
+      # link card anchory (article URL), kde path_match /status/\d+/ selže → nil.
+      quoted_post = extract_quoted_post_from_html(tweet_html)
+      is_quote = !quoted_post.nil?
 
       url = "https://twitter.com/#{target_user}/status/#{post_id}"
 

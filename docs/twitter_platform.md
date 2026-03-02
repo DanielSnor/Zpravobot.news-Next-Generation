@@ -2,7 +2,7 @@
 
 > **Verze exportu:** 2026-02-04  
 > **Status:** Produkční  
-> **Poslední aktualizace:** 2026-02-13
+> **Poslední aktualizace:** 2026-03-02
 
 ---
 
@@ -83,7 +83,7 @@ Twitter API
 |--------|----------|-------|
 | `twitter_nitter_adapter.rb` | `lib/adapters/` | Tier 1/1.5/3 logika, IFTTT payload parsing + fallback_post |
 | `twitter_tweet_processor.rb` | `lib/processors/` | Unifikovaná Twitter pipeline — Nitter fetch, Syndication fallback, threading, PostProcessor |
-| `syndication_media_fetcher.rb` | `lib/services/` | Twitter Syndication API klient (Tier 3.5) |
+| `syndication_media_fetcher.rb` | `lib/services/` | Twitter Syndication API klient (Tier 1.5, 3.5) — vrací `photos`, `video_url` (mp4), `video_thumbnail`, `text` |
 | `twitter_adapter.rb` | `lib/adapters/` | Orchestrace Nitter fetch (210 řádků) |
 | `twitter_rss_parser.rb` | `lib/adapters/` | RSS parsing modul (314 řádků) |
 | `twitter_html_parser.rb` | `lib/adapters/` | HTML parsing modul (307 řádků) |
@@ -342,9 +342,9 @@ Skript automaticky restartuje server pokud není dostupný.
 | Tier | Zdroj dat | Média | Plný text | HTTP req | Kdy se použije |
 |------|-----------|-------|-----------|----------|----------------|
 | **1** | IFTTT | ❌ | ✅ (krátký) | 0 | `nitter_processing: true` + krátký tweet bez médií |
-| **1.5** | Syndication | ✅ | ⚠️ možná zkrácený | 1 | `nitter_processing: false` |
-| **2** | Nitter | ✅ | ✅ | 1-3 | `nitter_processing: true` + média/dlouhý/RT/thread |
-| **3.5** | Syndication | ✅ | ⚠️ možná zkrácený | 1 | Fallback když Nitter selže |
+| **1.5** | Syndication | ✅ mp4/foto | ⚠️ možná zkrácený | 1 | `nitter_processing: false` |
+| **2** | Nitter + Synd. | ✅ mp4/foto | ✅ | 1-4 | `nitter_processing: true` + média/dlouhý/RT/thread |
+| **3.5** | Syndication | ✅ mp4/foto | ⚠️ možná zkrácený | 1 | Fallback když Nitter selže |
 | **3** | IFTTT | ❌ | ⚠️ zkrácený | 0 | Finální fallback (Nitter i Syndication selhaly) |
 
 ### Tier 1: Přímé IFTTT zpracování
@@ -355,20 +355,22 @@ Skript automaticky restartuje server pokud není dostupný.
 - **Nevýhody:** Žádné obrázky
 - **HTTP requesty:** 0
 
-### Tier 1.5: IFTTT + Syndication API
+### Tier 1.5: Syndication API (nitter disabled)
 
-> **Nové v 2026-02-02**
+> **Nové v 2026-02-02, opraveno 2026-03-02**
 
-- **Kdy:** `nitter_processing: false` v source YAML
-- **Data:** IFTTT trigger + média z Twitter Syndication API
-- **Výhody:** 
-  - Média (až 4 fotky, video thumbnail)
-  - Rychlejší než Nitter (JSON, ne HTML parsing)
-  - Žádná vlastní infrastruktura
+- **Kdy:** `nitter_processing: false` v source YAML — pro všechny posty přes `TwitterTweetProcessor`
+- **Data:** Twitter Syndication API — text + media
+- **Media:**
+  - Video tweet → skutečný mp4 (`type: 'video'`, přímý `video.twimg.com` link) ← opraveno 2026-03-02
+  - Foto tweet → JPEG z `pbs.twimg.com` (`type: 'image'`)
+  - Fallback: JPEG thumbnail pokud mp4 není dostupný
+- **Text:** t.co expand (HTTP HEAD) + strip photo/video URL + `FormatHelpers.clean_text`
+- **ALT text pro video:** text tweetu
+- **Výhody:** Skutečné přehratelné mp4 video inline v Mastodon klientu
 - **Nevýhody:** Text může být zkrácený pro Twitter Blue tweety (>280 znaků)
-- **HTTP requesty:** 1 (Syndication API)
-- **Retry:** 3 pokusy s exponential backoff (1s, 2s, 4s)
-- **Fallback:** Tier 1 (IFTTT bez médií)
+- **HTTP requesty:** 1 (Syndication API) + t.co HEAD requesty
+- **Fallback:** fallback_post (IFTTT data, 0 médií) pokud Syndication selže
 
 **Detekce zkráceného textu (Syndication):**
 ```ruby
@@ -390,12 +392,16 @@ end
 - Sportovní výsledky, grafy, infografiky
 - Účty které nepoužívají Twitter Blue
 
-### Tier 2: IFTTT trigger + Nitter fetch
+### Tier 2: Nitter fetch + Syndication video enrichment
 
 - **Kdy:** `nitter_processing: true` + zkrácený text, obrázky, video, vlákno, retweet
 - **Data:** IFTTT trigger + plná data z Nitter HTML
-- **Výhody:** Kompletní data včetně plného textu
-- **HTTP requesty:** 1-3 (Nitter)
+- **Video enrichment** (2026-03-02): pokud `post.has_video` a Nitter neposkytl přímé mp4 (`type: 'video'`), zavolá Syndication API pro skutečné mp4
+  - Skip pokud Nitter již má `type: 'video'` (přímý mp4 ze `<source>` tagu)
+  - Nahrazuje `video_thumbnail` → `type: 'video'` s mp4 URL
+  - ALT text = text tweetu
+- **Výhody:** Kompletní data včetně plného textu + skutečné přehratelné mp4
+- **HTTP requesty:** 1-3 (Nitter) + 1 (Syndication, jen pro video tweety)
 - **Retry:** 3 pokusy s exponential backoff (1s, 2s, 4s)
 - **Fallback:** Tier 3.5 (Syndication)
 

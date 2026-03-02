@@ -1,0 +1,83 @@
+# ============================================================
+# Zpravobot NG: Platform Configuration - Instagram
+# ============================================================
+# Výchozí nastavení pro všechny Instagram zdroje.
+# Přepisuje hodnoty z global.yml.
+# Jednotlivé zdroje mohou přepsat jakékoliv nastavení.
+# ============================================================
+
+# ------------------------------------------------------------
+# SOURCE - Konfigurace zdroje dat
+# ------------------------------------------------------------
+source:
+  # Browserless.io API token (sdílený s Facebookem)
+  browserless_token: "${BROWSERLESS_TOKEN}"
+
+  # Instagram cookies pro přihlášení
+  # Cookies se načítají z ENV — získej je z přihlášeného prohlížeče
+  instagram_cookies:
+    - name: "sessionid"
+      value: "${IG_COOKIE_SESSIONID}"
+      domain: ".instagram.com"
+    - name: "csrftoken"
+      value: "${IG_COOKIE_CSRFTOKEN}"
+      domain: ".instagram.com"
+    - name: "ds_user_id"
+      value: "${IG_COOKIE_DS_USER_ID}"
+      domain: ".instagram.com"
+    - name: "mid"
+      value: "${IG_COOKIE_MID}"
+      domain: ".instagram.com"
+
+# ------------------------------------------------------------
+# MENTIONS - Zpracování zmínek
+# ------------------------------------------------------------
+mentions:
+  type: "domain_suffix"
+  value: "instagram.com"
+
+# ------------------------------------------------------------
+# FORMATTING - Formátování výstupu
+# ------------------------------------------------------------
+formatting:
+  platform_emoji: "📸"
+  prefix_repost: "📸🔁"
+  prefix_post_text: "\n"
+  prefix_post_url: "\n"
+
+# ------------------------------------------------------------
+# PROCESSING - Zpracování textu
+# ------------------------------------------------------------
+processing:
+  max_length: 2400
+  trim_strategy: "smart"
+
+# ------------------------------------------------------------
+# SCHEDULING - Plánování stahování
+# ------------------------------------------------------------
+scheduling:
+  priority: normal
+  interval_minutes: 60
+  max_posts_per_run: 5
+
+# ------------------------------------------------------------
+# PROFILE SYNC - Synchronizace profilu
+# ------------------------------------------------------------
+# Instagram profile sync používá Browserless.io API.
+#
+# Syncs:
+# - description/bio
+# - avatar image (profile photo)
+# - website URL (pokud je nastavena na IG profilu)
+#
+# NESYNCS:
+# - banner/header (Instagram banner nemá)
+#
+profile_sync:
+  enabled: true
+  sync_avatar: true
+  sync_banner: false          # Instagram nemá banner/cover
+  sync_bio: true
+  sync_fields: true
+  language: "cs"
+  retention_days: 90

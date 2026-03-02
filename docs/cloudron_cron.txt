@@ -31,23 +31,26 @@
 0 * * * * /app/data/zbnw-ng-test/cron_zbnw.sh --verbose --exclude-platform twitter
 
 # ==================================
-# Profile Sync - prod
+# Profile Sync - prod (1x týdně, rotace po dnech)
 # ==================================
 
-# Bluesky profily - 1x denně v 1:00 (má nativní API)
-0 1 * * * /app/data/zbnw-ng/cron_profile_sync.sh --platform bluesky
+# Pondělí   - Bluesky (nativní API)
+0 2 * * 1    /app/data/zbnw-ng/cron_profile_sync.sh --platform bluesky
 
-# Facebook profily - 1x za 3 dny ve 2:00 (Facebook scraping, šetříme)
-0 2 */3 * * /app/data/zbnw-ng/cron_profile_sync.sh --platform facebook
+# Úterý     - Facebook + Instagram (scraping, šetříme)
+0 2 * * 2    /app/data/zbnw-ng/cron_profile_sync.sh --platform facebook
+0 3 * * 2    /app/data/zbnw-ng/cron_profile_sync.sh --platform instagram
 
-# Twitter profily - 3 skupiny rotující po dnech, ve 3:00 (Nitter scraping, šetříme)
-# Po,Čt = skupina 0, Út,Pá = skupina 1, St,So = skupina 2, Ne = volno
-0 3 * * 1,4  /app/data/zbnw-ng/cron_profile_sync.sh --platform twitter --group 0
-0 3 * * 2,5  /app/data/zbnw-ng/cron_profile_sync.sh --platform twitter --group 1
-0 3 * * 3,6  /app/data/zbnw-ng/cron_profile_sync.sh --platform twitter --group 2
+# St/Čt/Pá  - X/Twitter, 3 skupiny po jedné (Nitter scraping, šetříme)
+0 2 * * 3    /app/data/zbnw-ng/cron_profile_sync.sh --platform twitter --group 0
+0 2 * * 4    /app/data/zbnw-ng/cron_profile_sync.sh --platform twitter --group 1
+0 2 * * 5    /app/data/zbnw-ng/cron_profile_sync.sh --platform twitter --group 2
 
-# RSS profily - 1x týdně v neděli ve 3:00 (deleguje na BS/FB/TW syncery)
-0 3 * * 0    /app/data/zbnw-ng/cron_profile_sync.sh --platform rss
+# Sobota    - RSS (deleguje na BS/FB/TW/IG syncery)
+0 2 * * 6    /app/data/zbnw-ng/cron_profile_sync.sh --platform rss
+
+# Neděle    - YouTube
+0 2 * * 0    /app/data/zbnw-ng/cron_profile_sync.sh --platform youtube
 
 # ==================================
 # Tlambot - Broadcasting - prod
