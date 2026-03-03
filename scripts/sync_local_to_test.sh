@@ -11,9 +11,19 @@
 set -e
 
 LOCAL_DIR="$(cd "$(dirname "$0")/.." && pwd)"
-REMOTE="dan@116.203.134.0"
-REMOTE_PORT="202"
-TEST_DIR="/home/yellowtent/appsdata/b8ee5072-a44f-4209-8681-56b882968922/data/zbnw-ng-test"
+
+# Načti prostředí-specifické proměnné (není v Gitu)
+ENV_FILE="$LOCAL_DIR/env.sh"
+if [ ! -f "$ENV_FILE" ]; then
+    echo "Chybí $ENV_FILE — zkopíruj env.sh.example a doplň hodnoty."
+    exit 1
+fi
+# shellcheck source=/dev/null
+source "$ENV_FILE"
+
+REMOTE="${ZBNW_REMOTE:?ZBNW_REMOTE není nastaveno v env.sh}"
+REMOTE_PORT="${ZBNW_REMOTE_PORT:?ZBNW_REMOTE_PORT není nastaveno v env.sh}"
+TEST_DIR="${ZBNW_TEST_DIR:?ZBNW_TEST_DIR není nastaveno v env.sh}"
 SSH_CTRL="/tmp/zbnw-sync-$$"
 SSH_OPTS="-p $REMOTE_PORT -o ServerAliveInterval=30 -o ServerAliveCountMax=3 -o ControlMaster=auto -o ControlPath=$SSH_CTRL -o ControlPersist=120"
 
