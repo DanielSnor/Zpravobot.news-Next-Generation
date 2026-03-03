@@ -35,7 +35,7 @@ module Processors
       @twitter_adapter = twitter_adapter
       @publisher = publisher
       @nitter_instance = nitter_instance.chomp('/')
-      @url_domain = url_domain || Formatters::TWITTER_URL_DOMAIN
+      @url_domain = (url_domain || Formatters::TWITTER_URL_DOMAIN).to_s.sub(%r{^https?://}, '').chomp('/')
     end
     
     # Process a tweet that might be part of a thread
