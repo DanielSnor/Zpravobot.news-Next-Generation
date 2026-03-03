@@ -7,9 +7,9 @@
 class Media
   VALID_TYPES = %w[image video gif audio link_card video_thumbnail].freeze
 
-  attr_reader :type, :url, :alt_text, :width, :height, :thumbnail_url, :title, :description
+  attr_reader :type, :url, :alt_text, :width, :height, :thumbnail_url, :title, :description, :url_variants
 
-  def initialize(type:, url:, alt_text: nil, width: nil, height: nil, thumbnail_url: nil, title: nil, description: nil)
+  def initialize(type:, url:, alt_text: nil, width: nil, height: nil, thumbnail_url: nil, title: nil, description: nil, url_variants: nil)
     @type = validate_type(type)
     @url = url
     @alt_text = alt_text || ''
@@ -18,7 +18,8 @@ class Media
     @thumbnail_url = thumbnail_url
     @title = title
     @description = description
-end
+    @url_variants = url_variants || []
+  end
 
   # Type checks
   def image?

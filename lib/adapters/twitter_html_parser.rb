@@ -180,6 +180,12 @@ module Adapters
       # Remove quote marker URLs
       text = text.gsub(%r{\s*https?://[^\s]+/status/\d+#m\s*}, ' ')
 
+      # Strip remaining status URLs (self-reference, thread navigation links) with protocol
+      text = text.gsub(%r{\s*https?://[^\s]+/status/\d+[^\s]*}, ' ')
+      # Strip bare nitter domain status URLs (no protocol — Nitter renders link visible text as
+      # "nitter.net/user/status/ID" without https://, so rewrite_urls() in formatter misses them)
+      text = text.gsub(%r{\s*nitter\.[^\s]+/status/\d+[^\s]*}i, ' ')
+
       # Normalize whitespace
       text = text.gsub(/[ \t]+/, ' ')
       text = text.gsub(/\n[ \t]+/, "\n")

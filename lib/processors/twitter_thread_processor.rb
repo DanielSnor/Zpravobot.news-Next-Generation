@@ -52,7 +52,7 @@ module Processors
       
       unless html
         log_warn("[#{source_id}] 🧵 Nitter fetch failed, falling back to standalone")
-        return { in_reply_to_id: nil, html: nil, is_thread: false }
+        return { in_reply_to_id: nil, html: nil, is_thread: false, nitter_failed: true }
       end
       
       # Check if this is a thread

@@ -211,7 +211,8 @@ video_post = make_post(
 result_vid = formatter_tw.format(video_post)
 
 test_includes("Video: contains text", 'Check out this video', result_vid)
-test_includes("Video: contains video prefix", "\u{1f3ac}", result_vid) # 🎬
+# Tier 1.5/2: video je příloha → URL v textu se nepřidává (🎬 URL jen v Tier 3)
+test_not_includes("Video Tier 1.5/2: neobsahuje video URL", "\u{1f3ac}", result_vid) # žádný 🎬 prefix
 
 # =============================================================================
 # 7. Tier 3 (force_read_more)

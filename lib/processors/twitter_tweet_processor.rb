@@ -148,7 +148,10 @@ module Processors
       if post
         correct_repost_from_fallback(post, fallback_post, source_id)
         correct_quote_from_fallback(post, fallback_post, source_id)
-        enrich_video_from_syndication(post, post_id, source_config) if post.has_video
+        is_video = post.has_video ||
+                   post.media.any? { |m| m.type == 'video' || m.type == 'video_thumbnail' } ||
+                   (fallback_post&.has_video == true)
+        enrich_video_from_syndication(post, post_id, source_config) if is_video
         in_reply_to_id = resolve_thread_parent(source_id, post)
         return [post, in_reply_to_id]
       end
@@ -201,7 +204,22 @@ module Processors
       if post
         correct_repost_from_fallback(post, fallback_post, source_id)
         correct_quote_from_fallback(post, fallback_post, source_id)
-        enrich_video_from_syndication(post, post_id, source_config) if post.has_video
+        is_video = post.has_video ||
+                   post.media.any? { |m| m.type == 'video' || m.type == 'video_thumbnail' } ||
+                   (fallback_post&.has_video == true)
+        enrich_video_from_syndication(post, post_id, source_config) if is_video
+
+        # Nitter thread check failed (not just "no chain") → try DB/cache fallback
+        # to avoid breaking an in-progress thread. Skip for reposts — they're standalone.
+        if in_reply_to_id.nil? && thread_result[:nitter_failed] && !post.is_repost
+          fallback_id = thread_cache_lookup(source_id, post) ||
+                        (@state_manager.find_recent_thread_parent(source_id) rescue nil)
+          if fallback_id
+            log_info("[#{source_id}] 🧵 Nitter unavailable, using cache/DB fallback: #{fallback_id}")
+            in_reply_to_id = fallback_id
+          end
+        end
+
         return [post, in_reply_to_id]
       end
 
@@ -287,7 +305,7 @@ module Processors
       raw_text = syndication[:text] || ''
       expanded = expand_tco_links(raw_text)
       expanded = expanded.gsub(%r{https?://[^\s]+/(?:photo|video)/\d+}, '').strip
-      expanded = expanded.gsub(%r{https?://nitter\.[^\s]+/status/\d+}, '').strip
+      expanded = expanded.gsub(%r{https?://[^\s]+/status/\d+[^\s]*}, '').strip
       final_text = FormatHelpers.clean_text(expanded)
 
       # Media
@@ -297,7 +315,7 @@ module Processors
       end
       if syndication[:video_url]
         alt = (syndication[:text] || fallback_post&.text).to_s.strip
-        media << Media.new(type: 'video', url: syndication[:video_url], alt_text: alt)
+        media << Media.new(type: 'video', url: syndication[:video_url], alt_text: alt, url_variants: syndication[:video_url_variants])
       elsif syndication[:video_thumbnail] && media.empty?
         alt = (syndication[:text] || fallback_post&.text).to_s.strip
         media << Media.new(type: 'image', url: syndication[:video_thumbnail], alt_text: alt)
@@ -422,25 +440,30 @@ module Processors
 
     # Tier 2: obohať video post o skutečné mp4 z Syndication API.
     #
-    # Pokud Nitter HTML parser extrahoval <source type="video/mp4"> (type: 'video'),
-    # mp4 už máme → nic nepřepisuji.
-    # Pokud detekoval video ale má jen thumbnail (type: 'video_thumbnail') nebo nic,
-    # stáhneme mp4 z Syndication API.
+    # Nitter proxy URL (/proxy/video.mp4?...) nejsou přímé CDN URL — fix_media_url()
+    # je neřeší, takže post.media může obsahovat type:'video' s broken relative URL.
+    # Přeskočíme Syndication fetch POUZE pokud post.media má typ 'video' s přímou
+    # video.twimg.com URL (= Nitter ji opravdu vrátil jako plnohodnotné mp4).
+    # Ve všech ostatních případech (proxy URL, jen thumbnail, žádné médium) →
+    # stáhneme mp4 z Syndication API a nahradíme media.
     #
     # @param post [Post]  Post po Nitter fetchi
     # @param post_id [String]  Tweet ID
     # @param source_config [Hash]  Source config
     def enrich_video_from_syndication(post, post_id, source_config)
       source_id = source_config[:id]
-      # Nitter už má skutečné mp4 ze <source> tagu → nepřepisovat
-      return if post.media.any? { |m| m.type == 'video' }
+      # Nitter už má přímý CDN mp4 ze <source> tagu (video.twimg.com) → nepřepisovat.
+      # Nitter proxy URL (/proxy/video.mp4?...) jsou broken → ty přepíšeme Syndication mp4.
+      return if post.media.any? { |m| m.type == 'video' && m.url&.match?(%r{^https?://video\.twimg\.com}) }
 
       result = Services::SyndicationMediaFetcher.fetch(post_id)
       return unless result[:success] && result[:video_url]
 
       alt = post.text.to_s.strip
       log_info("[#{source_id}] Tier 2: Syndication mp4 obtained, replacing video_thumbnail")
-      post.media = [Media.new(type: 'video', url: result[:video_url], alt_text: alt)]
+      # post.media je attr_reader (Array) → nelze přiřadit post.media = [...],
+      # ale lze mutovat in-place přes replace.
+      post.media.replace([Media.new(type: 'video', url: result[:video_url], alt_text: alt, url_variants: result[:video_url_variants])])
     rescue StandardError => e
       log_warn("[#{source_id}] Syndication video enrichment failed: #{e.message}")
     end
