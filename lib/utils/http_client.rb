@@ -212,7 +212,7 @@ module HttpClient
       end
 
       return nil unless response.is_a?(Net::HTTPSuccess)
-      return nil if max_size && response.body && response.body.bytesize > max_size
+      return :too_large if max_size && response.body && response.body.bytesize > max_size
 
       return response
     end

@@ -152,7 +152,7 @@ module Processors
       formatted_text = apply_content_replacements(formatted_text, source_config)
 
       # Step 5: Process content (trim, normalize)
-      processed_text = process_content(formatted_text, source_config)
+      processed_text = process_content(formatted_text, source_config, fallback_url: build_trim_fallback_url(post, source_config))
 
       # Step 6: Process URLs
       processed_text = @url_step.call(processed_text, source_config)
@@ -232,7 +232,7 @@ module Processors
       options[:on_format]&.call(formatted_text)
 
       formatted_text = apply_content_replacements(formatted_text, source_config)
-      processed_text = process_content(formatted_text, source_config)
+      processed_text = process_content(formatted_text, source_config, fallback_url: build_trim_fallback_url(post, source_config))
       processed_text = @url_step.call(processed_text, source_config)
       options[:on_final]&.call(processed_text)
 
@@ -248,7 +248,7 @@ module Processors
         # UPDATE the existing record: replace original post_id with the edited post_id.
         # mark_published would INSERT a new row with the same mastodon_id → violates
         # uq_published_mastodon_status. mark_updated correctly changes post_id in-place.
-        @state_manager.mark_updated(mastodon_id, post.id, post_url: post.url)
+        @state_manager.mark_updated(mastodon_id, post.id, new_post_url: post.url)
         @state_manager.log_publish(source_id, post_id: post.id, post_url: post.url, mastodon_status_id: mastodon_id)
 
         # Update edit buffer with new version
@@ -406,7 +406,10 @@ module Processors
     # Step 5: Content Processing (Trim)
     # ============================================
 
-    def process_content(text, source_config)
+    # @param fallback_url [String, nil] URL to append when trimming occurs and no trailing URL is present.
+    #   Used for platforms (Twitter, Bluesky) where the formatter does not add a URL for regular posts,
+    #   and for cases where url_already_in_content? prevented appending the URL at formatting time.
+    def process_content(text, source_config, fallback_url: nil)
       return text unless defined?(Processors::ContentProcessor)
 
       processing = source_config[:processing] || {}
@@ -427,6 +430,17 @@ module Processors
       if text =~ /([\r\n]+[^\n]*?https?:\/\/[^\s]+)\s*\z/
         url_suffix = $1
         text_for_processing = text.sub(/([\r\n]+[^\n]*?https?:\/\/[^\s]+)\s*\z/, '')
+      end
+
+      # If text will be trimmed but has no trailing URL, inject fallback_url as suffix.
+      # This covers two scenarios:
+      #   1. Twitter/Bluesky regular posts: formatter never adds URL (include_post_url_for_regular: false)
+      #   2. RSS/other: url_already_in_content? prevented trailing URL; URL in body gets cut on trim
+      if url_suffix.nil? && fallback_url && !fallback_url.to_s.empty? && text_for_processing.length > max_length
+        read_more_prefix = formatting[:read_more_prefix] || "\n📖➡️ "
+        # "\n" is the hardcoded separator that compose_output adds before url_prefix;
+        # read_more_prefix itself starts with "\n", giving "\n\n📖➡️ url" (empty line before emoji).
+        url_suffix = "\n#{read_more_prefix}#{fallback_url}"
       end
 
       # Account for url_suffix length in the budget so the re-attached URL
@@ -450,6 +464,28 @@ module Processors
       processed
     end
 
+    # Build a URL to use as fallback when trimming occurs and formatter did not add a trailing URL.
+    # Rewrites the URL through platform-specific domain mapping (e.g. twitter.com → xcancel.com).
+    # @param post [Post] Post object
+    # @param source_config [Hash] Source configuration
+    # @return [String, nil] Rewritten post URL or nil
+    def build_trim_fallback_url(post, source_config)
+      return nil unless post.respond_to?(:url) && !post.url.to_s.empty?
+
+      url = post.url.dup
+      formatting = source_config[:formatting] || {}
+      url_domain = formatting[:url_domain]
+      rewrite_domains = Array(formatting[:rewrite_domains])
+
+      if url_domain && rewrite_domains.any?
+        rewrite_domains.each do |domain|
+          url = url.gsub(%r{https?://(?:www\.)?#{Regexp.escape(domain)}/}i, "https://#{url_domain}/")
+        end
+      end
+
+      url
+    end
+
     # ============================================
     # Step 7-8: Publishing
     # ============================================
@@ -461,9 +497,14 @@ module Processors
       # Upload media
       media_ids = upload_media(publisher, post)
     
-      # Video fallback: pokud má post video ale žádná média se nenahrála,
-      # přidej odkaz na originál (pokud ho formatter už nepřidal)
-      if media_ids.empty? && post.respond_to?(:has_video?) && post.has_video?
+      # Video fallback: pokud měl post skutečné mp4 video (type: 'video') ale upload selhal,
+      # přidej odkaz na originál (pokud ho formatter už nepřidal).
+      # Poznámka: video_thumbnail (Nitter proxy URL) záměrně ignorujeme — proxy URL jsou
+      # externě nedostupné a jejich upload tiše selhává; URL fallback by byl matoucí.
+      has_real_video = post.respond_to?(:media) &&
+                       post.media.is_a?(Array) &&
+                       post.media.any? { |m| m.respond_to?(:type) && m.type == 'video' }
+      if media_ids.empty? && has_real_video
         video_url_already_added = post.respond_to?(:raw) && post.raw.is_a?(Hash) && post.raw[:video_url_added]
         unless video_url_already_added || text.include?(post.url)
           video_prefix = source_config.dig(:formatting, :prefix_video) || '🎬'
@@ -513,7 +554,7 @@ module Processors
 
       # Build items for parallel upload (publisher handles MAX_MEDIA_COUNT limit)
       media_items = uploadable.map do |media|
-        { url: media.url, description: media.alt_text }
+        { url: media.url, description: media.alt_text, url_variants: media.url_variants }
       end
 
       publisher.upload_media_parallel(media_items)

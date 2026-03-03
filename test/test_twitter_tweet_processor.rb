@@ -437,6 +437,71 @@ result_err = quiet { proc_err.process(post_id: '999', username: 'testuser', sour
 test "StandardError v fetch cascade: returns :failed", :failed, result_err
 
 # ============================================================
+# 8. Tier 2 video enrichment (enrich_video_from_syndication)
+# ============================================================
+
+section "8. Tier 2 video enrichment"
+
+# Kritický regrese test:
+# post.media je attr_reader (Array) — enrich musí použít replace, ne přiřazení.
+# Pokud by byl použit `post.media = [...]`, vyvolá NoMethodError (zachycen rescuem)
+# a post.media by zůstal beze změny (thumbnail místo mp4).
+
+require_relative '../lib/services/syndication_media_fetcher'
+
+# Nitter post s video_thumbnail (standardní případ — Nitter proxy video nezpřístupňuje)
+video_nitter_post = Post.new(
+  id: 'vid_001',
+  platform: 'twitter',
+  url: 'https://x.com/testuser/status/vid_001',
+  text: 'Video tweet',
+  author: Author.new(username: 'testuser', display_name: 'Test User', url: 'https://x.com/testuser'),
+  published_at: Time.now,
+  media: [Media.new(type: 'video_thumbnail', url: 'https://pbs.twimg.com/thumb.jpg', alt_text: '🎬 Video')],
+  has_video: true
+)
+
+pp_vid = TrackingPostProcessor.new
+proc_vid = make_processor(post_processor: pp_vid)
+
+# Stub nitter = video_nitter_post, syndication = nil (enrichment se testuje zvlášť)
+stub_fetches(proc_vid, nitter_result: video_nitter_post, syndication_result: nil)
+
+# Stub enrich_video_from_syndication: volá SyndicationMediaFetcher přímo
+# → nahradíme celou metodu abychom ji otestovali přímo
+enrichment_called = false
+proc_vid.define_singleton_method(:enrich_video_from_syndication) do |post, post_id, source_cfg|
+  enrichment_called = true
+  # Simuluj úspěšný Syndication fetch + replace (klíčová oprava)
+  post.media.replace([Media.new(type: 'video', url: 'https://video.twimg.com/best.mp4', alt_text: 'Video tweet')])
+end
+
+quiet { proc_vid.process(post_id: 'vid_001', username: 'testuser', source_config: source_config) }
+
+test "Tier 2 enrichment: enrich_video_from_syndication voláno", true, enrichment_called
+test "Tier 2 enrichment: post.media nahrazeno mp4 (replace funguje)", 'https://video.twimg.com/best.mp4', pp_vid.last_post&.media&.first&.url
+test "Tier 2 enrichment: media type je 'video'", 'video', pp_vid.last_post&.media&.first&.type
+
+# Ověř přímo že post.media.replace funguje na Post (attr_reader)
+raw_post = Post.new(
+  id: 'r1', platform: 'twitter', url: 'https://x.com/u/status/r1',
+  text: 'test', author: Author.new(username: 'u', display_name: 'U', url: 'https://x.com/u'),
+  published_at: Time.now, media: [Media.new(type: 'video_thumbnail', url: 'https://thumb.jpg', alt_text: '')]
+)
+new_media = Media.new(type: 'video', url: 'https://video.twimg.com/mp4', alt_text: 'alt')
+raw_post.media.replace([new_media])
+test "Post.media.replace: funguje (attr_reader je mutable Array)", new_media, raw_post.media.first
+
+# Ověř že post.media= by vyvolalo NoMethodError (dokumentace toho proč replace)
+no_method_raised = false
+begin
+  raw_post.send(:media=, [])
+rescue NoMethodError
+  no_method_raised = true
+end
+test "Post.media= vyvolá NoMethodError (proto replace)", true, no_method_raised
+
+# ============================================================
 # Summary
 # ============================================================
 

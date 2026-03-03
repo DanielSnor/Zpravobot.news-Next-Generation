@@ -157,6 +157,7 @@ module Services
         photos: extract_photos(data),
         video_thumbnail: extract_video_thumbnail(data),
         video_url: extract_video_url(data),
+        video_url_variants: extract_video_url_variants(data),
         display_name: data.dig('user', 'name'),
         username: data.dig('user', 'screen_name'),
         created_at: data['created_at'],
@@ -189,21 +190,76 @@ module Services
       photos.uniq
     end
     
-    # Extract best-quality mp4 video URL from response
+    # Extract all mp4 video URLs from response, sorted best-first.
+    #
+    # @param data [Hash] Parsed JSON
+    # @return [Array<String>] mp4 URLs sorted by quality descending (best first)
+    def extract_video_url_variants(data)
+      # Structure 1: top-level video.variants s klíči type/src
+      variants = data.dig('video', 'variants') || []
+      mp4s = variants.select { |v| v['type'] == 'video/mp4' }
+      unless mp4s.empty?
+        return mp4s.sort_by { |v|
+          m = v['src'].to_s.match(%r{/(\d+)x(\d+)/})
+          m ? -(m[1].to_i * m[2].to_i) : 0
+        }.map { |v| v['src'] }.compact
+      end
+
+      # Structure 2: mediaDetails[n].video_info.variants s klíči content_type/url
+      media_details = data['mediaDetails'] || []
+      video_media = media_details.find { |m| ['video', 'animated_gif'].include?(m['type']) }
+      return [] unless video_media
+
+      video_variants = video_media.dig('video_info', 'variants') || []
+      mp4s2 = video_variants.select { |v| v['content_type'] == 'video/mp4' }
+      return [] if mp4s2.empty?
+
+      mp4s2.sort_by { |v|
+        m = v['url'].to_s.match(%r{/(\d+)x(\d+)/})
+        m ? -(m[1].to_i * m[2].to_i) : 0
+      }.map { |v| v['url'] }.compact
+    end
+
+    # Extract best-quality mp4 video URL from response.
+    #
+    # Syndication API vrací video ve dvou různých strukturách:
+    #
+    # Structure 1 (starší tweety / určité typy):
+    #   data['video']['variants'] = [{type: 'video/mp4', src: 'https://video.twimg.com/...'}]
+    #
+    # Structure 2 (novější native video upload, animated GIF):
+    #   data['mediaDetails'][n]['video_info']['variants'] = [{content_type: 'video/mp4', url: '...'}]
+    #   Klíče se liší: content_type/url místo type/src!
     #
     # @param data [Hash] Parsed JSON
     # @return [String, nil] mp4 URL or nil
     def extract_video_url(data)
+      # Structure 1: top-level video.variants s klíči type/src
       variants = data.dig('video', 'variants') || []
       mp4s = variants.select { |v| v['type'] == 'video/mp4' }
-      return nil if mp4s.empty?
+      unless mp4s.empty?
+        best = mp4s.max_by do |v|
+          m = v['src'].to_s.match(%r{/(\d+)x(\d+)/})
+          m ? m[1].to_i * m[2].to_i : 0
+        end
+        return best&.dig('src')
+      end
 
-      # Nejvyšší rozlišení podle WxH v URL
-      best = mp4s.max_by do |v|
-        m = v['src'].to_s.match(%r{/(\d+)x(\d+)/})
+      # Structure 2: mediaDetails[n].video_info.variants s klíči content_type/url
+      # Používáno pro native video a animated_gif
+      media_details = data['mediaDetails'] || []
+      video_media = media_details.find { |m| ['video', 'animated_gif'].include?(m['type']) }
+      return nil unless video_media
+
+      video_variants = video_media.dig('video_info', 'variants') || []
+      mp4s2 = video_variants.select { |v| v['content_type'] == 'video/mp4' }
+      return nil if mp4s2.empty?
+
+      best2 = mp4s2.max_by do |v|
+        m = v['url'].to_s.match(%r{/(\d+)x(\d+)/})
         m ? m[1].to_i * m[2].to_i : 0
       end
-      best&.dig('src')
+      best2&.dig('url')
     end
 
     # Extract video thumbnail URL from response
@@ -211,14 +267,14 @@ module Services
     # @param data [Hash] Parsed JSON
     # @return [String, nil] Thumbnail URL or nil
     def extract_video_thumbnail(data)
-      # Primary: video.poster
+      # Primary: video.poster (Structure 1)
       poster = data.dig('video', 'poster')
       return poster if poster
-      
-      # Fallback: mediaDetails with type video
+
+      # Fallback: mediaDetails with type video (Structure 2)
       media_details = data['mediaDetails'] || []
-      video_media = media_details.find { |m| m['type'] == 'video' }
-      
+      video_media = media_details.find { |m| ['video', 'animated_gif'].include?(m['type']) }
+
       video_media&.dig('media_url_https')
     end
     
@@ -234,6 +290,7 @@ module Services
         photos: [],
         video_thumbnail: nil,
         video_url: nil,
+        video_url_variants: [],
         display_name: nil,
         username: nil,
         created_at: nil,

@@ -340,54 +340,52 @@ module Formatters
     # ===========================================
 
     # Video post bez headeru
-    # Tier 1/2: {text}\n\n🎬 {post_url}
-    # Tier 3: {text}\n\n🎬 + 📖➡️ {post_url}
+    # Tier 1.5/2: {text}  (video je nahráno jako příloha → URL v textu zbytečná)
+    # Tier 3:     {text}\n\n🎬 + 📖➡️ {post_url}  (video nelze nahrát → URL jako odkaz)
+    # Upload fallback (upload selhal): PostProcessor přidá URL pokud media_ids.empty?
     def format_video_post(post, text, text_prefix, config)
       parts = []
       parts << "#{text_prefix}#{text}" unless text.empty?
 
-      video_url = rewrite_urls(post.url, config)
-
       if force_read_more?(post)
-        # Tier 3: truncated video
+        # Tier 3: video není příloha, přidej odkaz jako čtení navíc
+        video_url = rewrite_urls(post.url, config)
         url_prefix = config[:video_read_more_prefix] || "\n🎬 + 📖➡️ "
-      else
-        # Tier 1/2: video s prefixem
-        url_prefix = "\n#{config[:prefix_video]} "
-      end
 
-      # Signal that formatter already added video URL (prevents PostProcessor duplicate)
-      if post.respond_to?(:raw) && post.raw.is_a?(Hash)
-        post.raw[:video_url_added] = true
-      end
+        # Signal: formatter přidal video URL → PostProcessor to nepřidá znovu
+        if post.respond_to?(:raw) && post.raw.is_a?(Hash)
+          post.raw[:video_url_added] = true
+        end
 
-      # Hardcoded \n + url_prefix = prázdný řádek před URL
-      if parts.empty?
-        "#{config[:prefix_video]} #{video_url}"
+        if parts.empty?
+          "#{config[:prefix_video]} #{video_url}"
+        else
+          "#{parts.join}\n#{url_prefix}#{video_url}"
+        end
       else
-        "#{parts.join}\n#{url_prefix}#{video_url}"
+        # Tier 1.5/2: video je nahráno jako příloha → URL v textu nepotřebná.
+        # Pokud upload selže, PostProcessor detekuje media_ids.empty? a URL přidá sám.
+        parts.empty? ? '' : parts.join
       end
     end
 
     # Video post s headerem (repost)
     def format_video_with_header(parts, post, config)
-      video_url = rewrite_urls(post.url, config)
-
       if force_read_more?(post)
-        # Tier 3: truncated video
+        # Tier 3: video není příloha, přidej odkaz jako čtení navíc
+        video_url = rewrite_urls(post.url, config)
         url_prefix = config[:video_read_more_prefix] || "\n🎬 + 📖➡️ "
+
+        # Signal: formatter přidal video URL → PostProcessor to nepřidá znovu
+        if post.respond_to?(:raw) && post.raw.is_a?(Hash)
+          post.raw[:video_url_added] = true
+        end
+
+        "#{parts.join("\n")}\n#{url_prefix}#{video_url}"
       else
-        # Tier 1/2: video s prefixem
-        url_prefix = "\n#{config[:prefix_video]} "
+        # Tier 1.5/2: video je nahráno jako příloha → URL v textu nepotřebná.
+        parts.join("\n")
       end
-
-      # Signal that formatter already added video URL (prevents PostProcessor duplicate)
-      if post.respond_to?(:raw) && post.raw.is_a?(Hash)
-        post.raw[:video_url_added] = true
-      end
-
-      # Hardcoded \n + url_prefix = prázdný řádek před URL
-      "#{parts.join("\n")}\n#{url_prefix}#{video_url}"
     end
 
     # ===========================================

@@ -207,44 +207,61 @@ module Publishers
       end
     end
 
-    # Upload media from URL (downloads then uploads)
-    # @param url [String] URL of image to upload
+    # Upload media from URL (downloads then uploads).
+    # If url_variants is provided and the primary URL is too large, tries smaller variants in order.
+    # @param url [String] URL of image/video to upload
     # @param description [String] Alt text for accessibility
+    # @param url_variants [Array<String>] Fallback URLs to try if primary is too large (best-first)
     # @return [String, nil] Media ID or nil on failure
-    def upload_media_from_url(url, description: nil)
-      log "Downloading media from: #{url}"
+    def upload_media_from_url(url, description: nil, url_variants: [])
+      urls_to_try = ([url] + (url_variants || []).reject { |u| u == url }).compact
 
-      response = HttpClient.download(url, max_size: MAX_MEDIA_SIZE)
-      unless response
-        log "Download failed or too large", level: :error
-        return nil
+      urls_to_try.each_with_index do |try_url, idx|
+        label = idx == 0 ? "" : " (variant #{idx})"
+        try_url = resolve_nitter_proxy_url(try_url)
+
+        ext = File.extname(URI.parse(try_url).path).downcase rescue ''
+        if UNSUPPORTED_MEDIA_EXTENSIONS.include?(ext)
+          log "Skipping unsupported media type (#{ext}): #{try_url}", level: :warn
+          next
+        end
+
+        log "Downloading media from: #{try_url}#{label}"
+
+        response = HttpClient.download(try_url, max_size: MAX_MEDIA_SIZE)
+        if response == :too_large
+          log "Skipping media over #{MAX_MEDIA_SIZE / 1024 / 1024}MB: #{try_url}", level: :warn
+          next
+        end
+        unless response
+          log "Download failed: #{try_url}", level: :error
+          next
+        end
+
+        image_data = response.body
+        if image_data.nil? || image_data.empty?
+          log "Downloaded empty file from: #{try_url}", level: :error
+          next
+        end
+
+        log "Downloaded #{image_data.bytesize} bytes"
+
+        content_type = detect_content_type(try_url, image_data)
+        if content_type == 'application/octet-stream'
+          log "Skipping unrecognized media type for: #{try_url}", level: :warn
+          next
+        end
+
+        filename = File.basename(URI.parse(try_url).path) rescue 'media'
+        filename = 'media' if filename.empty?
+        filename = correct_filename_extension(filename, content_type)
+
+        log "Media type detected: #{content_type} for #{filename} (from #{try_url})"
+
+        return upload_media(image_data, filename: filename, content_type: content_type, description: description)
       end
 
-      image_data = response.body
-
-      if image_data.nil? || image_data.empty?
-        log "Downloaded empty file from: #{url}", level: :error
-        return nil
-      end
-
-      log "Downloaded #{image_data.bytesize} bytes"
-
-      content_type = detect_content_type(url, image_data)
-
-      if content_type == 'application/octet-stream'
-        log "Cannot determine media type for: #{url}", level: :error
-        return nil
-      end
-
-      filename = File.basename(URI.parse(url).path) rescue 'media'
-      filename = 'media' if filename.empty?
-
-      # Fix filename extension to match detected content type
-      filename = correct_filename_extension(filename, content_type)
-
-      log "Media type detected: #{content_type} for #{filename} (from #{url})"
-
-      upload_media(image_data, filename: filename, content_type: content_type, description: description)
+      nil
     end
 
     # Upload media from a local file path
@@ -351,7 +368,7 @@ module Publishers
         Thread.new(item, idx) do |it, i|
           Thread.current[:index] = i
           begin
-            upload_media_from_url(it[:url], description: it[:description])
+            upload_media_from_url(it[:url], description: it[:description], url_variants: it[:url_variants])
           rescue StandardError => e
             log "Media upload failed (#{i + 1}/#{items.size}): #{e.message}", level: :warn
             nil
@@ -372,6 +389,32 @@ module Publishers
     ValidationError = Zpravobot::ValidationError
 
     private
+
+    # Rewrite Nitter image proxy URLs to direct Twitter CDN URLs.
+    #
+    # Nitter's /pic/orig/ proxy appends "?name=orig" unconditionally, even when
+    # the decoded path already contains query params (e.g. ?name=small&format=webp),
+    # resulting in a malformed URL that Twitter CDN rejects with 404.
+    #
+    # Example:
+    #   http://xn.zpravobot.news:8080/pic/orig/media%2FXXX.jpg%3Fname%3Dsmall
+    #   → https://pbs.twimg.com/media/XXX.jpg?name=small
+    #
+    # @param url [String]
+    # @return [String] Direct CDN URL, or original URL if not a Nitter proxy URL
+    def resolve_nitter_proxy_url(url)
+      nitter = ENV['NITTER_INSTANCE'].to_s.chomp('/')
+      return url if nitter.empty? || !url.start_with?(nitter)
+
+      if (m = url.match(%r{/pic/orig/(.+)$}i) || url.match(%r{/pic/(.+)$}i))
+        decoded = URI.decode_www_form_component(m[1])
+        decoded = "https://pbs.twimg.com/#{decoded}" unless decoded.start_with?('http')
+        log "Nitter proxy → CDN: #{decoded}"
+        return decoded
+      end
+
+      url
+    end
 
     def validate_credentials!
       raise Zpravobot::ConfigError, "Instance URL required" if instance_url.nil? || instance_url.empty?
@@ -560,6 +603,9 @@ module Publishers
         nil
       end
     end
+
+    # Extensions that Mastodon doesn't support as attachments — skip silently
+    UNSUPPORTED_MEDIA_EXTENSIONS = %w[.mp3 .wav .ogg .aac .flac .m4a .wma .opus .m3u8 .m3u].freeze
 
     EXTENSION_MIME_MAP = {
       '.jpg'  => 'image/jpeg',

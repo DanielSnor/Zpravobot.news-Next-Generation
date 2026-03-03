@@ -713,7 +713,7 @@ module Adapters
 
       # Remove expanded media URLs from text (they're attached as images)
       expanded_text = expanded_text.gsub(%r{https?://[^\s]+/(?:photo|video)/\d+}, '')
-      expanded_text = expanded_text.gsub(%r{https?://nitter\.[^\s]+/status/\d+}, '')
+      expanded_text = expanded_text.gsub(%r{https?://[^\s]+/status/\d+[^\s]*}, '')
 
       # Detect post type from IFTTT data
       post_type = detect_post_type(ifttt_data[:text], first_link)
