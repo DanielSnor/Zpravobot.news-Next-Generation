@@ -805,6 +805,7 @@ module Adapters
           ifttt_trigger: true,
           photo_count: syndication[:photos].count,
           has_video_thumbnail: !!syndication[:video_thumbnail],
+          video_thumbnail_url: syndication[:video_thumbnail],
           truncated: truncated,
           force_read_more: truncated,
           ellipsis_added: ellipsis_added

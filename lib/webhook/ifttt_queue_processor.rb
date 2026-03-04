@@ -98,6 +98,9 @@ module Webhook
         post_processor: @post_processor
       )
 
+      # URL processing step (for edit path - same as PostProcessor uses)
+      @url_step = Processors::UrlProcessingStep.new(@config_loader)
+
       # Pipeline components
       @payload_parser = WebhookPayloadParser.new
       @edit_handler = WebhookEditHandler.new(@edit_detector, @thread_cache)
@@ -428,6 +431,9 @@ module Webhook
           log "Invalid regex in content_replacements: #{e.message}", level: :warn
         end
       end
+
+      # Apply URL processing (domain fixes, URL cleanup) — same as PostProcessor Step 6
+      text = @url_step.call(text, bot_config)
 
       text
     end

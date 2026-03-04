@@ -190,7 +190,12 @@ module Orchestrator
 	  end
 
 	  state = @state_manager.get_source_state(source.id)
-	  since = extract_since_time(state)
+
+	  # RSS feeds are intentionally fetched without date filtering.
+	  # Aggregators like RSS.app introduce delays, so articles can appear in the feed
+	  # after their pubDate — which would already be "in the past" relative to last_success.
+	  # GUID-based deduplication in PostProcessor (published_posts table) handles re-runs safely.
+	  since = source.platform == 'rss' ? nil : extract_since_time(state)
 
 	  adapter = create_adapter(source)
 	  posts = adapter.fetch_posts(since: since)
