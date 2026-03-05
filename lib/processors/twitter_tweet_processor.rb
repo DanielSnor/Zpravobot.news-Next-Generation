@@ -366,7 +366,8 @@ module Processors
           source: 'syndication_fallback',
           tier: 3.5,
           nitter_failed: true,
-          ifttt_trigger: ifttt_trigger
+          ifttt_trigger: ifttt_trigger,
+          video_thumbnail_url: syndication[:video_thumbnail]
         }
       )
     end

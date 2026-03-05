@@ -19,7 +19,11 @@ if [ ! -f "$ENV_FILE" ]; then
     exit 1
 fi
 # shellcheck source=/dev/null
+# Dočasně vypni set -e — env.sh má mkdir příkazy pro server cesty (/app/...)
+# které na Macu padají (read-only FS). Proměnné se načtou správně i tak.
+set +e
 source "$ENV_FILE"
+set -e
 
 REMOTE="${ZBNW_REMOTE:?ZBNW_REMOTE není nastaveno v env.sh}"
 REMOTE_PORT="${ZBNW_REMOTE_PORT:?ZBNW_REMOTE_PORT není nastaveno v env.sh}"

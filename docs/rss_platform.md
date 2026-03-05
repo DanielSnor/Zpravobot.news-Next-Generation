@@ -1,6 +1,6 @@
 # RSS platforma v ZBNW-NG
 
-> **Poslední aktualizace:** 2026-02-15
+> **Poslední aktualizace:** 2026-03-03
 > **Stav:** Produkční
 
 ---
@@ -958,6 +958,39 @@ INFO: [RssAdapter] Followed to final URL: https://cestina20.cz/feed
 **Příčina:** Feed nemá stabilní GUID/ID.
 
 **Řešení:** ZBNW-NG používá `entry_id` (GUID → link fallback) pro deduplikaci v DB.
+
+### 10. Nové posty se nepublikují — RSS.app zpoždění
+
+**Příznak:** Runner hlásí `Fetched 0 posts` přestože feed obsahuje nové články.
+
+**Příčina:** RSS.app (a podobné aggregátory) mají zpoždění mezi publikací článku a jeho
+zobrazením ve feedu. Článek se objeví v RSS feedu s původním `pubDate`, ale tato doba je
+již "v minulosti" vůči `last_success` timestampu (který se posouvá dopředu při každém
+checku, i s 0 posty).
+
+**Příklad race condition:**
+```
+13:41  Runner check → since = 13:21 → feed vrátí 0 nových → last_success = 13:41
+13:50  Článek publikován na webu (pubDate = 13:50)
+14:01  Runner check → since = 13:41 → pubDate 13:50 > 13:41 ✓ → článek NALEZEN... jenže
+       RSS.app ještě článek ve feedu nemá (zpoždění) → Fetched 0 posts → last_success = 14:01
+14:21  RSS.app konečně vrátí článek s pubDate = 13:50
+       Runner check → since = 14:01 → pubDate 13:50 < 14:01 ✗ → článek PŘESKOČEN navždy
+```
+
+**Řešení (implementováno):** Pro RSS platformu se `since` filtr v orchestrátoru záměrně
+nepoužívá — vždy se stahují všechny položky feedu. Deduplication je zajištěna GUID-based
+kontrolou v `published_posts` tabulce (PostProcessor), která bezpečně přeskočí
+již publikované posty.
+
+```ruby
+# lib/orchestrator.rb
+# RSS feeds jsou záměrně fetched bez date filteringu.
+since = source.platform == 'rss' ? nil : extract_since_time(state)
+```
+
+**Proč to funguje:** RSS feedy typicky obsahují 20–50 položek. GUID kontrola v DB je levná.
+Přidání date filtru by bylo micro-optimalizace, která ale způsobuje ztrátu postů.
 
 ---
 

@@ -443,10 +443,8 @@ module Processors
         url_suffix = "\n#{read_more_prefix}#{fallback_url}"
       end
 
-      # Account for url_suffix length in the budget so the re-attached URL
-      # does not push the final text over max_length.
-      suffix_len = url_suffix ? url_suffix.length : 0
-      effective_max = [max_length - suffix_len, 1].max
+      # max_length applies to the text body only; the URL suffix is appended on top.
+      effective_max = max_length
 
       # Process
       processor = Processors::ContentProcessor.new(
@@ -497,18 +495,34 @@ module Processors
       # Upload media
       media_ids = upload_media(publisher, post)
     
-      # Video fallback: pokud měl post skutečné mp4 video (type: 'video') ale upload selhal,
-      # přidej odkaz na originál (pokud ho formatter už nepřidal).
-      # Poznámka: video_thumbnail (Nitter proxy URL) záměrně ignorujeme — proxy URL jsou
-      # externě nedostupné a jejich upload tiše selhává; URL fallback by byl matoucí.
-      has_real_video = post.respond_to?(:media) &&
-                       post.media.is_a?(Array) &&
-                       post.media.any? { |m| m.respond_to?(:type) && m.type == 'video' }
+      # Video fallback: pokud měl post video (type: 'video' v media NEBO post.has_video) ale upload selhal,
+      # zkus nejdřív nahrát thumbnail ze Syndication API jako náhradní obrázek;
+      # pokud to nejde (nebo thumbnail není k dispozici), přidej odkaz na originál.
+      # Poznámka: Nitter proxy thumbnail URL (video_thumbnail_url chybí v raw) záměrně ignorujeme.
+      has_real_video = (
+        post.respond_to?(:media) &&
+        post.media.is_a?(Array) &&
+        post.media.any? { |m| m.respond_to?(:type) && m.type == 'video' }
+      ) || (post.respond_to?(:has_video) && post.has_video)
       if media_ids.empty? && has_real_video
+        # Zkus thumbnail jako náhradní obrázek (pouze pbs.twimg.com URL ze Syndication API)
+        thumbnail_url = post.respond_to?(:raw) && post.raw.is_a?(Hash) && post.raw[:video_thumbnail_url]
+        if thumbnail_url
+          begin
+            thumbnail_id = publisher.upload_media_from_url(thumbnail_url, description: post.text.to_s.strip)
+            media_ids = [thumbnail_id].compact if thumbnail_id
+            log "Video upload failed, thumbnail uploaded as fallback image"
+          rescue StandardError => e
+            log "Thumbnail fallback upload also failed: #{e.message}", level: :warn
+          end
+        end
+
+        # Přidej odkaz na originál (pokud ho formatter již nepřidal)
         video_url_already_added = post.respond_to?(:raw) && post.raw.is_a?(Hash) && post.raw[:video_url_added]
-        unless video_url_already_added || text.include?(post.url)
+        url = post.respond_to?(:url) ? post.url.to_s : ''
+        unless video_url_already_added || url.empty? || text.include?(url)
           video_prefix = source_config.dig(:formatting, :prefix_video) || '🎬'
-          text = "#{text}\n#{video_prefix} #{post.url}"
+          text = "#{text}\n#{video_prefix} #{url}"
         end
       end
     

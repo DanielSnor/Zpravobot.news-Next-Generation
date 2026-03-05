@@ -319,7 +319,10 @@ module Publishers
         media_id = result['id']
 
         if response.code.to_i == 202
-          wait_for_media_processing(media_id)
+          ready = wait_for_media_processing(media_id)
+          unless ready
+            raise Zpravobot::NetworkError, "Media #{media_id} not ready after polling timeout — aborting publish"
+          end
         end
 
         log "Media uploaded, ID: #{media_id}", level: :success
@@ -516,8 +519,8 @@ module Publishers
         if response.code.to_i == 200
           log "Media #{media_id} ready (after #{attempt + 1} polls)"
           return true
-        elsif response.code.to_i == 206
-          log "Media #{media_id} still processing (attempt #{attempt + 1}/#{max_attempts})"
+        elsif response.code.to_i == 206 || response.code.to_i == 422
+          log "Media #{media_id} still processing (attempt #{attempt + 1}/#{max_attempts}, code: #{response.code})"
           delay = [delay * 1.5, 5].min
         else
           log "Media #{media_id} poll unexpected: #{response.code}", level: :warn
@@ -525,7 +528,7 @@ module Publishers
         end
       end
 
-      log "Media #{media_id} processing timeout", level: :warn
+      log "Media #{media_id} processing timeout after #{max_attempts} attempts", level: :warn
       false
     end
 
