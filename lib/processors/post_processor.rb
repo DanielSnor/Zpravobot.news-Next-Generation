@@ -443,10 +443,8 @@ module Processors
         url_suffix = "\n#{read_more_prefix}#{fallback_url}"
       end
 
-      # Account for url_suffix length in the budget so the re-attached URL
-      # does not push the final text over max_length.
-      suffix_len = url_suffix ? url_suffix.length : 0
-      effective_max = [max_length - suffix_len, 1].max
+      # max_length applies to the text body only; the URL suffix is appended on top.
+      effective_max = max_length
 
       # Process
       processor = Processors::ContentProcessor.new(
