@@ -39,6 +39,8 @@ class SourceGenerator
       lines << "  handle: #{yaml_quote(data[:handle])}  # Facebook page handle pro profile sync" if data[:handle] && data[:rss_source_type] == 'facebook'
     when 'youtube'
       lines << "  channel_id: #{yaml_quote(data[:channel_id])}"
+      lines << "  no_shorts: #{data[:no_shorts] ? true : false}" if data.key?(:no_shorts)
+      lines << "  handle: #{yaml_quote(data[:handle])}" if data[:handle]
     end
     lines << ''
 
@@ -148,6 +150,8 @@ class SourceGenerator
 
       if data[:platform] == 'youtube'
         lines << "  include_thumbnail: #{data[:include_thumbnail].nil? ? true : data[:include_thumbnail]}"
+        lines << "  description_max_lines: #{data[:description_max_lines] || 3}"
+        lines << "  include_views: #{data[:include_views] ? true : false}"
       end
       lines << ''
     end
@@ -165,28 +169,37 @@ class SourceGenerator
     # Plain RSS = rss source, který není facebook/instagram subplatforma
     plain_rss = data[:platform] == 'rss' &&
                 !%w[facebook instagram].include?(data[:rss_source_type].to_s)
+    rss_instagram = data[:platform] == 'rss' && data[:rss_source_type].to_s == 'instagram'
 
     show_profile_sync = data[:platform] == 'twitter' ||
                         (data[:platform] == 'bluesky' && data[:bluesky_source_type] != 'feed') ||
-                        (data[:platform] == 'rss' && data[:rss_source_type] == 'facebook' && data[:handle])
+                        data[:platform] == 'instagram' ||
+                        (data[:platform] == 'rss' && data[:rss_source_type] == 'facebook' && data[:handle]) ||
+                        data[:platform] == 'youtube'
 
     if plain_rss
-      # Social profile se zjistí až po vytvoření účtu skriptem fetch_rss_social_profiles.rb
       lines << '# Synchronizace profilu'
       lines << 'profile_sync:'
-      lines << '  enabled: false  # Doplnit social_profile skriptem fetch_rss_social_profiles.rb'
+      lines << "  enabled: #{data[:profile_sync_enabled] ? 'true' : 'false'}"
+      if data[:social_profile_platform] && data[:social_profile_handle]
+        lines << '  social_profile:'
+        lines << "    platform: #{data[:social_profile_platform]}"
+        lines << "    handle: #{data[:social_profile_handle]}"
+      end
+      lines << ''
+    elsif rss_instagram
+      lines << '# Synchronizace profilu'
+      lines << 'profile_sync:'
+      lines << '  enabled: false'
       lines << ''
     elsif show_profile_sync
       lines << '# Synchronizace profilu'
       lines << 'profile_sync:'
       lines << "  enabled: #{data[:profile_sync_enabled]}"
       if data[:profile_sync_enabled]
-        lines << "  sync_avatar: #{data[:sync_avatar].nil? ? true : data[:sync_avatar]}"
-        lines << "  sync_banner: #{data[:sync_banner].nil? ? true : data[:sync_banner]}"
-        lines << "  sync_bio: #{data[:sync_bio].nil? ? true : data[:sync_bio]}"
-        lines << "  sync_fields: #{data[:sync_fields].nil? ? true : data[:sync_fields]}"
-        lines << "  language: #{data[:language] || 'cs'}"
-        lines << "  retention_days: #{data[:retention_days] || 90}"
+        default_retention = data[:platform] == 'youtube' ? 180 : 90
+        lines << "  language: #{data[:language]}" if data[:language] && data[:language] != 'cs'
+        lines << "  retention_days: #{data[:retention_days]}" if data[:retention_days] && data[:retention_days] != default_retention
       end
       lines << ''
     elsif data[:platform] == 'bluesky' && data[:bluesky_source_type] == 'feed'
