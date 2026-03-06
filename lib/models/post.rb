@@ -54,7 +54,7 @@ class Post
   )
     @platform = platform.to_s.downcase
     @id = id
-    @url = url
+    @url = url&.to_s&.strip.then { |u| u&.empty? ? nil : u }
     @title = title
     @text = text
     @published_at = published_at
