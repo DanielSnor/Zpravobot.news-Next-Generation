@@ -318,7 +318,7 @@ test("DAY_INTERVAL is 30", 30, AlertStateManager::DAY_INTERVAL)
 test("NIGHT_INTERVAL is 60", 60, AlertStateManager::NIGHT_INTERVAL)
 test("DAY_START is 7", 7, AlertStateManager::DAY_START)
 test("DAY_END is 23", 23, AlertStateManager::DAY_END)
-test("RESOLVED_STABILIZATION is 20", 20, AlertStateManager::RESOLVED_STABILIZATION)
+test("RESOLVED_STABILIZATION is 10", 10, AlertStateManager::RESOLVED_STABILIZATION)
 
 # =============================================================================
 # update_state

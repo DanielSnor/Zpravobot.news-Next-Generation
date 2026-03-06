@@ -413,7 +413,7 @@ module Syncers
       web_field = fields.find { |f| f[:name].downcase.start_with?('web') }
       value = web_field&.dig(:value)&.strip
 
-      (value.nil? || value.empty?) ? '""' : value
+      (value.nil? || value.empty?) ? '""' : value.chomp('/')
     end
 
     # Build the value for the SPRAVUJE field, e.g. "@zpravobot@zpravobot.news z X"

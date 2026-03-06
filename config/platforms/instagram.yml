@@ -74,7 +74,7 @@ scheduling:
 # - banner/header (Instagram banner nemá)
 #
 profile_sync:
-  enabled: true
+  enabled: false
   sync_avatar: true
   sync_banner: false          # Instagram nemá banner/cover
   sync_bio: true

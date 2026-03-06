@@ -89,7 +89,7 @@ module Syncers
       source_platforms = extra_data[:source_platforms]
 
       web_value = if instagram_website && !instagram_website.empty?
-                    instagram_website
+                    instagram_website.chomp('/')
                   else
                     extract_web_value(current_fields)
                   end

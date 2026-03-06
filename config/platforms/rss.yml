@@ -84,4 +84,9 @@ scheduling:
 # ------------------------------------------------------------
 profile_sync:
   enabled: false
+  sync_avatar: true
+  sync_banner: true
+  sync_bio: true
+  sync_fields: true
+  language: cs
   retention_days: 90

@@ -73,7 +73,7 @@ scheduling:
 # - website URL (pokud je nastavena na FB stránce)
 #
 profile_sync:
-  enabled: true
+  enabled: false
   sync_avatar: true
   sync_banner: true                 # Cover photo
   sync_bio: true
