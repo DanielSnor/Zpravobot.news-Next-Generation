@@ -94,7 +94,7 @@ module Syncers
       source_platforms = extra_data[:source_platforms]
 
       web_value = if facebook_website && !facebook_website.empty?
-                    facebook_website
+                    facebook_website.chomp('/')
                   else
                     extract_web_value(current_fields)
                   end

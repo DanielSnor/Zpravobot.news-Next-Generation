@@ -328,19 +328,13 @@ class ProfileSyncRunner
   def sync_instagram(source)
     sync_config = source.data.dig(:profile_sync) || {}
 
-    # Pro RSS _instagram zdroje: handle z profile_sync.social_profile.handle
-    # Pro nativní instagram platform (budoucí): přímo source.source_handle
-    instagram_handle = if source.platform == 'rss'
-                         social_profile = sync_config[:social_profile]
-                         unless social_profile && social_profile[:handle]
-                           Logging.warn("[#{source.id}] Instagram profile sync: no social_profile.handle configured, skipping")
-                           @stats[:skipped] += 1
-                           return
-                         end
-                         social_profile[:handle].to_s
-                       else
-                         source.source_handle
-                       end
+    # Nativní Instagram zdroje: handle z source.handle
+    instagram_handle = source.source_handle
+    unless instagram_handle
+      Logging.warn("[#{source.id}] Instagram profile sync: no source.handle configured, skipping")
+      @stats[:skipped] += 1
+      return
+    end
 
     platform_config = @config_loader.load_platform_config('instagram')
     mentions_config = platform_config[:mentions] || { type: 'domain_suffix', value: 'instagram.com' }
@@ -417,6 +411,10 @@ class ProfileSyncRunner
       sync_bluesky_for_rss(source, handle, sync_config)
     when 'facebook'
       sync_facebook_for_rss(source, handle, sync_config)
+    when 'instagram'
+      sync_instagram_for_rss(source, handle, sync_config)
+    when 'youtube'
+      sync_youtube_for_rss(source, handle, sync_config)
     else
       Logging.warn("[#{source.id}] RSS profile sync: unsupported platform '#{platform}', skipping")
       @stats[:skipped] += 1
@@ -483,6 +481,52 @@ class ProfileSyncRunner
       facebook_cookies: facebook_cookies,
       language: sync_config.fetch(:language, 'cs'),
       retention_days: sync_config.fetch(:retention_days, 90),
+      mentions_config: mentions_config,
+      source_platforms: @account_platforms[source.mastodon_account]
+    )
+
+    run_syncer(source, syncer, sync_config)
+  end
+
+  def sync_instagram_for_rss(source, instagram_handle, sync_config)
+    platform_config = @config_loader.load_platform_config('instagram')
+    mentions_config = platform_config[:mentions] || { type: 'domain_suffix', value: 'instagram.com' }
+
+    raw_token = platform_config.dig(:source, :browserless_token)
+    browserless_token = resolve_env_value(raw_token) || ENV['BROWSERLESS_TOKEN']
+    raise 'BROWSERLESS_TOKEN not configured' if browserless_token.nil? || browserless_token.empty?
+
+    instagram_cookies = build_instagram_cookies(platform_config)
+    raise 'Instagram cookies not configured' if instagram_cookies.empty?
+
+    global = @config_loader.load_global_config
+
+    syncer = Syncers::InstagramProfileSyncer.new(
+      instagram_handle: instagram_handle,
+      browserless_api: global.dig(:infrastructure, :browserless_api),
+      mastodon_instance: source.mastodon_instance,
+      mastodon_token: source.mastodon_token,
+      browserless_token: browserless_token,
+      instagram_cookies: instagram_cookies,
+      language: sync_config.fetch(:language, 'cs'),
+      retention_days: sync_config.fetch(:retention_days, 90),
+      mentions_config: mentions_config,
+      source_platforms: @account_platforms[source.mastodon_account]
+    )
+
+    run_syncer(source, syncer, sync_config)
+  end
+
+  def sync_youtube_for_rss(source, youtube_handle, sync_config)
+    platform_config = @config_loader.load_platform_config('youtube')
+    mentions_config = platform_config[:mentions] || { type: 'none', value: '' }
+
+    syncer = Syncers::YoutubeProfileSyncer.new(
+      youtube_handle: youtube_handle,
+      mastodon_instance: source.mastodon_instance,
+      mastodon_token: source.mastodon_token,
+      language: sync_config.fetch(:language, 'cs'),
+      retention_days: sync_config.fetch(:retention_days, 180),
       mentions_config: mentions_config,
       source_platforms: @account_platforms[source.mastodon_account]
     )

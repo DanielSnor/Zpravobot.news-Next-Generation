@@ -55,13 +55,14 @@ end
 
 # Minimal SourceConfig-like double for RSS source
 class FakeRssSource
-  attr_reader :id, :platform, :data, :mastodon_instance, :mastodon_token, :nitter_instance
+  attr_reader :id, :platform, :data, :mastodon_instance, :mastodon_token, :mastodon_account, :nitter_instance
 
   def initialize(overrides = {})
     @id                = overrides.fetch(:id, 'test_rss')
     @platform          = 'rss'
     @mastodon_instance = overrides.fetch(:mastodon_instance, 'https://zpravobot.news')
     @mastodon_token    = overrides.fetch(:mastodon_token, 'fake_token')
+    @mastodon_account  = overrides.fetch(:mastodon_account, 'test_account')
     @nitter_instance   = overrides.fetch(:nitter_instance, nil)
     @data              = overrides.fetch(:data, {})
   end
@@ -95,13 +96,15 @@ end
 # Testable subclass — overrides syncer-building methods to inject FakeSyncer
 class TestableSyncRunner < ProfileSyncRunner
   attr_reader :last_twitter_handle, :last_bluesky_handle, :last_facebook_handle,
+              :last_instagram_handle, :last_youtube_handle,
               :last_syncer, :delegated_to
 
   def initialize(options = {})
-    @options      = options
+    @options       = options
     @config_loader = Config::ConfigLoader.new
-    @stats        = { synced: 0, skipped: 0, errors: 0 }
-    @delegated_to = nil
+    @stats         = { synced: 0, skipped: 0, errors: 0 }
+    @account_platforms = Hash.new([])
+    @delegated_to  = nil
   end
 
   def sync_twitter_for_rss(source, handle, sync_config)
@@ -122,6 +125,20 @@ class TestableSyncRunner < ProfileSyncRunner
     @delegated_to         = :facebook
     @last_facebook_handle = handle
     @last_syncer          = FakeSyncer.new(handle: handle)
+    run_syncer(source, @last_syncer, sync_config)
+  end
+
+  def sync_instagram_for_rss(source, handle, sync_config)
+    @delegated_to          = :instagram
+    @last_instagram_handle = handle
+    @last_syncer           = FakeSyncer.new(handle: handle)
+    run_syncer(source, @last_syncer, sync_config)
+  end
+
+  def sync_youtube_for_rss(source, handle, sync_config)
+    @delegated_to        = :youtube
+    @last_youtube_handle = handle
+    @last_syncer         = FakeSyncer.new(handle: handle)
     run_syncer(source, @last_syncer, sync_config)
   end
 end
@@ -191,10 +208,28 @@ runner.send(:sync_rss, src)
 test 'no social_profile → skipped', 1, runner.instance_variable_get(:@stats)[:skipped]
 test 'no social_profile → delegated_to nil', nil, runner.delegated_to
 
+# Instagram
+runner = TestableSyncRunner.new
+src = FakeRssSource.new(data: {
+  profile_sync: { enabled: true, social_profile: { platform: 'instagram', handle: 'ikoktejl' } }
+})
+runner.send(:sync_rss, src)
+test 'instagram social_profile → delegates to sync_instagram_for_rss', :instagram, runner.delegated_to
+test 'instagram handle passed correctly', 'ikoktejl', runner.last_instagram_handle
+
+# YouTube
+runner = TestableSyncRunner.new
+src = FakeRssSource.new(data: {
+  profile_sync: { enabled: true, social_profile: { platform: 'youtube', handle: 'computer_zive' } }
+})
+runner.send(:sync_rss, src)
+test 'youtube social_profile → delegates to sync_youtube_for_rss', :youtube, runner.delegated_to
+test 'youtube handle passed correctly', 'computer_zive', runner.last_youtube_handle
+
 # Unknown platform → skip
 runner = TestableSyncRunner.new
 src = FakeRssSource.new(data: {
-  profile_sync: { enabled: true, social_profile: { platform: 'youtube', handle: 'somechannel' } }
+  profile_sync: { enabled: true, social_profile: { platform: 'linkedin', handle: 'someone' } }
 })
 runner.send(:sync_rss, src)
 test 'unknown platform → skipped', 1, runner.instance_variable_get(:@stats)[:skipped]

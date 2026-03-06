@@ -65,8 +65,8 @@
 # Naslouchač každých 5 minut - zkontroluje, jestli někdo nepíše  
 */5 * * * * /app/data/zbnw-ng/cron_command_listener.sh
 
-# Health check každých 10 minut - alert jen při problému
-*/10 * * * * /app/data/zbnw-ng/cron_health.sh --alert --save
+# Health check každých 5 minut - alert jen při problému
+*/5 * * * * /app/data/zbnw-ng/cron_health.sh --alert --save
 
 # Heartbeat jednou denně v 8:00 - pošle se jen když je vše OK  
 0 8 * * * /app/data/zbnw-ng/cron_health.sh --heartbeat

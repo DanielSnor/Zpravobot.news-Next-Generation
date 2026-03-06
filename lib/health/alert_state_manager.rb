@@ -17,7 +17,7 @@ class AlertStateManager
   DAY_END = 23
 
   # Stabilizacni doba pro "vyreseno" (v minutach)
-  RESOLVED_STABILIZATION = 20  # 2 cykly po 10 min
+  RESOLVED_STABILIZATION = 10  # 2 cykly po 5 min
 
   def initialize(state_file)
     @state_file = state_file
