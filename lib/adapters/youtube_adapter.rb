@@ -230,12 +230,14 @@ module Adapters
       video_id = extract_video_id(entry)
       yt_media = media_data[video_id] || {}
       
+      description = yt_media[:description].to_s.strip
+
       Post.new(
         platform: platform,
         id: video_id || entry_id(entry),
         url: entry_link(entry),
         title: entry_title(entry),
-        text: yt_media[:description] || '',
+        text: description.empty? ? (entry_title(entry) || '') : description,
         published_at: entry_time(entry),
         author: entry_author(feed, entry),
         media: build_media(video_id, yt_media),
