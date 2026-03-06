@@ -187,12 +187,14 @@ module Syncers
 
       # Avatar
       if sync_avatar && profile[:avatar_url]
-        log '  Downloading avatar...'
+        log "  Downloading avatar (#{profile[:avatar_url][0, 80]}...)"
         avatar_data = download_image_cached(profile[:avatar_url], 'avatar', force: force)
         if avatar_data
           log_image_result('Avatar', avatar_data)
           files[:avatar] = avatar_data
           changes << 'avatar'
+        else
+          log '  ⚠️ Avatar download failed, skipping avatar sync', level: :warn
         end
       end
 
@@ -221,6 +223,10 @@ module Syncers
       if result[:success]
         log '✅ Profile synced successfully!', level: :success
         log "  Changes: #{changes.join(', ')}"
+        if changes.include?('avatar') && result[:account]
+          masto_avatar = result[:account]['avatar']
+          log "  Mastodon avatar: #{masto_avatar}"
+        end
       else
         log "❌ Sync failed: #{result[:error]}", level: :error
       end
@@ -594,10 +600,16 @@ module Syncers
       { 'Authorization' => "Bearer #{mastodon_token}" }
     end
 
-    def download_image(url)
-      response = HttpClient.get(url)
+    # Options passed to HttpClient.download when fetching images.
+    # Subclasses can override to add custom headers or user_agent.
+    def image_download_options
+      {}
+    end
 
-      return nil unless response.is_a?(Net::HTTPSuccess)
+    def download_image(url)
+      response = HttpClient.download(url, **image_download_options)
+
+      return nil unless response&.is_a?(Net::HTTPSuccess)
 
       content_type = response['content-type']&.split(';')&.first || 'image/jpeg'
 

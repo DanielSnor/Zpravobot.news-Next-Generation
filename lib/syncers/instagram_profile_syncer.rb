@@ -128,6 +128,21 @@ module Syncers
     # Overrides
     # ============================================
 
+    # Instagram CDN (fbcdn.net) vyžaduje session cookies + browser-like headers
+    # aby vrátil skutečnou profilovku místo default placeholderu.
+    # Server-side request může posílat cookies na libovolnou doménu.
+    def image_download_options
+      cookie_header = instagram_cookies.map { |c| "#{c[:name]}=#{c[:value]}" }.join('; ')
+      {
+        headers: {
+          'Referer'  => 'https://www.instagram.com/',
+          'Accept'   => 'image/jpeg,image/png,image/webp,image/*;q=0.8,*/*;q=0.5',
+          'Cookie'   => cookie_header
+        },
+        user_agent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36'
+      }
+    end
+
     # Instagram nepoužívá @ prefix pro handle
     def format_source_handle
       instagram_handle
@@ -200,14 +215,33 @@ module Syncers
         profile[:description] = bio unless bio.strip.empty?
       end
 
-      # Profilová fotka — nejprve HD verze z JSON
-      if html =~ /"profile_pic_url_hd":"([^"]+)"/
-        profile[:avatar_url] = decode_instagram_url($1)
-      elsif html =~ /"profile_pic_url":"([^"]+)"/
-        profile[:avatar_url] = decode_instagram_url($1)
+      # Profilová fotka — strategie extrakce (pořadí od nejspolehlivější):
+      #
+      # 1. t51.82787-15 formát z renderovaného <img> tagu (Browserless+cookies)
+      #    — má oh/oe signing tokeny, veřejně přístupný bez session.
+      #    Doména: scontent.cdninstagram.com (ne fna.fbcdn.net!)
+      #    Toleruje escaped lomítka (https:\/\/) z JSON kontextu.
+      #
+      # 2. JSON profile_pic_url_hd / profile_pic_url — t51.2885-19 formát,
+      #    bez oh/oe → CDN vrátí default siluetu pro anonymní requesty.
+      #
+      # 3. og:image fallback
+
+      # Strategie 1: t51.82787-15 — nový formát s oh/oe tokeny (scontent.cdninstagram.com)
+      if html =~ %r{(https?:(?:\\?/){2}[^"'\s<>]+/v/t51\.82787-15/[^"'\s<>]+)}i
+        profile[:avatar_url] = HtmlCleaner.decode_html_entities($1.gsub('\\/', '/'))
       end
 
-      # Fallback fotky z og:image
+      # Strategie 2: JSON profile_pic_url_hd / profile_pic_url (fallback, vrací placeholder)
+      if profile[:avatar_url].nil?
+        if html =~ /"profile_pic_url_hd":"([^"]+)"/
+          profile[:avatar_url] = decode_instagram_url($1)
+        elsif html =~ /"profile_pic_url":"([^"]+)"/
+          profile[:avatar_url] = decode_instagram_url($1)
+        end
+      end
+
+      # Strategie 3: og:image fallback
       if profile[:avatar_url].nil? && html =~ /<meta property="og:image" content="([^"]+)"/
         profile[:avatar_url] = HtmlCleaner.decode_html_entities($1)
       end
@@ -249,7 +283,7 @@ module Syncers
 
       url
         .gsub('\\/', '/')
-        .gsub('\\u0025', '%')
+        .gsub(/\\u([0-9a-fA-F]{4})/) { [$1.to_i(16)].pack('U') }
         .gsub('&amp;', '&')
     end
   end
