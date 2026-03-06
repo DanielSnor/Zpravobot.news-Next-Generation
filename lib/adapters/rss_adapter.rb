@@ -192,12 +192,23 @@ module Adapters
     end
 
     # Extract entry link/URL
+    # Some feeds (e.g. edna.cz) have two <link> elements — the article URL and
+    # a non-standard image enclosure (<link rel="enclosure" href="..."/>).
+    # The Ruby rss gem overwrites the first link with the second, returning "".
+    # Fall back to GUID in that case, as it typically contains the article URL.
     def entry_link(entry)
-      if entry.respond_to?(:link) && entry.link
+      link = if entry.respond_to?(:link) && entry.link
         entry.link.respond_to?(:href) ? entry.link.href : entry.link
-      else
-        nil
       end
+      return link if link && !link.empty?
+
+      # Fallback: use GUID if it looks like a URL
+      if entry.respond_to?(:guid) && entry.guid
+        guid = entry.guid.respond_to?(:content) ? entry.guid.content : entry.guid.to_s
+        return guid if guid&.start_with?("http")
+      end
+
+      nil
     end
 
     # Extract entry title
