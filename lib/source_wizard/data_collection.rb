@@ -46,7 +46,11 @@ class SourceGenerator
       end
     end
 
-    # 9. Inicializacni cas pro databazi
+    # 9. Jazyk zdroje (použije se v profile_sync i případně dalších místech)
+    data[:language] = ask_choice('Jazyk zdroje', LANGUAGES, default: 'cs')
+    puts
+
+    # 10. Inicializacni cas pro databazi
     data[:init_time] = collect_init_time
     puts
 
@@ -434,7 +438,6 @@ class SourceGenerator
         default_sync = !data[:is_aggregator]
         data[:profile_sync_enabled] = ask_yes_no('Povolit sync profilu?', default: default_sync)
         if data[:profile_sync_enabled]
-          data[:language] = ask_choice('Jazyk pro metadata', LANGUAGES, default: 'cs')
           default_retention = data[:social_profile_platform] == 'youtube' ? '180' : '90'
           data[:retention_days] = ask_choice('Retence (dní)', RETENTION_OPTIONS.map(&:to_s), default: default_retention).to_i
         end
@@ -459,7 +462,6 @@ class SourceGenerator
         end
 
         if data[:profile_sync_enabled]
-          data[:language] = ask_choice('Jazyk pro metadata', LANGUAGES, default: 'cs')
           default_retention = data[:platform] == 'youtube' ? '180' : '90'
           data[:retention_days] = ask_choice('Retence (dní)', RETENTION_OPTIONS.map(&:to_s), default: default_retention).to_i
         end

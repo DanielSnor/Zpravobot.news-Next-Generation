@@ -19,6 +19,7 @@ class SourceGenerator
     if data[:platform] == 'bluesky' && data[:bluesky_source_type] == 'feed'
       lines << "bluesky_source_type: feed"
     end
+    lines << "language: #{data[:language]}" if data[:language] && data[:language] != 'cs'
     lines << ''
 
     # Source
@@ -198,7 +199,6 @@ class SourceGenerator
       lines << "  enabled: #{data[:profile_sync_enabled]}"
       if data[:profile_sync_enabled]
         default_retention = data[:platform] == 'youtube' ? 180 : 90
-        lines << "  language: #{data[:language]}" if data[:language] && data[:language] != 'cs'
         lines << "  retention_days: #{data[:retention_days]}" if data[:retention_days] && data[:retention_days] != default_retention
       end
       lines << ''
