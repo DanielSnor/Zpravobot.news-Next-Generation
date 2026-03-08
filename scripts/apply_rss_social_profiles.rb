@@ -116,8 +116,6 @@ all_entries.each do |entry|
   raw_handle = entry['handle'].to_s
   # Normalizace handle: odstraň @ prefix a @twitter.com / @x.com suffix (Mastodon metadata formát)
   handle    = raw_handle.gsub(/^@/, '').gsub(/@(twitter|x)\.com$/, '')
-  language  = entry['language'] || 'cs'
-  retention = entry['retention_days'] || 90
 
   path = File.join(SOURCES, "#{source_id}.yml")
 
@@ -128,42 +126,27 @@ all_entries.each do |entry|
 
   content = File.read(path)
 
-  # Přeskoč pokud profile_sync sekce již existuje
-  if content.match?(/^profile_sync:/)
+  # Přeskoč pokud social_profile již nakonfigurován
+  if content.match?(/^\s+social_profile:/)
     skipped << source_id
-    puts "  [SKIP] #{source_id} — profile_sync již existuje"
+    puts "  [SKIP] #{source_id} — social_profile již nakonfigurován"
     next
   end
 
-  # Sestavení profile_sync bloku
+  # Sestavení nového profile_sync bloku
   sync_block = if primary
-                 <<~YAML
-
-                   # Synchronizace profilu
-                   profile_sync:
-                     enabled: true
-                     language: #{language}
-                     retention_days: #{retention}
-                     social_profile:
-                       platform: #{platform}
-                       handle: #{handle}
-                 YAML
+                 "# Synchronizace profilu\nprofile_sync:\n  enabled: true\n  social_profile:\n    platform: #{platform}\n    handle: #{handle}\n"
                else
-                 <<~YAML
-
-                   # Synchronizace profilu — sekundární zdroj, sync řídí primární source
-                   profile_sync:
-                     enabled: false  # secondary source
-                 YAML
+                 "# Synchronizace profilu\nprofile_sync:\n  enabled: false\n"
                end
 
-  # Vložení — před "# Zpracování obsahu" nebo "processing:", jinak na konec
-  new_content = if content.match?(/^# Zpracování obsahu|^processing:/)
-                  content.sub(/(\n*)(# Zpracování obsahu\n|processing:)/) do
-                    "#{sync_block}\n#{$2}"
-                  end
+  # Nahraď existující profile_sync blok, nebo vlož před processing:
+  new_content = if content.match?(/^# Synchronizace profilu\nprofile_sync:.*?(?=\n\n|\n#|\z)/m)
+                  content.sub(/^# Synchronizace profilu\nprofile_sync:.*?(?=\n\n|\n#|\z)/m, sync_block.rstrip)
+                elsif content.match?(/^# Zpracování obsahu|^processing:/)
+                  content.sub(/(^# Zpracování obsahu\n|^processing:)/, "\n#{sync_block}\n\\1")
                 else
-                  content.rstrip + "\n" + sync_block
+                  content.rstrip + "\n\n" + sync_block
                 end
 
   label = primary ? "#{platform} / #{handle}" : "disabled (secondary)"

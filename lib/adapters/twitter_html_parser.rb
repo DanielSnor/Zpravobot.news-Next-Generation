@@ -156,8 +156,18 @@ module Adapters
       # Remove quote marker link tags
       text = text.gsub(/<a[^>]+href="[^"]*\/status\/\d+#m"[^>]*>[^<]*<\/a>/i, '')
 
-      # Replace truncated URLs with full href
-      text = text.gsub(/<a[^>]+href="([^"]+)"[^>]*>[^<]*…<\/a>/i, '\1')
+      # Replace truncated URLs with full href, converting Nitter status URLs to x.com
+      # Nitter rewrites tweet content links (e.g. https://x.com/user/status/ID) to its own
+      # domain. We restore the canonical x.com URL so they survive the nitter-strip pass below.
+      text = text.gsub(/<a[^>]+href="([^"]+)"[^>]*>[^<]*…<\/a>/i) do
+        href = $1
+        if (m = href.match(%r{https?://[^/]+/(\w+)/status/(\d+)/?$})) &&
+           href !~ %r{https?://(?:twitter|x)\.com/}
+          "https://x.com/#{m[1]}/status/#{m[2]}"
+        else
+          href
+        end
+      end
 
       # Remove remaining a tags, keep text
       text = text.gsub(/<a[^>]*>([^<]*)<\/a>/i, '\1')
@@ -180,8 +190,9 @@ module Adapters
       # Remove quote marker URLs
       text = text.gsub(%r{\s*https?://[^\s]+/status/\d+#m\s*}, ' ')
 
-      # Strip remaining status URLs (self-reference, thread navigation links) with protocol
-      text = text.gsub(%r{\s*https?://[^\s]+/status/\d+[^\s]*}, ' ')
+      # Strip remaining nitter-domain status URLs (self-reference, thread navigation links)
+      # x.com/twitter.com status URLs are legitimate tweet content links — do NOT strip them
+      text = text.gsub(%r{\s*https?://(?!(?:twitter\.com|x\.com)/)[^\s]+/status/\d+[^\s]*}, ' ')
       # Strip bare nitter domain status URLs (no protocol — Nitter renders link visible text as
       # "nitter.net/user/status/ID" without https://, so rewrite_urls() in formatter misses them)
       text = text.gsub(%r{\s*nitter\.[^\s]+/status/\d+[^\s]*}i, ' ')

@@ -148,8 +148,8 @@ rss_sources.each do |path|
   next unless account_id
 
   ps = data['profile_sync']
-  # Přeskoč záměrně disabled (enabled: false) — ty se nepočítají do skupiny
-  next if ps.is_a?(Hash) && ps['enabled'] == false
+  # Přeskoč pokud social_profile již nakonfigurován (ať enabled nebo ne)
+  next if ps.is_a?(Hash) && ps['social_profile']
 
   account_to_sources[account_id] << source_id
 end
@@ -184,14 +184,9 @@ rss_sources.each do |path|
   source_id = File.basename(path, '.yml')
   data      = load_yaml(path)
 
-  # Přeskoč záměrně disabled
   ps = data['profile_sync']
-  if ps.is_a?(Hash) && ps['enabled'] == false
-    disabled << source_id
-    next
-  end
 
-  # Přeskoč již nakonfigurované
+  # Přeskoč již nakonfigurované (mají social_profile)
   if ps.is_a?(Hash) && ps['social_profile']
     already << source_id
     next
@@ -276,7 +271,6 @@ puts "  Nalezeny (solo):         #{solo.size}"
 puts "  Nalezeny (shared):       #{shared.size} sources v #{shared_accounts.size} skupinách"
 puts "  Bez social pole:         #{no_field.size}"
 puts "  Bez tokenu:              #{no_token.size}"
-puts "  Záměrně disabled:        #{disabled.size}  (#{disabled.join(', ')})"
 puts "  Již nakonfigurovány:     #{already.size}"
 puts "  Chyby:                   #{errors.size}"
 puts

@@ -261,7 +261,7 @@ class ProfileSyncRunner
       bluesky_profile_prefix: global.dig(:infrastructure, :bluesky_profile_prefix),
       mastodon_instance: source.mastodon_instance,
       mastodon_token: source.mastodon_token,
-      language: sync_config.fetch(:language, 'cs'),
+      language: source.data.fetch(:language, 'cs'),
       retention_days: sync_config.fetch(:retention_days, 90),
       mentions_config: mentions_config,
       source_platforms: @account_platforms[source.mastodon_account]
@@ -282,7 +282,7 @@ class ProfileSyncRunner
       nitter_instance: source.nitter_instance,
       mastodon_instance: source.mastodon_instance,
       mastodon_token: source.mastodon_token,
-      language: sync_config.fetch(:language, 'cs'),
+      language: source.data.fetch(:language, 'cs'),
       retention_days: sync_config.fetch(:retention_days, 90),
       mentions_config: mentions_config,
       source_platforms: @account_platforms[source.mastodon_account]
@@ -316,7 +316,7 @@ class ProfileSyncRunner
       mastodon_token: source.mastodon_token,
       browserless_token: browserless_token,
       facebook_cookies: facebook_cookies,
-      language: sync_config.fetch(:language, 'cs'),
+      language: source.data.fetch(:language, 'cs'),
       retention_days: sync_config.fetch(:retention_days, 90),
       mentions_config: mentions_config,
       source_platforms: @account_platforms[source.mastodon_account]
@@ -355,7 +355,7 @@ class ProfileSyncRunner
       mastodon_token: source.mastodon_token,
       browserless_token: browserless_token,
       instagram_cookies: instagram_cookies,
-      language: sync_config.fetch(:language, 'cs'),
+      language: source.data.fetch(:language, 'cs'),
       retention_days: sync_config.fetch(:retention_days, 90),
       mentions_config: mentions_config,
       source_platforms: @account_platforms[source.mastodon_account]
@@ -382,7 +382,7 @@ class ProfileSyncRunner
       youtube_handle: youtube_handle,
       mastodon_instance: source.mastodon_instance,
       mastodon_token: source.mastodon_token,
-      language: sync_config.fetch(:language, 'cs'),
+      language: source.data.fetch(:language, 'cs'),
       retention_days: sync_config.fetch(:retention_days, 180),
       mentions_config: mentions_config,
       source_platforms: @account_platforms[source.mastodon_account]
@@ -430,7 +430,7 @@ class ProfileSyncRunner
       nitter_instance: source.nitter_instance,
       mastodon_instance: source.mastodon_instance,
       mastodon_token: source.mastodon_token,
-      language: sync_config.fetch(:language, 'cs'),
+      language: source.data.fetch(:language, 'cs'),
       retention_days: sync_config.fetch(:retention_days, 90),
       mentions_config: mentions_config,
       source_platforms: @account_platforms[source.mastodon_account]
@@ -450,7 +450,7 @@ class ProfileSyncRunner
       bluesky_profile_prefix: global.dig(:infrastructure, :bluesky_profile_prefix),
       mastodon_instance: source.mastodon_instance,
       mastodon_token: source.mastodon_token,
-      language: sync_config.fetch(:language, 'cs'),
+      language: source.data.fetch(:language, 'cs'),
       retention_days: sync_config.fetch(:retention_days, 90),
       mentions_config: mentions_config,
       source_platforms: @account_platforms[source.mastodon_account]
@@ -479,7 +479,7 @@ class ProfileSyncRunner
       mastodon_token: source.mastodon_token,
       browserless_token: browserless_token,
       facebook_cookies: facebook_cookies,
-      language: sync_config.fetch(:language, 'cs'),
+      language: source.data.fetch(:language, 'cs'),
       retention_days: sync_config.fetch(:retention_days, 90),
       mentions_config: mentions_config,
       source_platforms: @account_platforms[source.mastodon_account]
@@ -508,7 +508,7 @@ class ProfileSyncRunner
       mastodon_token: source.mastodon_token,
       browserless_token: browserless_token,
       instagram_cookies: instagram_cookies,
-      language: sync_config.fetch(:language, 'cs'),
+      language: source.data.fetch(:language, 'cs'),
       retention_days: sync_config.fetch(:retention_days, 90),
       mentions_config: mentions_config,
       source_platforms: @account_platforms[source.mastodon_account]
@@ -525,7 +525,7 @@ class ProfileSyncRunner
       youtube_handle: youtube_handle,
       mastodon_instance: source.mastodon_instance,
       mastodon_token: source.mastodon_token,
-      language: sync_config.fetch(:language, 'cs'),
+      language: source.data.fetch(:language, 'cs'),
       retention_days: sync_config.fetch(:retention_days, 180),
       mentions_config: mentions_config,
       source_platforms: @account_platforms[source.mastodon_account]

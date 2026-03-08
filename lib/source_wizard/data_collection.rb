@@ -46,7 +46,11 @@ class SourceGenerator
       end
     end
 
-    # 9. Inicializacni cas pro databazi
+    # 9. Jazyk zdroje (použije se v profile_sync i případně dalších místech)
+    data[:language] = ask_choice('Jazyk zdroje', LANGUAGES, default: 'cs')
+    puts
+
+    # 10. Inicializacni cas pro databazi
     data[:init_time] = collect_init_time
     puts
 
@@ -55,6 +59,8 @@ class SourceGenerator
       if data[:platform] == 'twitter'
         data[:profile_sync_enabled] = !data[:is_aggregator]
       elsif data[:platform] == 'bluesky' && data[:bluesky_source_type] != 'feed'
+        data[:profile_sync_enabled] = !data[:is_aggregator]
+      elsif data[:platform] == 'instagram'
         data[:profile_sync_enabled] = !data[:is_aggregator]
       elsif data[:platform] == 'rss' && data[:rss_source_type] == 'facebook' && data[:handle]
         data[:profile_sync_enabled] = !data[:is_aggregator]
@@ -386,6 +392,8 @@ class SourceGenerator
 
       if data[:platform] == 'youtube'
         data[:include_thumbnail] = ask_yes_no('Zahrnout thumbnail?', default: true)
+        data[:no_shorts] = ask_yes_no('Vyloučit Shorts (UULF playlist)?', default: false)
+        data[:include_views] = ask_yes_no('Zobrazit počet zhlédnutí?', default: false)
       end
       puts
     end
@@ -401,22 +409,62 @@ class SourceGenerator
     end
 
     # Profile sync
+    plain_rss = data[:platform] == 'rss' &&
+                !%w[facebook instagram].include?(data[:rss_source_type].to_s)
+
     show_profile_sync = data[:platform] == 'twitter' ||
                         (data[:platform] == 'bluesky' && data[:bluesky_source_type] != 'feed') ||
-                        (data[:platform] == 'rss' && data[:rss_source_type] == 'facebook' && data[:handle])
+                        data[:platform] == 'instagram' ||
+                        (data[:platform] == 'rss' && data[:rss_source_type] == 'facebook' && data[:handle]) ||
+                        data[:platform] == 'youtube'
 
-    if show_profile_sync
+    if plain_rss
+      separator('Profile Sync (RSS)')
+      puts '  Pokud má zdroj sociální profil, zadejte platformu a handle.'
+      puts '  Synchronizuje avatar, bio a pole z dané platformy.'
+      puts
+      platform_options = ['Twitter/X', 'Facebook', 'Instagram', 'YouTube', 'Bluesky', '(přeskočit)']
+      platform_choice = ask_choice('Sociální platforma', platform_options, default: '(přeskočit)')
+
+      unless platform_choice == '(přeskočit)'
+        platform_map = {
+          'Twitter/X' => 'twitter', 'Facebook' => 'facebook',
+          'Instagram' => 'instagram', 'YouTube' => 'youtube', 'Bluesky' => 'bluesky'
+        }
+        data[:social_profile_platform] = platform_map[platform_choice]
+        handle = ask('Handle (bez @, bez https://)', required: true)
+        handle = handle.gsub(%r{^https?://[^/]+/}, '').gsub(/^@/, '').chomp('/')
+        data[:social_profile_handle] = handle
+        default_sync = !data[:is_aggregator]
+        data[:profile_sync_enabled] = ask_yes_no('Povolit sync profilu?', default: default_sync)
+        if data[:profile_sync_enabled]
+          default_retention = data[:social_profile_platform] == 'youtube' ? '180' : '90'
+          data[:retention_days] = ask_choice('Retence (dní)', RETENTION_OPTIONS.map(&:to_s), default: default_retention).to_i
+        end
+      end
+      puts
+    elsif show_profile_sync
       separator('Profile Sync')
       default_sync = !data[:is_aggregator]
       data[:profile_sync_enabled] = ask_yes_no('Povolit sync profilu?', default: default_sync)
 
       if data[:profile_sync_enabled]
-        data[:sync_avatar] = true
-        data[:sync_banner] = true
-        data[:sync_bio] = true
-        data[:sync_fields] = true
-        data[:language] = ask_choice('Jazyk pro metadata', LANGUAGES, default: 'cs')
-        data[:retention_days] = ask_choice('Retence (dní)', RETENTION_OPTIONS.map(&:to_s), default: '90').to_i
+        if data[:platform] == 'youtube'
+          puts '  YouTube handle (bez @, např. MistrdaBingu)'
+          puts '  ℹ️  Bez handle nebude sync profilu fungovat'
+          handle = ask('YouTube handle', required: false).strip
+          handle = handle.gsub(/^@/, '')
+          data[:handle] = handle.empty? ? nil : handle
+          if data[:handle].nil?
+            puts '  ⚠️  Handle nevyplněn — sync profilu bude zakázán'
+            data[:profile_sync_enabled] = false
+          end
+        end
+
+        if data[:profile_sync_enabled]
+          default_retention = data[:platform] == 'youtube' ? '180' : '90'
+          data[:retention_days] = ask_choice('Retence (dní)', RETENTION_OPTIONS.map(&:to_s), default: default_retention).to_i
+        end
       end
       puts
     end
