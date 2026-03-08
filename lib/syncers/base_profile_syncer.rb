@@ -155,7 +155,7 @@ module Syncers
       log "Starting profile sync: #{platform_name} → Mastodon"
       log_sync_details(force)
 
-      profile = fetch_platform_profile
+      profile = with_retry { fetch_platform_profile }
 
       params = {}
       files = {}
@@ -594,6 +594,26 @@ module Syncers
 
     def http_get(uri, open_timeout: 10, read_timeout: 15)
       HttpClient.get(uri, user_agent: USER_AGENT, open_timeout: open_timeout, read_timeout: read_timeout)
+    end
+
+    # Retry wrapper for fetch_platform_profile — handles transient network errors.
+    # Default: 3 retries with [1, 2, 4] s exponential backoff.
+    FETCH_RETRY_DELAYS = [1, 2, 4].freeze
+
+    def with_retry(max_retries: 3, delays: FETCH_RETRY_DELAYS, &block)
+      attempts = 0
+      begin
+        block.call
+      rescue => e
+        attempts += 1
+        if attempts <= max_retries
+          delay = delays[attempts - 1] || delays.last
+          log "  ⚠️ Fetch failed (#{e.message.lines.first.strip}), retry #{attempts}/#{max_retries} in #{delay}s...", level: :warn
+          sleep delay
+          retry
+        end
+        raise
+      end
     end
 
     def mastodon_auth_headers
