@@ -87,9 +87,10 @@ module Processors
 	# Example: "1158226-trump-chce-od-krajin-miliar…"
 	ORPHAN_SLUG_FRAGMENT_REGEX = /(?<=\s|^)\d+(?:-[a-zA-Z0-9]+){2,}[a-zA-Z0-9-]*#{ELLIPSIS_PATTERN}/i.freeze
 
-	def initialize(no_trim_domains: nil, config: nil)
+	def initialize(no_trim_domains: nil, config: nil, domain_rewrites: nil)
 	  @no_trim_domains = no_trim_domains || load_from_config(config) || DEFAULT_NO_TRIM_DOMAINS
 	  @no_trim_domains = @no_trim_domains.map(&:downcase)
+	  @domain_rewrite_map = build_domain_rewrite_map(domain_rewrites || [])
 	end
 
 	# Process all URLs in content text
@@ -139,6 +140,9 @@ module Processors
 
 	  # Check if URL contains ellipsis - if so, it's truncated and invalid
 	  return '' if url.match?(/#{ELLIPSIS_PATTERN}/)
+
+	  # Rewrite alternative frontend domains (e.g., piped.video → youtube.com)
+	  url = rewrite_domain(url)
 
 	  # Check if domain should skip trimming
 	  if should_preserve_query?(url)
@@ -424,6 +428,29 @@ module Processors
 	  # Remove protocol for comparison
 	  normalized = normalized.sub(%r{^https?://}, '')
 	  normalized
+	end
+
+	# Build lookup hash from domain_rewrites config (list of {to:, domains:} rules)
+	def build_domain_rewrite_map(rules)
+	  map = {}
+	  rules.each do |rule|
+	    to = rule[:to] || rule['to']
+	    domains = rule[:domains] || rule['domains'] || []
+	    domains.each { |d| map[d.to_s.downcase] = to.to_s }
+	  end
+	  map
+	end
+
+	# Rewrite alternative frontend domains to canonical domain
+	# e.g., https://piped.video/watch?v=ID → https://youtube.com/watch?v=ID
+	def rewrite_domain(url)
+	  return url if @domain_rewrite_map.empty?
+
+	  @domain_rewrite_map.each do |from, to|
+	    rewritten = url.sub(%r{^https?://(?:www\.)?#{Regexp.escape(from)}(?=/|$)}i, "https://#{to}")
+	    return rewritten unless rewritten == url
+	  end
+	  url
 	end
   end
 end

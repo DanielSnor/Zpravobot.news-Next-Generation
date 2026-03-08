@@ -100,6 +100,13 @@ url:
     - jdem.cz
     - sdu.sk
     - sqzr.cz
+  domain_rewrites:
+    - to: youtube.com
+      domains:
+        - piped.video
+        - yewtu.be
+        - inv.nadeko.net
+        - invidious.nerdvpn.de
 
 # Formatting defaults
 formatting:
