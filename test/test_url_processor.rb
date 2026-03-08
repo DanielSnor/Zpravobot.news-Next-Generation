@@ -304,6 +304,66 @@ results << test(
 puts
 
 # ============================================================
+# Test 10: Domain rewrite (alternative frontends)
+# ============================================================
+puts "## Domain Rewrite (alternative frontends)"
+
+rewrite_rules = [
+  { to: 'youtube.com', domains: ['piped.video', 'yewtu.be', 'inv.nadeko.net', 'invidious.nerdvpn.de'] }
+]
+rw_processor = Processors::UrlProcessor.new(domain_rewrites: rewrite_rules)
+
+results << test(
+  "piped.video/watch → youtube.com/watch (query preserved)",
+  "https://youtube.com/watch?v=dQw4w9WgXcQ",
+  rw_processor.process_url("https://piped.video/watch?v=dQw4w9WgXcQ")
+)
+
+results << test(
+  "www.piped.video → youtube.com",
+  "https://youtube.com/watch?v=abc123",
+  rw_processor.process_url("https://www.piped.video/watch?v=abc123")
+)
+
+results << test(
+  "yewtu.be → youtube.com",
+  "https://youtube.com/watch?v=xyz",
+  rw_processor.process_url("https://yewtu.be/watch?v=xyz")
+)
+
+results << test(
+  "inv.nadeko.net → youtube.com",
+  "https://youtube.com/watch?v=abc",
+  rw_processor.process_url("https://inv.nadeko.net/watch?v=abc")
+)
+
+results << test(
+  "invidious.nerdvpn.de → youtube.com",
+  "https://youtube.com/watch?v=def",
+  rw_processor.process_url("https://invidious.nerdvpn.de/watch?v=def")
+)
+
+results << test(
+  "Jiná doména se nemění",
+  "https://example.com/page",
+  rw_processor.process_url("https://example.com/page")
+)
+
+results << test(
+  "Rewrite funguje i v process_content (text s piped.video URL)",
+  "Koukni na https://youtube.com/watch?v=abc123",
+  rw_processor.process_content("Koukni na https://piped.video/watch?v=abc123")
+)
+
+results << test(
+  "Prázdná domain_rewrites = žádná změna",
+  "https://piped.video/watch?v=abc",
+  processor.process_url("https://piped.video/watch?v=abc")
+)
+
+puts
+
+# ============================================================
 # Summary
 # ============================================================
 puts "=" * 60

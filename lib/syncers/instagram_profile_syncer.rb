@@ -217,22 +217,39 @@ module Syncers
 
       # Profilová fotka — strategie extrakce (pořadí od nejspolehlivější):
       #
-      # 1. t51.82787-15 formát z renderovaného <img> tagu (Browserless+cookies)
-      #    — má oh/oe signing tokeny, veřejně přístupný bez session.
-      #    Doména: scontent.cdninstagram.com (ne fna.fbcdn.net!)
-      #    Toleruje escaped lomítka (https:\/\/) z JSON kontextu.
+      # 1. <img> tag s alt="[handle]'s profile picture" — renderovaný Browserless+cookies,
+      #    vždy ukazuje na skutečnou profilovku (nikdy na Stories ani placeholder).
       #
-      # 2. JSON profile_pic_url_hd / profile_pic_url — t51.2885-19 formát,
-      #    bez oh/oe → CDN vrátí default siluetu pro anonymní requesty.
+      # 2. og:image — obvykle správná profilovka, ale Instagram někdy vrátí šedý placeholder
+      #    (has_profile_pic:false) nebo redirect na CDN s placeholderem.
       #
-      # 3. og:image fallback
+      # 3. JSON profile_pic_url_hd / profile_pic_url — t51.2885-19 formát,
+      #    může být placeholder (573323465) pokud has_profile_pic:false.
+      #
+      # 4. t51.82787-15 z header sekce (poslední záchrana — může zachytit Stories)
 
-      # Strategie 1: t51.82787-15 — nový formát s oh/oe tokeny (scontent.cdninstagram.com)
-      if html =~ %r{(https?:(?:\\?/){2}[^"'\s<>]+/v/t51\.82787-15/[^"'\s<>]+)}i
-        profile[:avatar_url] = HtmlCleaner.decode_html_entities($1.gsub('\\/', '/'))
+      # Strategie 1: <img alt="[handle]'s profile picture"> — nejspolehlivější
+      # Hledáme img tag kde alt atribut přesně matchuje vzor "[handle]'s profile picture"
+      img_profile_pattern = /#{Regexp.escape(instagram_handle)}'s profile picture/i
+      html.scan(/<img\b[^>]*>/i) do |img_tag|
+        alt = img_tag[/\balt="([^"]*)"/i, 1]
+        if alt && alt.match?(img_profile_pattern)
+          src = img_tag[/\bsrc="([^"]+)"/i, 1]
+          if src && !src.empty?
+            profile[:avatar_url] = HtmlCleaner.decode_html_entities(src)
+            break
+          end
+        end
       end
 
-      # Strategie 2: JSON profile_pic_url_hd / profile_pic_url (fallback, vrací placeholder)
+      # Strategie 2: og:image
+      if profile[:avatar_url].nil?
+        og_url = html[/<meta\b[^>]*\bproperty="og:image"\b[^>]*\bcontent="([^"]+)"/i, 1] ||
+                 html[/<meta\b[^>]*\bcontent="([^"]+)"[^>]*\bproperty="og:image"/i, 1]
+        profile[:avatar_url] = HtmlCleaner.decode_html_entities(og_url) if og_url
+      end
+
+      # Strategie 3: JSON profile_pic_url_hd / profile_pic_url
       if profile[:avatar_url].nil?
         if html =~ /"profile_pic_url_hd":"([^"]+)"/
           profile[:avatar_url] = decode_instagram_url($1)
@@ -241,9 +258,12 @@ module Syncers
         end
       end
 
-      # Strategie 3: og:image fallback
-      if profile[:avatar_url].nil? && html =~ /<meta property="og:image" content="([^"]+)"/
-        profile[:avatar_url] = HtmlCleaner.decode_html_entities($1)
+      # Strategie 4: t51.82787-15 z header sekce (poslední záchrana — může zachytit Stories)
+      if profile[:avatar_url].nil?
+        header_html = html[/<header\b[^>]*>.*?<\/header>/im] || ''
+        if header_html =~ %r{(https?:(?:\\?/){2}[^"'\s<>]+/v/t51\.82787-15/[^"'\s<>]+)}i
+          profile[:avatar_url] = HtmlCleaner.decode_html_entities($1.gsub('\\/', '/'))
+        end
       end
 
       # Website z external_url v JSON

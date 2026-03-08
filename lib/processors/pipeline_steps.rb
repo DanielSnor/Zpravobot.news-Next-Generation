@@ -173,7 +173,8 @@ module Processors
       @url_processor ||= begin
         global_config = @config_loader.load_global_config rescue {}
         no_trim_domains = global_config.dig(:url, :no_trim_domains) || []
-        Processors::UrlProcessor.new(no_trim_domains: no_trim_domains)
+        domain_rewrites = global_config.dig(:url, :domain_rewrites) || []
+        Processors::UrlProcessor.new(no_trim_domains: no_trim_domains, domain_rewrites: domain_rewrites)
       end
     end
   end
