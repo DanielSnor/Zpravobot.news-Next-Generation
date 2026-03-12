@@ -1,5 +1,7 @@
 # frozen_string_literal: true
 
+require_relative 'html_cleaner'
+
 # Shared formatting utility methods
 # Eliminates duplicated format_bytes / clean_text across syncers, adapters, formatters
 module FormatHelpers
@@ -24,7 +26,7 @@ module FormatHelpers
   def clean_text(text)
     return '' if text.nil?
 
-    text.to_s
+    HtmlCleaner.decode_html_entities(text.to_s)
       .gsub(/[ \t]+/, ' ')        # Normalize spaces/tabs to single space (NOT newlines)
       .gsub(/\n[ \t]+/, "\n")     # Trim leading whitespace from lines
       .gsub(/[ \t]+\n/, "\n")     # Trim trailing whitespace from lines

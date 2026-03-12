@@ -20,6 +20,7 @@ module Publishers
     include Support::Loggable
 
     MAX_STATUS_LENGTH = 2500
+    MAX_DESCRIPTION_LENGTH = 1500  # Mastodon API limit for media alt text
     MAX_MEDIA_SIZE = 10 * 1024 * 1024  # 10MB
     MAX_MEDIA_COUNT = 4
 
@@ -219,6 +220,7 @@ module Publishers
       urls_to_try.each_with_index do |try_url, idx|
         label = idx == 0 ? "" : " (variant #{idx})"
         try_url = resolve_nitter_proxy_url(try_url)
+        try_url = encode_non_ascii_url(try_url)
 
         ext = File.extname(URI.parse(try_url).path).downcase rescue ''
         if UNSUPPORTED_MEDIA_EXTENSIONS.include?(ext)
@@ -298,6 +300,11 @@ module Publishers
     def upload_media(data, filename:, content_type:, description: nil)
       raise ArgumentError, "No data provided" if data.nil? || data.empty?
       raise ArgumentError, "File too large (#{data.bytesize} > #{MAX_MEDIA_SIZE})" if data.bytesize > MAX_MEDIA_SIZE
+
+      if description && description.length > MAX_DESCRIPTION_LENGTH
+        log "Alt text truncated (#{description.length} → #{MAX_DESCRIPTION_LENGTH} chars)", level: :warn
+        description = "#{description[0, MAX_DESCRIPTION_LENGTH - 1]}…"
+      end
 
       log "Uploading media: #{filename} (#{content_type}, #{data.bytesize} bytes)"
 
@@ -417,6 +424,13 @@ module Publishers
       end
 
       url
+    end
+
+    # Percent-encode non-ASCII characters in a URL so URI.parse and HTTP clients
+    # can handle URLs with diacritics (e.g. forum24.cz images with Czech filenames).
+    # Already-encoded sequences (e.g. %20) are left intact.
+    def encode_non_ascii_url(url)
+      url.gsub(/[^\x00-\x7F]+/) { |s| s.bytes.map { |b| "%%%02X" % b }.join }
     end
 
     def validate_credentials!

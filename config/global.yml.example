@@ -101,7 +101,7 @@ url:
     - sdu.sk
     - sqzr.cz
   domain_rewrites:
-    - to: youtube.com
+    - to: youtu.be
       domains:
         - piped.video
         - yewtu.be

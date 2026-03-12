@@ -442,7 +442,8 @@ module Processors
 	end
 
 	# Rewrite alternative frontend domains to canonical domain
-	# e.g., https://piped.video/watch?v=ID → https://youtube.com/watch?v=ID
+	# e.g., https://piped.video/watch?v=ID → https://youtu.be/watch?v=ID
+	# e.g., https://piped.video/BKemw5v1vBU → https://youtu.be/BKemw5v1vBU
 	def rewrite_domain(url)
 	  return url if @domain_rewrite_map.empty?
 

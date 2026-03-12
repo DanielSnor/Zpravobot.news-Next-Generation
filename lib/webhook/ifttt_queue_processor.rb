@@ -613,10 +613,11 @@ module Webhook
 
     def move_to_failed(filepath, reason)
       data = JSON.parse(File.read(filepath))
+      existing_retry_count = data.dig('_failure', 'retry_count').to_i
       data['_failure'] = {
         reason: reason,
         failed_at: Time.now.iso8601,
-        retry_count: 0
+        retry_count: existing_retry_count
       }
       File.write(filepath, JSON.pretty_generate(data))
 

@@ -309,37 +309,43 @@ puts
 puts "## Domain Rewrite (alternative frontends)"
 
 rewrite_rules = [
-  { to: 'youtube.com', domains: ['piped.video', 'yewtu.be', 'inv.nadeko.net', 'invidious.nerdvpn.de'] }
+  { to: 'youtu.be', domains: ['piped.video', 'yewtu.be', 'inv.nadeko.net', 'invidious.nerdvpn.de'] }
 ]
 rw_processor = Processors::UrlProcessor.new(domain_rewrites: rewrite_rules)
 
 results << test(
-  "piped.video/watch → youtube.com/watch (query preserved)",
-  "https://youtube.com/watch?v=dQw4w9WgXcQ",
+  "piped.video/watch?v=ID → youtu.be/watch?v=ID (query preserved)",
+  "https://youtu.be/watch?v=dQw4w9WgXcQ",
   rw_processor.process_url("https://piped.video/watch?v=dQw4w9WgXcQ")
 )
 
 results << test(
-  "www.piped.video → youtube.com",
-  "https://youtube.com/watch?v=abc123",
+  "piped.video/VIDEO_ID (krátký formát) → youtu.be/VIDEO_ID",
+  "https://youtu.be/BKemw5v1vBU",
+  rw_processor.process_url("https://piped.video/BKemw5v1vBU")
+)
+
+results << test(
+  "www.piped.video → youtu.be",
+  "https://youtu.be/watch?v=abc123",
   rw_processor.process_url("https://www.piped.video/watch?v=abc123")
 )
 
 results << test(
-  "yewtu.be → youtube.com",
-  "https://youtube.com/watch?v=xyz",
+  "yewtu.be → youtu.be",
+  "https://youtu.be/watch?v=xyz",
   rw_processor.process_url("https://yewtu.be/watch?v=xyz")
 )
 
 results << test(
-  "inv.nadeko.net → youtube.com",
-  "https://youtube.com/watch?v=abc",
+  "inv.nadeko.net → youtu.be",
+  "https://youtu.be/watch?v=abc",
   rw_processor.process_url("https://inv.nadeko.net/watch?v=abc")
 )
 
 results << test(
-  "invidious.nerdvpn.de → youtube.com",
-  "https://youtube.com/watch?v=def",
+  "invidious.nerdvpn.de → youtu.be",
+  "https://youtu.be/watch?v=def",
   rw_processor.process_url("https://invidious.nerdvpn.de/watch?v=def")
 )
 
@@ -351,7 +357,7 @@ results << test(
 
 results << test(
   "Rewrite funguje i v process_content (text s piped.video URL)",
-  "Koukni na https://youtube.com/watch?v=abc123",
+  "Koukni na https://youtu.be/watch?v=abc123",
   rw_processor.process_content("Koukni na https://piped.video/watch?v=abc123")
 )
 

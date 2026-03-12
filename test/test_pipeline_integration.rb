@@ -44,7 +44,7 @@ module Processors
   class UrlProcessor
     attr_reader :no_trim_domains
 
-    def initialize(no_trim_domains: [])
+    def initialize(no_trim_domains: [], domain_rewrites: nil)
       @no_trim_domains = no_trim_domains
     end
 
@@ -535,7 +535,7 @@ test("Twitter: mastodon_id není nil", true, !result.mastodon_id.nil?)
 test("Twitter: state zaznamenal published", true, state.published?('ct24_twitter', 'tweet_1893456789012345678'))
 test("Twitter: publish log záznam existuje", 1, state.activity_log.size)
 test("Twitter: published_records obsahuje záznam", 1, state.published_records.size)
-test("Twitter: published record source_id", 'ct24_twitter', state.published_records.first[:source_id])
+test("Twitter: published record source_id", 'ct24_twitter', state.published_records.first&.dig(:source_id))
 
 # =============================================================
 # 2. Bluesky Post — kompletní zpracování

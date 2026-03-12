@@ -36,6 +36,11 @@ module Syncers
     BROWSERLESS_API = 'https://chrome.browserless.io/content'
     DEFAULT_MENTIONS_CONFIG = { 'type' => 'domain_suffix', 'value' => 'facebook.com' }.freeze
     DEFAULT_FACEBOOK_COOKIES = [].freeze
+    # Domains that appear in the global FB footer — never a profile's own website
+    FOOTER_DOMAINS = %w[
+      facebook.com messenger.com meta.com instagram.com threads.com
+      whatsapp.com oculus.com
+    ].freeze
 
     attr_reader :facebook_handle, :browserless_token, :facebook_cookies
 
@@ -110,7 +115,9 @@ module Syncers
     end
 
     def fetch_platform_profile
-      url = "https://www.facebook.com/#{facebook_handle}"
+      # Fetch /about page — the profile website link only appears there,
+      # not on the main profile page (which only has global FB footer links).
+      url = "https://www.facebook.com/#{facebook_handle}/about"
       log "  Fetching #{url} via Browserless..."
 
       html = fetch_page_via_browserless(url)
@@ -216,11 +223,16 @@ module Syncers
         profile[:description] = desc unless desc.empty?
       end
 
-      # Extract website from Facebook redirect link
-      if html =~ /l\.facebook\.com\/l\.php\?u=([^&"\\]+)/
-        website = CGI.unescape($1)
-        website = website.sub(/[?&]fbclid=.*$/, '')
-        profile[:website] = website unless website.include?('facebook.com')
+      # Extract website from Facebook redirect link.
+      # We fetch /about so the profile's own website link appears first.
+      # Also filter out known FB/Meta footer domains that appear even on profiles without a website.
+      html.scan(/l\.facebook\.com\/l\.php\?u=([^&"\\]+)/).each do |m|
+        website = CGI.unescape(m.first)
+        website = website.sub(/[?&]fbclid=.*$/, '').chomp('/')
+        next if FOOTER_DOMAINS.any? { |d| website.include?(d) }
+
+        profile[:website] = website
+        break
       end
 
       profile
