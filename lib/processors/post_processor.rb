@@ -477,6 +477,15 @@ module Processors
       url_domain = formatting[:url_domain]
       rewrite_domains = Array(formatting[:rewrite_domains])
 
+      # Fall back to platform defaults (e.g. Twitter → xcancel.com)
+      # when source config doesn't have explicit URL rewriting configured.
+      if (url_domain.nil? || rewrite_domains.empty?) && defined?(Formatters::UniversalFormatter)
+        platform = source_config[:platform]&.to_sym
+        platform_defaults = Formatters::UniversalFormatter::PLATFORM_DEFAULTS[platform] || {}
+        url_domain ||= platform_defaults[:url_domain]
+        rewrite_domains = Array(platform_defaults[:rewrite_domains]) if rewrite_domains.empty?
+      end
+
       if url_domain && rewrite_domains.any?
         rewrite_domains.each do |domain|
           url = url.gsub(%r{https?://(?:www\.)?#{Regexp.escape(domain)}/}i, "https://#{url_domain}/")
@@ -519,10 +528,14 @@ module Processors
           end
         end
 
-        # Přidej odkaz na originál (pokud ho formatter již nepřidal)
+        # Přidej odkaz na originál (pokud ho formatter již nepřidal).
+        # Použij rewritten URL (xcancel.com pro Twitter) — stejnou jakou formatter vložil
+        # do textu — aby dedup check text.include?(url) správně fungoval.
         video_url_already_added = post.respond_to?(:raw) && post.raw.is_a?(Hash) && post.raw[:video_url_added]
-        url = post.respond_to?(:url) ? post.url.to_s : ''
-        unless video_url_already_added || url.empty? || text.include?(url)
+        raw_url = post.respond_to?(:url) ? post.url.to_s : ''
+        url     = build_trim_fallback_url(post, source_config) || raw_url
+        unless video_url_already_added || url.empty? ||
+               text.include?(url) || (!raw_url.empty? && raw_url != url && text.include?(raw_url))
           video_prefix = source_config.dig(:formatting, :prefix_video) || '🎬'
           text = "#{text}\n#{video_prefix} #{url}"
         end

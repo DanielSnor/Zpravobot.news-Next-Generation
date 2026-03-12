@@ -271,6 +271,13 @@ module Formatters
         parts << "#{config[:prefix_post_text]}#{text}"
       end
       
+      # Video handling — pouze pro Tier 3 (force_read_more).
+      # Pro Tier 1.5/2 video je příloha, ale post URL přidáváme vždy přes compose_output níže
+      # (quote tweet = odkaz na kontext je důležitý i bez videa v textu).
+      if post.respond_to?(:has_video) && post.has_video && force_read_more?(post)
+        return format_video_with_header(parts, post, config)
+      end
+
       # Post URL (link na původní post, ne na quotovaný)
       post_url = rewrite_urls(post.url, config)
 

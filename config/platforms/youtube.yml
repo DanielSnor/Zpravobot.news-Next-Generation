@@ -76,7 +76,7 @@ scheduling:
   priority: normal
   interval_minutes: 30
   max_posts_per_run: 3
-  skip_hours: [5, 6, 7, 8]  # YouTube API má ranní maintenance window (~05:00-09:00 CET)
+  skip_hours: [2, 3, 4, 5, 6, 7, 8]  # YouTube API má ranní maintenance window (~02:00-09:00 CET)
 
 # ------------------------------------------------------------
 # PROFILE SYNC - Synchronizace profilu

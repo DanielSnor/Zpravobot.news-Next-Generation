@@ -26,7 +26,7 @@ module Processors
   class UrlProcessor
     attr_reader :no_trim_domains
 
-    def initialize(no_trim_domains: [])
+    def initialize(no_trim_domains: [], domain_rewrites: nil)
       @no_trim_domains = no_trim_domains
     end
 
