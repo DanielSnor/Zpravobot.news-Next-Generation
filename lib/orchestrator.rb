@@ -94,6 +94,13 @@ module Orchestrator
 	  log_info("Excluding platform: #{exclude_platform}") if exclude_platform
 
 	  @state_manager.connect
+	  # Cleanup media fingerprints once per run (retain 96h = 4 days)
+	  begin
+	    fp_cleanup = @state_manager.cleanup_media_fingerprints(retention_hours: 96)
+	    log_info("Media fingerprint cleanup: #{fp_cleanup} old entries removed") if fp_cleanup && fp_cleanup > 0
+	  rescue StandardError => e
+	    log_warn("Media fingerprint cleanup failed: #{e.message}")
+	  end
 	  sources = @config_loader.load_all_sources
 	  sources = sources.select { |s| s.dig(:scheduling, :priority) == priority } if priority
 	  sources = sources.reject { |s| s[:platform] == exclude_platform } if exclude_platform

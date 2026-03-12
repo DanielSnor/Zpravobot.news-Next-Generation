@@ -951,6 +951,31 @@ CREATE INDEX idx_edit_buffer_created ON edit_detection_buffer(created_at);
 | Retence | 2 hodiny | Automatický cleanup |
 | Velikost | ~1MB | Self-cleaning buffer |
 
+**media_fingerprints:**
+
+Fingerprinty videí pro SHA-256 deduplikaci (per-source).
+
+```sql
+CREATE TABLE media_fingerprints (
+    id          BIGSERIAL PRIMARY KEY,
+    source_id   VARCHAR(100) NOT NULL,
+    sha256_hash VARCHAR(64) NOT NULL,
+    post_id     VARCHAR(255),
+    media_url   TEXT,
+    created_at  TIMESTAMPTZ DEFAULT NOW(),
+    CONSTRAINT uq_media_fp UNIQUE (source_id, sha256_hash)
+);
+
+-- Indexy
+CREATE INDEX idx_media_fp_created ON media_fingerprints(created_at);
+```
+
+| Parametr | Hodnota | Popis |
+|----------|---------|-------|
+| Okno | Konfigurovatelné (default 72h) | `video_dedup_hours` v source YAML |
+| Retence | 96h | Automatický cleanup — delší než max okno |
+| Scope | Per-source | Stejné video u jiného botu není duplikát |
+
 ### Hlavní metody (facade API)
 
 ```ruby
@@ -983,6 +1008,11 @@ class State::StateManager
   def add_to_edit_buffer(source_id:, post_id:, username:, text_normalized:, ...)
   def find_by_text_hash(username, text_hash)
   def cleanup_edit_buffer(retention_hours: 2)
+
+  # Media Fingerprints (→ MediaFingerprintRepository)
+  def find_media_fingerprint(source_id, sha256_hash, hours:)
+  def store_media_fingerprint(source_id:, sha256_hash:, post_id:, media_url:)
+  def cleanup_media_fingerprints(retention_hours: 96)
 end
 ```
 
@@ -1131,6 +1161,55 @@ end
 |-----------|-----------|-----------|
 | Twitter | `2017125315533799497` (číselné) | Numerické (`to_i <=> to_i`) |
 | Bluesky | `3lhtptd7apc2i` (base32) | Lexikografické (`to_s <=> to_s`) |
+
+---
+
+### MediaDedup
+
+**Soubor:** `lib/processors/media_dedup.rb`
+
+SHA-256 deduplikace videí — zamezuje opakovanému publikování stejného videa v rámci jednoho zdroje.
+
+**Problém:** @rainmaker1973 opakuje videa v 24-48h cyklech (~140 duplikátů/den).
+
+**Architektura:**
+- Fingerprinty jsou per-source (jiný bot může legitimně sdílet stejné video)
+- Fingerprint se ukládá až po úspěšném publishu (žádné false positives při retry)
+- Video data se stáhnou jednou v Step 6b a předají dál — žádné dvojité stahování
+
+```ruby
+class Processors::MediaDedup
+  def duplicate?(source_id, data, hours:)
+    # Vrací true pokud stejný SHA-256 hash byl publishován u tohoto zdroje v posledních N hodinách
+  end
+
+  def store!(source_id, data, post_id:, media_url: nil)
+    # Uloží fingerprint po úspěšném publishu
+  end
+
+  def cleanup(retention_hours: 96)
+    # Smaže staré záznamy, vrací Integer (počet smazaných)
+  end
+end
+```
+
+**Pipeline integrace (PostProcessor):**
+
+| Krok | Akce |
+|------|------|
+| Step 6b | Stáhne video, vypočte SHA-256, zkontroluje DB → `:duplicate` → skip `duplicate_video` |
+| Step 9b | Po úspěšném publishu uloží fingerprint |
+
+`video_data_cache` v `ProcessingContext` — předává stažená data mezi kroky (`:duplicate` \| `{ url:, data: }` \| `nil`)
+
+**Aktivace:**
+
+```yaml
+processing:
+  video_dedup_hours: 72   # Deduplikační okno v hodinách
+```
+
+Bez `video_dedup_hours` klíče je dedup transparentně přeskočen.
 
 ---
 
@@ -2004,10 +2083,10 @@ tests:
 
 | Metrika | Hodnota |
 |---------|---------|
-| Unit testy | 56/56 PASS |
-| Assertions | 1552 |
-| Test souborů | 84 |
-| Katalog testů | 82 (56 unit, 18 network, 2 db, 6 e2e) |
+| Unit testy | 57/57 PASS |
+| Assertions | 1579 |
+| Test souborů | 85 |
+| Katalog testů | 83 (57 unit, 18 network, 2 db, 6 e2e) |
 
 ---
 

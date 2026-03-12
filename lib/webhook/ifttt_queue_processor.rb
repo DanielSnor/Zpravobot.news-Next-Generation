@@ -29,6 +29,7 @@ require_relative '../formatters/twitter_formatter'
 require_relative '../processors/post_processor'
 require_relative '../processors/edit_detector'
 require_relative '../processors/twitter_tweet_processor'
+require_relative '../processors/media_dedup'
 require_relative 'webhook_payload_parser'
 require_relative 'webhook_edit_handler'
 require_relative 'webhook_thread_handler'
@@ -78,6 +79,9 @@ module Webhook
       # Track published counts per source_id (for mark_check_success)
       @published_sources = Hash.new(0)
 
+      # Media dedup for video SHA-256 fingerprinting (opt-in per source)
+      @media_dedup = Processors::MediaDedup.new(@state_manager, logger: nil)
+
       # Edit detector for Twitter edit deduplication
       @edit_detector = Processors::EditDetector.new(@state_manager, logger: @logger)
 
@@ -124,6 +128,10 @@ module Webhook
       # Cleanup edit buffer at start of each run
       cleanup_count = @edit_detector.cleanup(retention_hours: EDIT_BUFFER_CLEANUP_HOURS)
       log "Edit buffer cleanup: #{cleanup_count} old entries removed" if cleanup_count > 0
+
+      # Cleanup media fingerprints (retain 96h = 4 days, covers 72h dedup window)
+      fp_cleanup = @media_dedup&.cleanup(retention_hours: 96)
+      log "Media fingerprint cleanup: #{fp_cleanup} old entries removed" if fp_cleanup && fp_cleanup > 0
 
       pending_dir = File.join(QUEUE_DIR, 'pending')
       files = Dir.glob(File.join(pending_dir, '*.json')).sort

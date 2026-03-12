@@ -5,6 +5,7 @@ require_relative 'published_posts_repository'
 require_relative 'source_state_repository'
 require_relative 'activity_logger'
 require_relative 'edit_buffer_manager'
+require_relative 'media_fingerprint_repository'
 
 module State
   # Facade for all state management operations
@@ -29,6 +30,7 @@ module State
       @source_state = SourceStateRepository.new(@db)
       @activity = ActivityLogger.new(@db)
       @edit_buffer = EditBufferManager.new(@db)
+      @media_fingerprints = MediaFingerprintRepository.new(@db)
     end
 
     # ============================================================
@@ -194,6 +196,26 @@ module State
 
     def in_edit_buffer?(source_id, post_id)
       @edit_buffer.in_edit_buffer?(source_id, post_id)
+    end
+
+    # ============================================================
+    # Media Fingerprints — delegate to MediaFingerprintRepository
+    # ============================================================
+
+    def find_media_fingerprint(source_id, sha256_hash, hours:)
+      ensure_connection
+      @media_fingerprints.find(source_id, sha256_hash, hours: hours)
+    end
+
+    def store_media_fingerprint(source_id:, sha256_hash:, post_id: nil, media_url: nil)
+      ensure_connection
+      @media_fingerprints.store(source_id: source_id, sha256_hash: sha256_hash,
+                                post_id: post_id, media_url: media_url)
+    end
+
+    def cleanup_media_fingerprints(retention_hours: 96)
+      ensure_connection
+      @media_fingerprints.cleanup(retention_hours: retention_hours)
     end
   end
 end

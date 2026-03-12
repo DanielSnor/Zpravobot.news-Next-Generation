@@ -244,6 +244,32 @@ $$ LANGUAGE plpgsql;
 COMMENT ON FUNCTION zpravobot.cleanup_edit_detection_buffer IS 'Smaže záznamy starší než retention_hours (default 2)';
 
 -- ============================================================
+-- Tabulka: media_fingerprints
+-- SHA-256 fingerprints médií pro video deduplikaci (retence 96h)
+-- ============================================================
+
+CREATE TABLE IF NOT EXISTS media_fingerprints (
+    id          BIGSERIAL PRIMARY KEY,
+    source_id   VARCHAR(100) NOT NULL,
+    sha256_hash VARCHAR(64) NOT NULL,
+    post_id     VARCHAR(255),
+    media_url   TEXT,
+    created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+COMMENT ON TABLE media_fingerprints IS 'SHA-256 fingerprints médií pro video deduplikaci (retence 96h)';
+COMMENT ON COLUMN media_fingerprints.source_id IS 'Identifikátor zdroje/bota — deduplikace je per-source';
+COMMENT ON COLUMN media_fingerprints.sha256_hash IS 'SHA-256 hex digest binárních dat videa';
+COMMENT ON COLUMN media_fingerprints.post_id IS 'ID postu při prvním výskytu videa (pro diagnostiku)';
+COMMENT ON COLUMN media_fingerprints.media_url IS 'URL média při prvním výskytu (pro diagnostiku)';
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_media_fp_source_hash
+    ON media_fingerprints (source_id, sha256_hash);
+
+CREATE INDEX IF NOT EXISTS idx_media_fp_created
+    ON media_fingerprints (created_at);
+
+-- ============================================================
 -- Výstup
 -- ============================================================
 
@@ -253,6 +279,7 @@ COMMENT ON FUNCTION zpravobot.cleanup_edit_detection_buffer IS 'Smaže záznamy 
 \echo '✅ Tabulka source_state (včetně last_reset)'
 \echo '✅ Tabulka activity_log'
 \echo '✅ Tabulka edit_detection_buffer (včetně cleanup funkce)'
+\echo '✅ Tabulka media_fingerprints (video SHA-256 deduplikace)'
 \echo ''
 \echo 'Ověření:'
 \echo '  SELECT column_name FROM information_schema.columns'

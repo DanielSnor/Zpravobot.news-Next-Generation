@@ -470,6 +470,13 @@ tests:
     exit_code_reliable: true
     description: "Local mention transformation: domain_suffix_with_local in UniversalFormatter, ConfigLoader#twitter_handle_to_mastodon_map (TASK-7)"
 
+  test_media_dedup:
+    file: test/test_media_dedup.rb
+    category: unit
+    tags: [offline, processor, twitter]
+    exit_code_reliable: true
+    description: "MediaDedup: SHA-256 video fingerprinting, duplicate detection, lifecycle, cleanup (Video Dedup Task)"
+
   # =====================================================
   # VISUAL / DIAGNOSTIC (no real assertions)
   # =====================================================

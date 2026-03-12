@@ -18,9 +18,26 @@
 # 8. Publish to Mastodon (or update existing)
 # 9. Mark as published + add to edit buffer
 
+require 'digest'
 require_relative '../support/loggable'
 require_relative '../errors'
 require_relative 'pipeline_steps'
+
+# Media deduplication (lazy loaded — guards against LoadError in unit tests)
+begin
+  require_relative 'media_dedup'
+  MEDIA_DEDUP_AVAILABLE = true unless defined?(MEDIA_DEDUP_AVAILABLE)
+rescue LoadError
+  MEDIA_DEDUP_AVAILABLE = false unless defined?(MEDIA_DEDUP_AVAILABLE)
+end
+
+# HttpClient for video pre-download in dedup step (lazy loaded)
+begin
+  require_relative '../utils/http_client'
+  HTTP_CLIENT_AVAILABLE = true unless defined?(HTTP_CLIENT_AVAILABLE)
+rescue LoadError
+  HTTP_CLIENT_AVAILABLE = false unless defined?(HTTP_CLIENT_AVAILABLE)
+end
 
 # Formatters (lazy loaded - expected to be required by caller)
 # require_relative '../formatters/twitter_formatter'
@@ -156,9 +173,20 @@ module Processors
 
       # Step 6: Process URLs
       processed_text = @url_step.call(processed_text, source_config)
-      
+
       # Callback for verbose logging
       options[:on_final]&.call(processed_text)
+
+      # Step 6b: Video dedup check (opt-in per source, skipped in dry_run)
+      video_dedup_hours = source_config.dig(:processing, :video_dedup_hours)
+      video_data_cache = nil
+      if !@dry_run && video_dedup_hours && MEDIA_DEDUP_AVAILABLE && HTTP_CLIENT_AVAILABLE
+        video_data_cache = check_video_dedup(source_id, post_id, post, video_dedup_hours.to_i)
+        if video_data_cache == :duplicate
+          mark_skipped(source_id, post_id, 'duplicate_video')
+          return Result.new(status: :skipped, skipped_reason: 'duplicate_video')
+        end
+      end
 
       # Step 7-8: Publish (or dry run)
       if @dry_run
@@ -170,7 +198,8 @@ module Processors
         processed_text,
         post,
         source_config,
-        in_reply_to_id: options[:in_reply_to_id]
+        in_reply_to_id: options[:in_reply_to_id],
+        video_data_cache: video_data_cache
       )
 
       unless publish_result[:success]
@@ -181,7 +210,7 @@ module Processors
       # Step 9: Mark as published
       mastodon_id = publish_result[:mastodon_id]
       mark_published(source_id, post, mastodon_id)
-      
+
       # Add to edit buffer for future edit detection
       if @edit_step.enabled?(platform) && mastodon_id
         begin
@@ -190,7 +219,17 @@ module Processors
           log_warn("[EditBuffer] Failed to add: #{e.message}")
         end
       end
-      
+
+      # Step 9b: Store video fingerprint after successful publication
+      if video_data_cache.is_a?(Hash) && MEDIA_DEDUP_AVAILABLE
+        begin
+          media_dedup.store!(source_id, video_data_cache[:data],
+                             post_id: post_id, media_url: video_data_cache[:url])
+        rescue StandardError => e
+          log_warn("[MediaDedup] Failed to store fingerprint: #{e.message}")
+        end
+      end
+
       log_info("[#{source_id}] Published: #{mastodon_id}")
       Result.new(status: :published, mastodon_id: mastodon_id)
 
@@ -201,6 +240,44 @@ module Processors
     end
 
     private
+
+    # ============================================
+    # Video Dedup helpers
+    # ============================================
+
+    def media_dedup
+      @media_dedup ||= Processors::MediaDedup.new(@state_manager, logger: @logger)
+    end
+
+    # Download video and check for duplicate hash.
+    # Returns:
+    #   :duplicate               — video already published, skip post
+    #   { url:, data: }          — new video, data cached for upload step
+    #   nil                      — no video found or download failed (proceed normally)
+    def check_video_dedup(source_id, post_id, post, hours)
+      return nil unless post.respond_to?(:media)
+
+      video_media = Array(post.media).find { |m| m.respond_to?(:type) && m.type == 'video' }
+      return nil unless video_media&.url
+
+      begin
+        response = HttpClient.download(video_media.url, max_size: 10 * 1024 * 1024)
+        return nil if response.nil? || response == :too_large
+
+        video_data = response.body
+        return nil if video_data.nil? || video_data.empty?
+
+        if media_dedup.duplicate?(source_id, video_data, hours: hours)
+          log_info("[#{source_id}] Video dedup: skipping duplicate for post #{post_id}")
+          return :duplicate
+        end
+
+        { url: video_media.url, data: video_data }
+      rescue StandardError => e
+        log_warn("[#{source_id}] Video dedup check failed (proceeding): #{e.message}")
+        nil
+      end
+    end
 
     # ============================================
     # Edit Detection helpers
@@ -499,12 +576,12 @@ module Processors
     # Step 7-8: Publishing
     # ============================================
 
-    def publish_post(text, post, source_config, in_reply_to_id: nil)
+    def publish_post(text, post, source_config, in_reply_to_id: nil, video_data_cache: nil)
       publisher = get_publisher(source_config)
       visibility = source_config.dig(:target, :visibility) || 'public'
-    
-      # Upload media
-      media_ids = upload_media(publisher, post)
+
+      # Upload media (pass pre-downloaded video data if available to avoid double download)
+      media_ids = upload_media(publisher, post, video_data_cache: video_data_cache)
     
       # Video fallback: pokud měl post video (type: 'video' v media NEBO post.has_video) ale upload selhal,
       # zkus nejdřív nahrát thumbnail ze Syndication API jako náhradní obrázek;
@@ -569,11 +646,11 @@ module Processors
       { success: false, error: e.message }
     end
 
-    def upload_media(publisher, post)
+    def upload_media(publisher, post, video_data_cache: nil)
       return [] unless post.respond_to?(:media) && post.media
       return [] if post.media.empty?
 
-      # Filter out non-uploadable media types before parallel upload
+      # Filter out non-uploadable media types before upload
       uploadable = post.media.reject do |media|
         media.type == 'link_card' ||
           (media.type == 'video_thumbnail' && post.media.any? { |m| m.type == 'video' })
@@ -581,7 +658,25 @@ module Processors
 
       return [] if uploadable.empty?
 
-      # Build items for parallel upload (publisher handles MAX_MEDIA_COUNT limit)
+      # If we have pre-downloaded video bytes, upload the cached video directly
+      # to avoid downloading it a second time; upload other media items normally.
+      if video_data_cache.is_a?(Hash)
+        cached_url = video_data_cache[:url]
+        cached_data = video_data_cache[:data]
+        media_ids = []
+        uploadable.each do |media|
+          if media.url == cached_url
+            mid = publisher.upload_media_from_data(cached_data, url: cached_url, description: media.alt_text)
+            media_ids << mid if mid
+          else
+            items = [{ url: media.url, description: media.alt_text, url_variants: media.url_variants }]
+            media_ids.concat(publisher.upload_media_parallel(items))
+          end
+        end
+        return media_ids
+      end
+
+      # Default: parallel URL-based upload (publisher handles MAX_MEDIA_COUNT limit)
       media_items = uploadable.map do |media|
         { url: media.url, description: media.alt_text, url_variants: media.url_variants }
       end

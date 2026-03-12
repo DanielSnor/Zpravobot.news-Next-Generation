@@ -393,6 +393,35 @@ module Publishers
       media_ids
     end
 
+    # Upload media from pre-downloaded binary data.
+    # Used when binary data has already been fetched (e.g., for video dedup check)
+    # to avoid downloading the video a second time.
+    #
+    # @param data [String] Binary media data (already downloaded)
+    # @param url [String] Original URL — used for extension/type detection fallback
+    # @param description [String, nil] Alt text for accessibility
+    # @return [String, nil] Media ID or nil on failure
+    def upload_media_from_data(data, url:, description: nil)
+      return nil if data.nil? || data.empty?
+      return nil if data.bytesize > MAX_MEDIA_SIZE
+
+      content_type = detect_content_type(url, data)
+      if content_type == 'application/octet-stream'
+        log "Skipping unrecognized media type for cached data from: #{url}", level: :warn
+        return nil
+      end
+
+      filename = File.basename(URI.parse(url).path) rescue 'media'
+      filename = 'media' if filename.empty?
+      filename = correct_filename_extension(filename, content_type)
+
+      log "Uploading cached media: #{filename} (#{content_type}, #{data.bytesize} bytes)"
+      upload_media(data, filename: filename, content_type: content_type, description: description)
+    rescue StandardError => e
+      log "Cached media upload failed: #{e.message}", level: :error
+      nil
+    end
+
     # Backward-compatible error aliases
     StatusNotFoundError = Zpravobot::StatusNotFoundError
     EditNotAllowedError = Zpravobot::EditNotAllowedError
