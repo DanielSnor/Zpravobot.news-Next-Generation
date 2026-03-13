@@ -553,8 +553,15 @@ module Processors
       # truncation.max_length is a hard per-bot limit matching the Mastodon instance character limit — trim exactly to it.
       # processing.max_length is a platform-level soft limit (e.g. 2400 for Twitter) — trim to 90% of it
       # to leave headroom for post-trim additions (URL rewriting, video fallback URLs, etc.).
+      # Standard Mastodon limit (≤500) uses exact value — no headroom factor needed.
       soft_max = truncation[:max_length] || formatting[:max_length] || processing[:max_length] || 500
-      max_length = truncation[:max_length] ? soft_max : (soft_max * 0.9).to_i
+      max_length = if truncation[:max_length]
+                     soft_max              # Hard per-bot limit: use exactly
+                   elsif soft_max > 500
+                     (soft_max * 0.9).to_i # High soft limit (e.g. Twitter 2400): apply 90% headroom
+                   else
+                     soft_max              # Standard Mastodon limit (≤500): use exactly
+                   end
       strategy = (processing[:trim_strategy] || 'smart').to_sym
       tolerance = processing[:smart_tolerance_percent] || 12
 
