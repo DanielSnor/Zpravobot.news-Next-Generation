@@ -39,6 +39,14 @@ rescue LoadError
   HTTP_CLIENT_AVAILABLE = false unless defined?(HTTP_CLIENT_AVAILABLE)
 end
 
+# OGP fetcher for link card preview images (lazy loaded)
+begin
+  require_relative '../utils/ogp_fetcher'
+  OGP_FETCHER_AVAILABLE = true unless defined?(OGP_FETCHER_AVAILABLE)
+rescue LoadError
+  OGP_FETCHER_AVAILABLE = false unless defined?(OGP_FETCHER_AVAILABLE)
+end
+
 # Formatters (lazy loaded - expected to be required by caller)
 # require_relative '../formatters/twitter_formatter'
 # require_relative '../formatters/bluesky_formatter'
@@ -62,6 +70,13 @@ TRANSPARENT_1X1_PNG_PATH = File.join(__dir__, '../../assets/transparent_1x1.png'
 module Processors
   class PostProcessor
     include Support::Loggable
+
+    # Platform/tracking domains to skip when looking for article URLs in post text.
+    # Avoids fetching OGP from tweet URLs, Bluesky links, or our own domains.
+    OGP_SKIP_DOMAINS = %w[
+      twitter.com x.com t.co bsky.app bsky.social
+      zpravobot.news nitter xcancel.com
+    ].freeze
 
     # Result struct for processing outcome
     Result = Struct.new(:status, :mastodon_id, :error, :skipped_reason, keyword_init: true) do
@@ -187,6 +202,17 @@ module Processors
         if video_data_cache == :duplicate
           mark_skipped(source_id, post_id, 'duplicate_video')
           return Result.new(status: :skipped, skipped_reason: 'duplicate_video')
+        end
+      end
+
+      # Step 6c: OGP fetch (opt-in, only when post has no media and feature is available)
+      if !@dry_run && OGP_FETCHER_AVAILABLE &&
+         source_config.dig(:processing, :ogp_fetch_link_card) &&
+         post.media.empty?
+        ogp_url = fetch_ogp_image_for_post(post, processed_text)
+        if ogp_url
+          post.media << Media.new(type: 'image', url: ogp_url, alt_text: '')
+          log_info("[#{source_id}] OGP: Přidán obrázek #{ogp_url}")
         end
       end
 
@@ -813,6 +839,48 @@ module Processors
     rescue StandardError => e
       log_warn("  Dummy image upload failed: #{e.message}")
       nil
+    end
+
+    # ============================================
+    # Step 6c: OGP Image Fetch
+    # ============================================
+
+    # Locate the article URL in the post and attempt to fetch its og:image.
+    # Priority: post.link_card_url > first non-platform URL in processed text.
+    #
+    # @param post [Post] Post object
+    # @param processed_text [String] Post text after URL processing (t.co expanded)
+    # @return [String, nil] og:image URL or nil
+    def fetch_ogp_image_for_post(post, processed_text)
+      fetcher = Utils::OgpFetcher.new
+
+      # Priority 1: explicit link_card_url attribute (set by some adapters)
+      if post.respond_to?(:link_card_url) && post.link_card_url.to_s =~ /\Ahttps?:\/\//
+        return fetcher.fetch_og_image(post.link_card_url)
+      end
+
+      # Priority 2: first non-platform URL in the processed post text
+      article_url = extract_article_url_from_text(processed_text)
+      return fetcher.fetch_og_image(article_url) if article_url
+
+      nil
+    rescue StandardError => e
+      log_warn("[OGP] fetch_ogp_image_for_post failed: #{e.message}")
+      nil
+    end
+
+    # Extract the first URL from text that is not a social/platform URL.
+    # Called on processed_text (after t.co expansion) so we see real article URLs.
+    #
+    # @param text [String] Processed post text
+    # @return [String, nil] First article URL or nil
+    def extract_article_url_from_text(text)
+      return nil if text.nil? || text.empty?
+
+      urls = text.scan(%r{https?://[^\s>)]+})
+      urls.find do |url|
+        OGP_SKIP_DOMAINS.none? { |domain| url.include?(domain) }
+      end
     end
 
     # ============================================

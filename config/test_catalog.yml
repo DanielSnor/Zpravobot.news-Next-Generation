@@ -484,6 +484,13 @@ tests:
     exit_code_reliable: true
     description: "MediaDedup: SHA-256 video fingerprinting, duplicate detection, lifecycle, cleanup (Video Dedup Task)"
 
+  test_ogp_fetcher:
+    file: test/test_ogp_fetcher.rb
+    category: unit
+    tags: [offline, utils]
+    exit_code_reliable: true
+    description: "OgpFetcher: og:image extrakce, retry logika, tiché selhání"
+
   # =====================================================
   # VISUAL / DIAGNOSTIC (no real assertions)
   # =====================================================
