@@ -57,6 +57,8 @@ rescue LoadError
   EDIT_DETECTOR_AVAILABLE = false
 end
 
+TRANSPARENT_1X1_PNG_PATH = File.join(__dir__, '../../assets/transparent_1x1.png')
+
 module Processors
   class PostProcessor
     include Support::Loggable
@@ -246,7 +248,7 @@ module Processors
     # ============================================
 
     def media_dedup
-      @media_dedup ||= Processors::MediaDedup.new(@state_manager, logger: @logger)
+      @media_dedup ||= Processors::MediaDedup.new(@state_manager, logger: @logger || as_logger)
     end
 
     # Download video and check for duplicate hash.
@@ -629,6 +631,13 @@ module Processors
         end
       end
     
+      # Profile card blocker: pokud text obsahuje mention ale nemáme žádná média,
+      # přidáme průhledný 1×1px PNG aby Mastodon nezobrazil profile card prvního zmíněného profilu.
+      if media_ids.empty? && contains_mention?(text)
+        dummy_id = upload_dummy_transparent_image(publisher)
+        media_ids = [dummy_id] if dummy_id
+      end
+
       # Publish
       begin
         result = publisher.publish(
@@ -746,6 +755,45 @@ module Processors
 
     def mark_skipped(source_id, post_id, reason)
       @state_manager.log_skip(source_id, post_id: post_id, reason: reason)
+    end
+
+    # ============================================
+    # Profile Card Blocker (Dummy Image)
+    # ============================================
+
+    # Detects presence of a Mastodon-resolvable mention (@handle or @handle@domain)
+    # in formatted text. Uses same negative lookbehind as format_mentions regex
+    # to avoid false positives on email addresses (user@domain.com).
+    # @param text [String] Formatted Mastodon text
+    # @return [Boolean]
+    def contains_mention?(text)
+      return false if text.nil? || text.empty?
+      text.match?(/(?<![.\w\/])@\w+/)
+    end
+
+    # Upload transparent 1×1px PNG to prevent Mastodon profile card hijack.
+    # Called when post has mentions but no other media attachments.
+    # Non-fatal: returns nil on failure (post continues without dummy image).
+    # @param publisher [Publishers::MastodonPublisher]
+    # @return [String, nil] Media ID or nil on failure
+    def upload_dummy_transparent_image(publisher)
+      unless File.exist?(TRANSPARENT_1X1_PNG_PATH)
+        log_warn("Dummy transparent PNG not found: #{TRANSPARENT_1X1_PNG_PATH}")
+        return nil
+      end
+
+      data = File.binread(TRANSPARENT_1X1_PNG_PATH)
+      result = publisher.upload_media(
+        data,
+        filename: 'transparent.png',
+        content_type: 'image/png',
+        description: nil
+      )
+      log_info("  📎 Dummy 1×1px image uploaded (profile card blocker)") if result
+      result
+    rescue StandardError => e
+      log_warn("  Dummy image upload failed: #{e.message}")
+      nil
     end
 
     # ============================================

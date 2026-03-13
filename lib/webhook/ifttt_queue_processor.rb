@@ -89,7 +89,7 @@ module Webhook
       @post_processor = Processors::PostProcessor.new(
         state_manager: @state_manager,
         config_loader: @config_loader,
-        logger: @logger,
+        logger: nil,
         dry_run: false,
         verbose: false
       )
@@ -566,20 +566,31 @@ module Webhook
       }
     end
 
-    # Enrich mentions config for Twitter sources with local instance handle map
-    # Transforms domain_suffix → domain_suffix_with_local so that known zpravobot.news
-    # handles (@CT24zive) are rendered as local mentions (@ct24@zpravobot.news)
+    # Enrich mentions config for Twitter sources with local instance handle map.
+    # domain_suffix → domain_suffix_with_local (legacy, zpětná kompatibilita)
+    # local_or_domain_suffix → přidat local_handles mapu (nový typ)
     def enrich_mentions(config)
       mentions = config[:mentions] || {}
-      return config unless mentions[:type].to_s == 'domain_suffix' && config[:platform].to_s == 'twitter'
+      return config unless config[:platform].to_s == 'twitter'
 
-      config.merge(
-        mentions: mentions.merge(
-          type: 'domain_suffix_with_local',
-          local_instance: 'zpravobot.news',
-          local_handles: config_loader.twitter_handle_to_mastodon_map
+      case mentions[:type].to_s
+      when 'domain_suffix'
+        config.merge(
+          mentions: mentions.merge(
+            type: 'domain_suffix_with_local',
+            local_instance: 'zpravobot.news',
+            local_handles: config_loader.twitter_handle_to_mastodon_map
+          )
         )
-      )
+      when 'local_or_domain_suffix'
+        config.merge(
+          mentions: mentions.merge(
+            local_handles: config_loader.twitter_handle_to_mastodon_map
+          )
+        )
+      else
+        config
+      end
     end
 
     def safe_load_source(source_id)

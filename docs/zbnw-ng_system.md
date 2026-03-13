@@ -782,8 +782,13 @@ Centrální formatter, na který delegují platform-specific wrappery.
 | `prefix` | `https://twitter.com/` | `@user` | `https://twitter.com/user` |
 | `suffix` | `https://twitter.com/` | `@user` | `@user (https://twitter.com/user)` |
 | `domain_suffix` | `twitter.com` | `@user` | `@user@twitter.com` |
+| `domain_suffix_with_local` | `twitter.com` | `@user` (lokální) | `@mastodon_id@zpravobot.news` |
+| `local_or_domain_suffix` | `twitter.com` | `@user` (lokální) | `@mastodon_id` (holý, Twitter default) |
+| `local_or_domain_suffix` | `twitter.com` | `@user` (cizí) | `@user@twitter.com` |
 
-**Poznámka:** Regex používá negative lookbehind `(?<![a-zA-Z0-9.])` aby neovlivňoval e-mailové adresy (např. `user@domain.com` zůstane nezměněn).
+**Poznámka:** Regex používá negative lookbehind `(?<![.\w\/])` aby neovlivňoval e-mailové adresy (např. `user@domain.com` zůstane nezměněn). `build_header` (hlavička repostu/quotu) používá stejnou `format_single_mention` logiku jako tělo.
+
+**Profile card blocker:** Pokud post obsahuje mention ale nemá jiná média, `PostProcessor` přidá průhledný 1×1px PNG jako dummy přílohu — Mastodon pak nezobrazí matoucí profile card.
 
 **URL rewriting:**
 

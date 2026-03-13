@@ -76,6 +76,19 @@ module Support
       self.class.name&.split('::')&.last || 'Unknown'
     end
 
+    # Returns a logger-compatible object (responds to .info/.warn/.debug/.error)
+    # that delegates to this object's log method. Useful for passing to components
+    # that expect a standard logger interface rather than the Loggable mixin.
+    def as_logger
+      loggable = self
+      @_logger_proxy ||= Class.new do
+        define_method(:info)  { |msg| loggable.send(:log, msg, level: :info)  }
+        define_method(:debug) { |msg| loggable.send(:log, msg, level: :debug) }
+        define_method(:warn)  { |msg| loggable.send(:log, msg, level: :warn)  }
+        define_method(:error) { |msg| loggable.send(:log, msg, level: :error) }
+      end.new
+    end
+
     # Check if centralized Logging module is available and set up
     # @return [Boolean]
     def logging_available?
