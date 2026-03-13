@@ -164,17 +164,32 @@ module Config
       @platforms[platform] = load_yaml("platforms/#{platform}.yml") || {}
     end
     # Build Twitter handle → Mastodon account map for local mention transformation
-    # Keys are lowercased Twitter handles; values are Mastodon account IDs
-    # Only includes sources targeting zpravobot.news instances
+    # Build map: Twitter handle (or Mastodon account name) → Mastodon account ID
+    # Used for local mention transformation in format_single_mention.
+    #
+    # Two layers:
+    #   1. ALL zpravobot.news sources → mastodon_account mapped to itself
+    #      (natural case: RSS/YouTube/Bluesky bots whose Mastodon account name
+    #       matches how they'd be mentioned on Twitter, e.g. zaminutusest_rss
+    #       → "@zaminutusest" on Twitter links to "@zaminutusest@zpravobot.news")
+    #   2. Twitter sources additionally → source.handle mapped to mastodon_account
+    #      (explicit Twitter handle, which may differ from mastodon_account, e.g.
+    #       handle=CT24zive → mastodon_account=ct24)
+    #
+    # Keys are lowercased; values are Mastodon account IDs.
     def build_twitter_handle_map
-      twitter_sources = load_sources_by_platform('twitter')
-      twitter_sources.each_with_object({}) do |source_hash, map|
-        handle = source_hash.dig(:source, :handle)
+      load_all_sources.each_with_object({}) do |source_hash, map|
         mastodon_account = source_hash.dig(:target, :mastodon_account)
         mastodon_instance = source_hash.dig(:target, :mastodon_instance).to_s
-        next unless handle && mastodon_account
-        next unless mastodon_instance.include?('zpravobot.news')
-        map[handle.to_s.downcase] = mastodon_account.to_s
+        next unless mastodon_account && mastodon_instance.include?('zpravobot.news')
+
+        # Layer 1: account name → itself (covers RSS, YouTube, Bluesky + Twitter)
+        map[mastodon_account.to_s.downcase] = mastodon_account.to_s
+
+        # Layer 2: explicit Twitter handle (only for Twitter sources)
+        next unless source_hash[:platform].to_s == 'twitter'
+        handle = source_hash.dig(:source, :handle)
+        map[handle.to_s.downcase] = mastodon_account.to_s if handle
       end
     end
 

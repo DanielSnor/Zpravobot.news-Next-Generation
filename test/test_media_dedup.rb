@@ -108,6 +108,10 @@ class MediaDedupTest
     test_cleanup_keeps_recent_entries
     test_cleanup_returns_deleted_count
     test_full_lifecycle
+    # URL-hash path (large videos >10MB)
+    test_url_hash_same_url_same_fingerprint
+    test_url_hash_full_lifecycle
+    test_url_hash_content_and_url_hash_coexist
 
     puts
     puts '=' * 60
@@ -328,6 +332,63 @@ class MediaDedupTest
       # Different source — should NOT be duplicate
       is_dup_other = dedup.duplicate?('other_source', video_data, hours: 72)
       assert_equal false, is_dup_other, 'Different source should NOT be duplicate'
+    end
+  end
+
+  # URL-hash path tests (large videos >10MB)
+  # When HttpClient.download returns :too_large, post_processor passes the URL string
+  # as "data" to duplicate?/store! instead of binary video bytes.
+  # MediaDedup doesn't distinguish — it hashes whatever string it receives.
+
+  def test_url_hash_same_url_same_fingerprint
+    test('URL-hash: same URL string → same SHA-256 hash (stable fingerprint)') do
+      url = 'https://video.twimg.com/ext_tw_video/123456789/pu/vid/1280x720/abc.mp4'
+      hash1 = Digest::SHA256.hexdigest(url)
+      hash2 = Digest::SHA256.hexdigest(url)
+      assert_equal hash1, hash2
+    end
+  end
+
+  def test_url_hash_full_lifecycle
+    test('URL-hash: full lifecycle — first URL not duplicate, stored, second detected') do
+      state = MockStateManagerDedup.new
+      dedup = Processors::MediaDedup.new(state)
+      source_id = 'rainmaker1973_twitter'
+      video_url = 'https://video.twimg.com/ext_tw_video/999/pu/vid/1280x720/large.mp4'
+
+      # First occurrence (simulated: post_processor passes url as fingerprint_data)
+      is_dup = dedup.duplicate?(source_id, video_url, hours: 72)
+      assert_equal false, is_dup, 'First occurrence should NOT be duplicate'
+
+      # Publish succeeds → store using URL string as fingerprint_data
+      dedup.store!(source_id, video_url, post_id: 'tweet_large_001', media_url: video_url)
+      assert_equal 1, state.size
+
+      # Second occurrence (same URL) — should be duplicate
+      is_dup2 = dedup.duplicate?(source_id, video_url, hours: 72)
+      assert_equal true, is_dup2, 'Second occurrence (same URL) should be duplicate'
+    end
+  end
+
+  def test_url_hash_content_and_url_hash_coexist
+    test('URL-hash: content-hash and URL-hash fingerprints coexist independently') do
+      state = MockStateManagerDedup.new
+      dedup = Processors::MediaDedup.new(state)
+      source_id = 'rainmaker1973_twitter'
+
+      small_video_data = 'binary mp4 bytes of small video'
+      large_video_url  = 'https://video.twimg.com/ext_tw_video/888/pu/vid/1280x720/large.mp4'
+
+      # Store both: content-hash (small video) and URL-hash (large video)
+      dedup.store!(source_id, small_video_data, post_id: 'tweet_small')
+      dedup.store!(source_id, large_video_url,  post_id: 'tweet_large', media_url: large_video_url)
+      assert_equal 2, state.size
+
+      # Both should be detected as duplicates on second occurrence
+      assert_equal true, dedup.duplicate?(source_id, small_video_data, hours: 72),
+                   'Small video (content-hash) should be duplicate'
+      assert_equal true, dedup.duplicate?(source_id, large_video_url, hours: 72),
+                   'Large video (URL-hash) should be duplicate'
     end
   end
 

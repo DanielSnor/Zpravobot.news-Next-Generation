@@ -222,10 +222,12 @@ module Processors
         end
       end
 
-      # Step 9b: Store video fingerprint after successful publication
+      # Step 9b: Store video fingerprint after successful publication.
+      # For large videos (data: nil), fingerprint by URL string; for small videos, by content.
       if video_data_cache.is_a?(Hash) && MEDIA_DEDUP_AVAILABLE
         begin
-          media_dedup.store!(source_id, video_data_cache[:data],
+          fingerprint_data = video_data_cache[:data] || video_data_cache[:url]
+          media_dedup.store!(source_id, fingerprint_data,
                              post_id: post_id, media_url: video_data_cache[:url])
         rescue StandardError => e
           log_warn("[MediaDedup] Failed to store fingerprint: #{e.message}")
@@ -254,7 +256,8 @@ module Processors
     # Download video and check for duplicate hash.
     # Returns:
     #   :duplicate               — video already published, skip post
-    #   { url:, data: }          — new video, data cached for upload step
+    #   { url:, data: String }   — new small video (≤10MB), data cached for upload step
+    #   { url:, data: nil }      — new large video (>10MB), URL-hash fingerprint stored, upload uses URL
     #   nil                      — no video found or download failed (proceed normally)
     def check_video_dedup(source_id, post_id, post, hours)
       return nil unless post.respond_to?(:media)
@@ -267,24 +270,39 @@ module Processors
 
         video_url = nil
         video_data = nil
+        fallback_url = nil  # first URL that returned :too_large (for URL-hash fallback)
+
         urls_to_try.each do |url|
           response = HttpClient.download(url, max_size: 10 * 1024 * 1024)
-          next if response.nil? || response == :too_large
-          next if response.body.nil? || response.body.empty?
+          if response == :too_large
+            fallback_url ||= url
+            next
+          end
+          next if response.nil? || response.body.nil? || response.body.empty?
 
           video_url = url
           video_data = response.body
           break
         end
 
-        return nil unless video_data
-
-        if media_dedup.duplicate?(source_id, video_data, hours: hours)
-          log_info("[#{source_id}] Video dedup: skipping duplicate for post #{post_id}")
-          return :duplicate
+        if video_data
+          # Content-hash path: small video — hash binary data
+          if media_dedup.duplicate?(source_id, video_data, hours: hours)
+            log_info("[#{source_id}] Video dedup: skipping duplicate for post #{post_id}")
+            return :duplicate
+          end
+          return { url: video_url, data: video_data }
+        elsif fallback_url
+          # URL-hash path: large video (>10MB) — hash the URL string as proxy fingerprint.
+          # Syndication API URLs are stable per tweet, so same tweet → same URL → same hash.
+          if media_dedup.duplicate?(source_id, fallback_url, hours: hours)
+            log_info("[#{source_id}] Video dedup (URL-hash): skipping duplicate for post #{post_id}")
+            return :duplicate
+          end
+          return { url: fallback_url, data: nil }  # nil = too large, upload falls back to URL path
         end
 
-        { url: video_url, data: video_data }
+        nil  # no video or all downloads failed (non-too_large errors)
       rescue StandardError => e
         log_warn("[#{source_id}] Video dedup check failed (proceeding): #{e.message}")
         nil
@@ -680,7 +698,8 @@ module Processors
 
       # If we have pre-downloaded video bytes, upload the cached video directly
       # to avoid downloading it a second time; upload other media items normally.
-      if video_data_cache.is_a?(Hash)
+      # When data is nil (large video >10MB), skip cache and fall through to URL-based upload.
+      if video_data_cache.is_a?(Hash) && !video_data_cache[:data].nil?
         cached_url = video_data_cache[:url]
         cached_data = video_data_cache[:data]
         media_ids = []

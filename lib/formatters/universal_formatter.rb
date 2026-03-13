@@ -472,17 +472,21 @@ module Formatters
         local_handles = mentions_config[:local_handles] || {}
         local_instance = mentions_config[:local_instance].to_s
         key = username.downcase
-        if !local_instance.empty? && local_handles.key?(key)
-          "@#{local_handles[key]}@#{local_instance}"
+        # local_handles mohou mít String nebo Symbol klíče (po průchodu symbolize_keys)
+        mastodon_id = local_handles[key] || local_handles[key.to_sym]
+        if !local_instance.empty? && mastodon_id
+          "@#{mastodon_id}@#{local_instance}"
         else
           "@#{username}@#{value}"
         end
       when 'local_or_domain_suffix'
         local_handles = mentions_config[:local_handles] || {}
         key = username.downcase
-        if local_handles.key?(key)
+        # local_handles mohou mít String nebo Symbol klíče (po průchodu symbolize_keys)
+        mastodon_id = local_handles[key] || local_handles[key.to_sym]
+        if mastodon_id
           # Lokální handle — holý @mastodon_id, Mastodon resolvne lokálně
-          "@#{local_handles[key]}"
+          "@#{mastodon_id}"
         else
           # Nelokální — přidat doménu
           "@#{username}@#{value}"

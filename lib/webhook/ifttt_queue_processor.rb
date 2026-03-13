@@ -416,7 +416,10 @@ module Webhook
     # @param bot_config [Hash] Bot configuration
     # @return [String] Formatted text
     def format_post_text(post, bot_config)
-      formatter = Formatters::TwitterFormatter.new(bot_config[:formatting] || {})
+      formatter_config = (bot_config[:formatting] || {}).merge(
+        mentions: bot_config[:mentions]
+      ).compact
+      formatter = Formatters::TwitterFormatter.new(formatter_config)
       text = formatter.format(post)
 
       # Apply content replacements if configured
