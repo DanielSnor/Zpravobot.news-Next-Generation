@@ -89,7 +89,7 @@ module Webhook
       @post_processor = Processors::PostProcessor.new(
         state_manager: @state_manager,
         config_loader: @config_loader,
-        logger: nil,
+        logger: @logger,
         dry_run: false,
         verbose: false
       )

@@ -301,7 +301,7 @@ module Publishers
       raise ArgumentError, "No data provided" if data.nil? || data.empty?
       raise ArgumentError, "File too large (#{data.bytesize} > #{MAX_MEDIA_SIZE})" if data.bytesize > MAX_MEDIA_SIZE
 
-      if description && description.length > MAX_DESCRIPTION_LENGTH
+      if description && description.length >= MAX_DESCRIPTION_LENGTH
         log "Alt text truncated (#{description.length} → #{MAX_DESCRIPTION_LENGTH} chars)", level: :warn
         description = "#{description[0, MAX_DESCRIPTION_LENGTH - 1]}…"
       end

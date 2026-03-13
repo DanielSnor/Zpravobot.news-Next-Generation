@@ -261,18 +261,28 @@ module Processors
       return nil unless video_media&.url
 
       begin
-        response = HttpClient.download(video_media.url, max_size: 10 * 1024 * 1024)
-        return nil if response.nil? || response == :too_large
+        urls_to_try = ([video_media.url] + Array(video_media.url_variants).reject { |u| u == video_media.url }).compact
 
-        video_data = response.body
-        return nil if video_data.nil? || video_data.empty?
+        video_url = nil
+        video_data = nil
+        urls_to_try.each do |url|
+          response = HttpClient.download(url, max_size: 10 * 1024 * 1024)
+          next if response.nil? || response == :too_large
+          next if response.body.nil? || response.body.empty?
+
+          video_url = url
+          video_data = response.body
+          break
+        end
+
+        return nil unless video_data
 
         if media_dedup.duplicate?(source_id, video_data, hours: hours)
           log_info("[#{source_id}] Video dedup: skipping duplicate for post #{post_id}")
           return :duplicate
         end
 
-        { url: video_media.url, data: video_data }
+        { url: video_url, data: video_data }
       rescue StandardError => e
         log_warn("[#{source_id}] Video dedup check failed (proceeding): #{e.message}")
         nil
@@ -494,10 +504,11 @@ module Processors
       truncation = source_config[:truncation] || {}
 
       # Priority: truncation.max_length (instance-specific) > formatting.max_length > processing.max_length > 500
-      # truncation.max_length is set per-bot to match the Mastodon instance character limit.
-      # processing.max_length is a platform-level fallback (e.g. 2400 for Twitter) and must
-      # not override the bot-specific instance limit.
-      max_length = truncation[:max_length] || formatting[:max_length] || processing[:max_length] || 500
+      # truncation.max_length is a hard per-bot limit matching the Mastodon instance character limit — trim exactly to it.
+      # processing.max_length is a platform-level soft limit (e.g. 2400 for Twitter) — trim to 90% of it
+      # to leave headroom for post-trim additions (URL rewriting, video fallback URLs, etc.).
+      soft_max = truncation[:max_length] || formatting[:max_length] || processing[:max_length] || 500
+      max_length = truncation[:max_length] ? soft_max : (soft_max * 0.9).to_i
       strategy = (processing[:trim_strategy] || 'smart').to_sym
       tolerance = processing[:smart_tolerance_percent] || 12
 
@@ -628,7 +639,7 @@ module Processors
         )
       rescue StandardError => e
         # Fallback: if parent post doesn't exist, retry as standalone
-        if in_reply_to_id && e.message =~ /Record not found|neexistuje/i
+        if in_reply_to_id && e.message =~ /Record not found|neexistuje|does not appear to exist/i
           log_warn "Thread parent #{in_reply_to_id} not found, publishing as standalone"
           result = publisher.publish(
             text,
