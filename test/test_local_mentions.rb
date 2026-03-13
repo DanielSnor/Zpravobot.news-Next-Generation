@@ -282,6 +282,108 @@ ensure
 end
 
 puts
+
+# ============================================================
+# Section 4: format_single_mention — local_or_domain_suffix
+# ============================================================
+
+puts '--- Section 4: format_single_mention (local_or_domain_suffix) ---'
+
+LOCAL_OR_DOMAIN_MAP = { 'ct24zive' => 'ct24', 'aktualnecz' => 'aktualnecz', 'seznamzpravy' => 'seznam' }.freeze
+
+LOCAL_OR_DOMAIN_CONFIG = {
+  type: 'local_or_domain_suffix',
+  value: 'twitter.com',
+  local_handles: LOCAL_OR_DOMAIN_MAP
+}.freeze
+
+test(
+  'known handle → bare @mastodon_id (bez domény)',
+  '@ct24',
+  single_mention('ct24zive', LOCAL_OR_DOMAIN_CONFIG)
+)
+
+test(
+  'known handle s jiným mastodon_id → správné mastodon_id',
+  '@seznam',
+  single_mention('seznamzpravy', LOCAL_OR_DOMAIN_CONFIG)
+)
+
+test(
+  'unknown handle → @handle@twitter.com',
+  '@nokiaofficial@twitter.com',
+  single_mention('nokiaofficial', LOCAL_OR_DOMAIN_CONFIG)
+)
+
+test(
+  'case-insensitive: @CT24zive → bare @ct24',
+  '@ct24',
+  single_mention('CT24zive', LOCAL_OR_DOMAIN_CONFIG)
+)
+
+test(
+  'case-insensitive: @NokiaOfficial → @NokiaOfficial@twitter.com',
+  '@NokiaOfficial@twitter.com',
+  single_mention('NokiaOfficial', LOCAL_OR_DOMAIN_CONFIG)
+)
+
+test(
+  'empty local_handles → domain_suffix fallback',
+  '@ct24zive@twitter.com',
+  single_mention('ct24zive', { type: 'local_or_domain_suffix', value: 'twitter.com', local_handles: {} })
+)
+
+test(
+  'nil local_handles → domain_suffix fallback',
+  '@ct24zive@twitter.com',
+  single_mention('ct24zive', { type: 'local_or_domain_suffix', value: 'twitter.com', local_handles: nil })
+)
+
+puts
+
+# ============================================================
+# Section 5: format_mentions — local_or_domain_suffix integration
+# ============================================================
+
+puts '--- Section 5: format_mentions integration (local_or_domain_suffix) ---'
+
+test(
+  'known handle v textu → bare @mastodon_id',
+  'zprávy od @ct24 dnes',
+  format_mentions_text('zprávy od @ct24zive dnes', LOCAL_OR_DOMAIN_CONFIG)
+)
+
+test(
+  'unknown handle v textu → @handle@twitter.com',
+  'viz @nokiaofficial@twitter.com pro info',
+  format_mentions_text('viz @nokiaofficial pro info', LOCAL_OR_DOMAIN_CONFIG)
+)
+
+test(
+  'mixed: known + unknown each handled correctly',
+  '@ct24 a @nokiaofficial@twitter.com',
+  format_mentions_text('@ct24zive a @nokiaofficial', LOCAL_OR_DOMAIN_CONFIG)
+)
+
+test(
+  'skip known author handle — stays as @handle',
+  '@ct24zive napsal: text',
+  format_mentions_text('@ct24zive napsal: text', LOCAL_OR_DOMAIN_CONFIG, skip: 'ct24zive')
+)
+
+test(
+  'skip unknown author handle — stays as @handle',
+  '@nokiaofficial napsal: text',
+  format_mentions_text('@nokiaofficial napsal: text', LOCAL_OR_DOMAIN_CONFIG, skip: 'nokiaofficial')
+)
+
+test(
+  'email adresa se netransformuje',
+  'kontakt: user@gmail.com',
+  format_mentions_text('kontakt: user@gmail.com', LOCAL_OR_DOMAIN_CONFIG)
+)
+
+puts
 puts '=' * 60
 puts "Results: #{$passed} passed, #{$failed} failed"
 puts '=' * 60

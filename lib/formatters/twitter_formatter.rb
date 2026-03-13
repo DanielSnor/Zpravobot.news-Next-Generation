@@ -29,10 +29,7 @@ module Formatters
         'sk' => 'vlastný príspevok',
         'en' => 'own post'
       },
-      mentions: {
-        type: 'none',
-        value: ''
-      },
+      # :mentions záměrně chybí — UniversalFormatter PLATFORM_DEFAULTS[:twitter] definuje výchozí hodnotu
       url_domain: Formatters::TWITTER_URL_DOMAIN,
       rewrite_domains: Formatters::TWITTER_REWRITE_DOMAINS,
       max_length: 500,
@@ -59,7 +56,7 @@ module Formatters
     private
 
     def build_universal_config
-      {
+      config = {
         platform: :twitter,
         source_name: @options[:source_name],
         prefix_repost: @options[:prefix_repost],
@@ -70,12 +67,15 @@ module Formatters
         prefix_self_reference: @options[:prefix_self_reference],
         language: @options[:language],
         self_reference_texts: @options[:self_reference_texts],
-        mentions: @options[:mentions],
         url_domain: @options[:url_domain],
         rewrite_domains: @options[:rewrite_domains],
         max_length: @options[:max_length],
         thread_handling: @options[:thread_handling] || { show_indicator: true }
       }
+      # Předáme :mentions pouze pokud bylo explicitně zadáno; jinak necháme
+      # UniversalFormatter použít PLATFORM_DEFAULTS[:twitter][:mentions].
+      config[:mentions] = @options[:mentions] if @options.key?(:mentions)
+      config
     end
 
     # Runtime config that may vary per-post

@@ -468,7 +468,14 @@ tests:
     category: unit
     tags: [offline, twitter, formatter, config]
     exit_code_reliable: true
-    description: "Local mention transformation: domain_suffix_with_local in UniversalFormatter, ConfigLoader#twitter_handle_to_mastodon_map (TASK-7)"
+    description: "Local mention transformation: domain_suffix_with_local + local_or_domain_suffix in UniversalFormatter, ConfigLoader#twitter_handle_to_mastodon_map (TASK-7)"
+
+  test_mentions_improvements:
+    file: test/test_mentions_improvements.rb
+    category: unit
+    tags: [offline, twitter, formatter, processor]
+    exit_code_reliable: true
+    description: "Mentions improvements: local_or_domain_suffix type, build_header integration, contains_mention?, Twitter PLATFORM_DEFAULTS"
 
   test_media_dedup:
     file: test/test_media_dedup.rb
