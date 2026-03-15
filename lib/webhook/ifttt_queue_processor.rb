@@ -29,6 +29,7 @@ require_relative '../formatters/twitter_formatter'
 require_relative '../processors/post_processor'
 require_relative '../processors/edit_detector'
 require_relative '../processors/twitter_tweet_processor'
+require_relative '../processors/media_dedup'
 require_relative 'webhook_payload_parser'
 require_relative 'webhook_edit_handler'
 require_relative 'webhook_thread_handler'
@@ -78,6 +79,9 @@ module Webhook
       # Track published counts per source_id (for mark_check_success)
       @published_sources = Hash.new(0)
 
+      # Media dedup for video SHA-256 fingerprinting (opt-in per source)
+      @media_dedup = Processors::MediaDedup.new(@state_manager, logger: nil)
+
       # Edit detector for Twitter edit deduplication
       @edit_detector = Processors::EditDetector.new(@state_manager, logger: @logger)
 
@@ -124,6 +128,10 @@ module Webhook
       # Cleanup edit buffer at start of each run
       cleanup_count = @edit_detector.cleanup(retention_hours: EDIT_BUFFER_CLEANUP_HOURS)
       log "Edit buffer cleanup: #{cleanup_count} old entries removed" if cleanup_count > 0
+
+      # Cleanup media fingerprints (retain 96h = 4 days, covers 72h dedup window)
+      fp_cleanup = @media_dedup&.cleanup(retention_hours: 96)
+      log "Media fingerprint cleanup: #{fp_cleanup} old entries removed" if fp_cleanup && fp_cleanup > 0
 
       pending_dir = File.join(QUEUE_DIR, 'pending')
       files = Dir.glob(File.join(pending_dir, '*.json')).sort
@@ -408,7 +416,10 @@ module Webhook
     # @param bot_config [Hash] Bot configuration
     # @return [String] Formatted text
     def format_post_text(post, bot_config)
-      formatter = Formatters::TwitterFormatter.new(bot_config[:formatting] || {})
+      formatter_config = (bot_config[:formatting] || {}).merge(
+        mentions: bot_config[:mentions]
+      ).compact
+      formatter = Formatters::TwitterFormatter.new(formatter_config)
       text = formatter.format(post)
 
       # Apply content replacements if configured
@@ -431,6 +442,9 @@ module Webhook
           log "Invalid regex in content_replacements: #{e.message}", level: :warn
         end
       end
+
+      # Apply trimming — same as PostProcessor Step 5
+      text = @post_processor.trim_text(text, bot_config)
 
       # Apply URL processing (domain fixes, URL cleanup) — same as PostProcessor Step 6
       text = @url_step.call(text, bot_config)
@@ -558,20 +572,31 @@ module Webhook
       }
     end
 
-    # Enrich mentions config for Twitter sources with local instance handle map
-    # Transforms domain_suffix → domain_suffix_with_local so that known zpravobot.news
-    # handles (@CT24zive) are rendered as local mentions (@ct24@zpravobot.news)
+    # Enrich mentions config for Twitter sources with local instance handle map.
+    # domain_suffix → domain_suffix_with_local (legacy, zpětná kompatibilita)
+    # local_or_domain_suffix → přidat local_handles mapu (nový typ)
     def enrich_mentions(config)
       mentions = config[:mentions] || {}
-      return config unless mentions[:type].to_s == 'domain_suffix' && config[:platform].to_s == 'twitter'
+      return config unless config[:platform].to_s == 'twitter'
 
-      config.merge(
-        mentions: mentions.merge(
-          type: 'domain_suffix_with_local',
-          local_instance: 'zpravobot.news',
-          local_handles: config_loader.twitter_handle_to_mastodon_map
+      case mentions[:type].to_s
+      when 'domain_suffix'
+        config.merge(
+          mentions: mentions.merge(
+            type: 'domain_suffix_with_local',
+            local_instance: 'zpravobot.news',
+            local_handles: config_loader.twitter_handle_to_mastodon_map
+          )
         )
-      )
+      when 'local_or_domain_suffix'
+        config.merge(
+          mentions: mentions.merge(
+            local_handles: config_loader.twitter_handle_to_mastodon_map
+          )
+        )
+      else
+        config
+      end
     end
 
     def safe_load_source(source_id)

@@ -184,7 +184,7 @@ end
 
 section("Test 3: TwitterFormatter repost/quote headers")
 
-results << test("Twitter repost header contains @username") do
+results << test("Twitter repost header contains @handle@twitter.com (local_or_domain_suffix default)") do
   author = MockAuthor.new(username: 'original', full_name: 'Original')
   post = MockPost.new(
     platform: 'twitter',
@@ -197,11 +197,11 @@ results << test("Twitter repost header contains @username") do
   formatter = Formatters::TwitterFormatter.new(source_name: 'TestBot')
   result = formatter.format(post)
 
-  # Headers intentionally use @username (not profile URLs) to avoid URL preview issues
-  assert_contains(result, '@original', 'Should contain @username in repost header')
+  # Twitter default is local_or_domain_suffix; without local_handles all handles get @twitter.com
+  assert_contains(result, '@original@twitter.com', 'Should contain @handle@twitter.com in repost header')
 end
 
-results << test("Twitter quote header contains @username and post URL is rewritten") do
+results << test("Twitter quote header contains @handle@twitter.com and post URL is rewritten") do
   author = MockAuthor.new(username: 'quoter', full_name: 'Quoter')
   post = MockPost.new(
     platform: 'twitter',
@@ -219,8 +219,8 @@ results << test("Twitter quote header contains @username and post URL is rewritt
   formatter = Formatters::TwitterFormatter.new(source_name: 'TestBot')
   result = formatter.format(post)
 
-  # Headers use @username; post URL (twitter.com) should be rewritten to xcancel.com
-  assert_contains(result, '@quoted_user', 'Should contain @username in quote header')
+  # Twitter default is local_or_domain_suffix; without local_handles all handles get @twitter.com
+  assert_contains(result, '@quoted_user@twitter.com', 'Should contain @handle@twitter.com in quote header')
   assert_contains(result, 'xcancel.com', 'Post URL should be rewritten to xcancel')
 end
 

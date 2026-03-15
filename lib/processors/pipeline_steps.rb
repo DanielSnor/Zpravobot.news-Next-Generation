@@ -19,6 +19,7 @@ module Processors
     :source_id, :post_id, :platform,
     :formatted_text, :processed_text,
     :mastodon_id,
+    :video_data_cache,  # { url: String, data: String, phash: Integer|nil } — pre-downloaded video bytes + pHash for dedup + upload
     keyword_init: true
   )
 

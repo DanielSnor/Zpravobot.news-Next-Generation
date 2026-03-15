@@ -94,6 +94,13 @@ module Orchestrator
 	  log_info("Excluding platform: #{exclude_platform}") if exclude_platform
 
 	  @state_manager.connect
+	  # Cleanup media fingerprints once per run (retain 96h = 4 days)
+	  begin
+	    fp_cleanup = @state_manager.cleanup_media_fingerprints(retention_hours: 96)
+	    log_info("Media fingerprint cleanup: #{fp_cleanup} old entries removed") if fp_cleanup && fp_cleanup > 0
+	  rescue StandardError => e
+	    log_warn("Media fingerprint cleanup failed: #{e.message}")
+	  end
 	  sources = @config_loader.load_all_sources
 	  sources = sources.select { |s| s.dig(:scheduling, :priority) == priority } if priority
 	  sources = sources.reject { |s| s[:platform] == exclude_platform } if exclude_platform
@@ -354,17 +361,28 @@ module Orchestrator
 	  }
 	end
 
-	# Build mentions config — enriches domain_suffix for Twitter sources
+	# Build mentions config — enriches domain_suffix and local_or_domain_suffix for Twitter sources
 	# with local instance handles for zpravobot.news mention transformation
 	def build_mentions_config(source)
 	  base = source.mentions || {}
-	  return base unless base[:type].to_s == 'domain_suffix' && source.platform.to_s == 'twitter'
+	  return base unless source.platform.to_s == 'twitter'
 
-	  base.merge(
-	    type: 'domain_suffix_with_local',
-	    local_instance: 'zpravobot.news',
-	    local_handles: @config_loader.twitter_handle_to_mastodon_map
-	  )
+	  case base[:type].to_s
+	  when 'domain_suffix'
+	    # Legacy: obohatit na domain_suffix_with_local (zachovat zpětnou kompatibilitu)
+	    base.merge(
+	      type: 'domain_suffix_with_local',
+	      local_instance: 'zpravobot.news',
+	      local_handles: @config_loader.twitter_handle_to_mastodon_map
+	    )
+	  when 'local_or_domain_suffix'
+	    # Nový typ: přidat local_handles mapu
+	    base.merge(
+	      local_handles: @config_loader.twitter_handle_to_mastodon_map
+	    )
+	  else
+	    base
+	  end
 	end
 
 	# ============================================

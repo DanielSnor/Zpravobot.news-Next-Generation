@@ -2,7 +2,7 @@
 
 > **Verze exportu:** 2026-02-04  
 > **Status:** Produkční  
-> **Poslední aktualizace:** 2026-03-02
+> **Poslední aktualizace:** 2026-03-13
 
 ---
 
@@ -1141,16 +1141,44 @@ Twitter mentions (`@username`) ZBNW-NG může transformovat různými způsoby.
 | `prefix` | `https://twitter.com/` | `@ct24zive` | `https://twitter.com/ct24zive` |
 | `suffix` | `https://twitter.com/` | `@ct24zive` | `@ct24zive (https://twitter.com/ct24zive)` |
 | `domain_suffix` | `twitter.com` | `@ct24zive` | `@ct24zive@twitter.com` |
+| `domain_suffix_with_local` | `twitter.com` + local map | `@ct24zive` (lokální) | `@ct24@zpravobot.news` |
+| `domain_suffix_with_local` | `twitter.com` + local map | `@mistnirozvoj` (cizí) | `@mistnirozvoj@twitter.com` |
+| `local_or_domain_suffix` | `twitter.com` + local map | `@ct24zive` (lokální) | `@ct24` (holý — Mastodon resolvne lokálně) |
+| `local_or_domain_suffix` | `twitter.com` + local map | `@mistnirozvoj` (cizí) | `@mistnirozvoj@twitter.com` |
 
-### Aktuální nastavení
+**Rozdíl `domain_suffix_with_local` vs `local_or_domain_suffix`:**
+- `domain_suffix_with_local`: lokální handle → `@mastodon_id@zpravobot.news` (plná adresa)
+- `local_or_domain_suffix`: lokální handle → `@mastodon_id` (holý, Mastodon resolvne sám — vytvoří klikatelný profil + notifikaci)
+
+### Aktuální nastavení (Twitter platform default)
 
 ```yaml
 mentions:
-  type: "domain_suffix"
+  type: "local_or_domain_suffix"
   value: "twitter.com"
 ```
 
-**Výsledek:** `@username` → `@username@twitter.com`
+**Výsledek:**
+- Lokální zpravobot.news účty → holý `@mastodon_id` (klikatelný profil, případně notifikace)
+- Ostatní Twitter handles → `@handle@twitter.com`
+
+Local handles mapa se automaticky buduje z Twitter sources s `mastodon_instance: https://zpravobot.news` (viz `ConfigLoader#twitter_handle_to_mastodon_map`).
+
+### Mentions v hlavičce repostu/quotu
+
+`build_header` v `UniversalFormatter` používá stejnou `format_single_mention` logiku jako tělo tweetu. Příklady:
+- Repost od lokálního `@strakovka` → `Úřad vlády ČR 𝕏🔁 @strakovka:`
+- Repost od cizího `@mistnirozvoj` → `Úřad vlády ČR 𝕏🔁 @mistnirozvoj@twitter.com:`
+
+### Profile card blocker (dummy obrázek)
+
+Mastodon zobrazí profile card prvního zmíněného profilu v textu pokud post nemá žádnou jinou přílohu. Toto je matoucí chování — čtenář vidí profil místo link card článku.
+
+**Řešení:** `PostProcessor` automaticky přidá průhledný 1×1px PNG (`assets/transparent_1x1.png`) jako dummy přílohu pokud:
+1. Post obsahuje mention (`@handle` nebo `@handle@domain`)
+2. Post nemá žádná jiná média (obrázky, video)
+
+Upload dummy PNG je non-fatal — pokud selže, post se publikuje normálně bez přílohy.
 
 ---
 

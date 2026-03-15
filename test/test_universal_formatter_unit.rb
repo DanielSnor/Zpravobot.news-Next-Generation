@@ -313,8 +313,8 @@ test("Empty title", false,
 # =============================================================================
 section("Mention Formatting")
 
-# type: none (default)
-fmt_none = Formatters::UniversalFormatter.new(platform: :twitter)
+# type: none (explicitně zadaný; Twitter default je nyní local_or_domain_suffix)
+fmt_none = Formatters::UniversalFormatter.new(platform: :twitter, mentions: { type: 'none', value: '' })
 config_none = fmt_none.instance_variable_get(:@config)
 test("Mentions none: unchanged", '@user hello',
      fmt_none.send(:format_mentions, '@user hello', config_none))

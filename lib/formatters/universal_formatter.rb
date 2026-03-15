@@ -90,7 +90,7 @@ module Formatters
         prefix_post_url: "\n",
         url_domain: TWITTER_URL_DOMAIN,
         rewrite_domains: TWITTER_REWRITE_DOMAINS,
-        mentions: { type: 'none', value: '' },  # Bez URL transformace (kvůli náhledům)
+        mentions: { type: 'local_or_domain_suffix', value: 'twitter.com' },  # Mentions transformace (local → holý, ostatní → @handle@twitter.com)
         include_post_url_for_regular: false  # Twitter: URL jen s link card nebo Tier 3
       },
       bluesky: {
@@ -403,9 +403,9 @@ module Formatters
       target_display = if is_self
         self_reference_text(config)
       else
-        "@#{target}"  # Plain @username, bez URL transformace (kvůli náhledům)
+        format_single_mention(target.to_s, config[:mentions] || {})
       end
-      
+
       "#{source} #{prefix} #{target_display}:"
     end
 
@@ -472,9 +472,23 @@ module Formatters
         local_handles = mentions_config[:local_handles] || {}
         local_instance = mentions_config[:local_instance].to_s
         key = username.downcase
-        if !local_instance.empty? && local_handles.key?(key)
-          "@#{local_handles[key]}@#{local_instance}"
+        # local_handles mohou mít String nebo Symbol klíče (po průchodu symbolize_keys)
+        mastodon_id = local_handles[key] || local_handles[key.to_sym]
+        if !local_instance.empty? && mastodon_id
+          "@#{mastodon_id}@#{local_instance}"
         else
+          "@#{username}@#{value}"
+        end
+      when 'local_or_domain_suffix'
+        local_handles = mentions_config[:local_handles] || {}
+        key = username.downcase
+        # local_handles mohou mít String nebo Symbol klíče (po průchodu symbolize_keys)
+        mastodon_id = local_handles[key] || local_handles[key.to_sym]
+        if mastodon_id
+          # Lokální handle — holý @mastodon_id, Mastodon resolvne lokálně
+          "@#{mastodon_id}"
+        else
+          # Nelokální — přidat doménu
           "@#{username}@#{value}"
         end
       else

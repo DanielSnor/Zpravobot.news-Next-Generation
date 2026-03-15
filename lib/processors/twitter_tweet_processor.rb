@@ -60,6 +60,11 @@ module Processors
     RETRY_ATTEMPTS = 3
     RETRY_DELAYS   = [1, 2, 4].freeze   # sekundy, exponential backoff
 
+    SYNDICATION_SKIP_URL_PATTERNS = [
+      %r{twimg\.com}, %r{twitter\.com}, %r{x\.com/}, %r{nitter\.},
+      %r{/(?:photo|video)/\d+}, %r{/status/\d+}
+    ].freeze
+
     # @param state_manager [State::StateManager]  DB state manager (ThreadingSupport + PostProcessor)
     # @param config_loader [Config::ConfigLoader]  Config loader (PostProcessor + publisher credentials)
     # @param nitter_instance [String, nil]  Globální Nitter URL (může být přepsán přes source_config)
@@ -308,6 +313,14 @@ module Processors
       expanded = expanded.gsub(%r{https?://[^\s]+/status/\d+[^\s]*}, '').strip
       final_text = FormatHelpers.clean_text(expanded)
 
+      # Extract article URL for OGP fetching — stored before formatting loses it.
+      # Prefers the expanded URL (after t.co → real URL). Skips Twitter/media CDN URLs.
+      # If t.co expansion failed, the t.co URL is stored as fallback (PostProcessor will
+      # try to expand it later via HEAD request).
+      link_card_url = expanded.scan(%r{https?://[^\s>)]+}).map { |u| u.sub(/[.,;:!?…]+$/, '') }.find do |u|
+        SYNDICATION_SKIP_URL_PATTERNS.none? { |pat| u.match?(pat) }
+      end
+
       # Media
       media = []
       syndication[:photos].each do |photo_url|
@@ -367,7 +380,9 @@ module Processors
           tier: 3.5,
           nitter_failed: true,
           ifttt_trigger: ifttt_trigger,
-          video_thumbnail_url: syndication[:video_thumbnail]
+          video_thumbnail_url: syndication[:video_thumbnail],
+          link_card_url: link_card_url,  # Article URL pro OGP fetch (nil pokud nebyla nalezena)
+          card_image: syndication[:card_image] # Twitter pre-fetched card image (pbs.twimg.com)
         }
       )
     end

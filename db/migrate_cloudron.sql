@@ -244,6 +244,51 @@ $$ LANGUAGE plpgsql;
 COMMENT ON FUNCTION zpravobot.cleanup_edit_detection_buffer IS 'Smaže záznamy starší než retention_hours (default 2)';
 
 -- ============================================================
+-- Tabulka: media_fingerprints
+-- SHA-256 fingerprints médií pro video deduplikaci (retence 96h)
+-- ============================================================
+
+CREATE TABLE IF NOT EXISTS media_fingerprints (
+    id          BIGSERIAL PRIMARY KEY,
+    source_id   VARCHAR(100) NOT NULL,
+    sha256_hash VARCHAR(64) NOT NULL,
+    post_id     VARCHAR(255),
+    media_url   TEXT,
+    created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+COMMENT ON TABLE media_fingerprints IS 'SHA-256 fingerprints médií pro video deduplikaci (retence 96h)';
+COMMENT ON COLUMN media_fingerprints.source_id IS 'Identifikátor zdroje/bota — deduplikace je per-source';
+COMMENT ON COLUMN media_fingerprints.sha256_hash IS 'SHA-256 hex digest binárních dat videa';
+COMMENT ON COLUMN media_fingerprints.post_id IS 'ID postu při prvním výskytu videa (pro diagnostiku)';
+COMMENT ON COLUMN media_fingerprints.media_url IS 'URL média při prvním výskytu (pro diagnostiku)';
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_media_fp_source_hash
+    ON media_fingerprints (source_id, sha256_hash);
+
+CREATE INDEX IF NOT EXISTS idx_media_fp_created
+    ON media_fingerprints (created_at);
+
+-- Migrace: přidat phash_int pokud neexistuje (pro existující DB)
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_schema = 'zpravobot'
+        AND table_name = 'media_fingerprints'
+        AND column_name = 'phash_int'
+    ) THEN
+        ALTER TABLE media_fingerprints
+        ADD COLUMN phash_int BIGINT;
+
+        COMMENT ON COLUMN media_fingerprints.phash_int IS
+            'aHash (average hash) 64-bit integer via ImageMagick; NULL pro URL-hash záznamy (videa >10MB)';
+
+        RAISE NOTICE 'Sloupec phash_int přidán do media_fingerprints';
+    END IF;
+END $$;
+
+-- ============================================================
 -- Výstup
 -- ============================================================
 
@@ -253,6 +298,7 @@ COMMENT ON FUNCTION zpravobot.cleanup_edit_detection_buffer IS 'Smaže záznamy 
 \echo '✅ Tabulka source_state (včetně last_reset)'
 \echo '✅ Tabulka activity_log'
 \echo '✅ Tabulka edit_detection_buffer (včetně cleanup funkce)'
+\echo '✅ Tabulka media_fingerprints (video pHash deduplikace — sha256_hash + phash_int)'
 \echo ''
 \echo 'Ověření:'
 \echo '  SELECT column_name FROM information_schema.columns'

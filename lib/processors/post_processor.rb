@@ -18,9 +18,42 @@
 # 8. Publish to Mastodon (or update existing)
 # 9. Mark as published + add to edit buffer
 
+require 'digest'
 require_relative '../support/loggable'
 require_relative '../errors'
 require_relative 'pipeline_steps'
+
+# Media deduplication (lazy loaded — guards against LoadError in unit tests)
+begin
+  require_relative 'media_dedup'
+  MEDIA_DEDUP_AVAILABLE = true unless defined?(MEDIA_DEDUP_AVAILABLE)
+rescue LoadError
+  MEDIA_DEDUP_AVAILABLE = false unless defined?(MEDIA_DEDUP_AVAILABLE)
+end
+
+# HttpClient for video pre-download in dedup step (lazy loaded)
+begin
+  require_relative '../utils/http_client'
+  HTTP_CLIENT_AVAILABLE = true unless defined?(HTTP_CLIENT_AVAILABLE)
+rescue LoadError
+  HTTP_CLIENT_AVAILABLE = false unless defined?(HTTP_CLIENT_AVAILABLE)
+end
+
+# ThumbnailPhash for aHash via ImageMagick (lazy loaded)
+begin
+  require_relative 'thumbnail_phash'
+  THUMBNAIL_PHASH_AVAILABLE = true unless defined?(THUMBNAIL_PHASH_AVAILABLE)
+rescue LoadError
+  THUMBNAIL_PHASH_AVAILABLE = false unless defined?(THUMBNAIL_PHASH_AVAILABLE)
+end
+
+# OGP fetcher for link card preview images (lazy loaded)
+begin
+  require_relative '../utils/ogp_fetcher'
+  OGP_FETCHER_AVAILABLE = true unless defined?(OGP_FETCHER_AVAILABLE)
+rescue LoadError
+  OGP_FETCHER_AVAILABLE = false unless defined?(OGP_FETCHER_AVAILABLE)
+end
 
 # Formatters (lazy loaded - expected to be required by caller)
 # require_relative '../formatters/twitter_formatter'
@@ -40,9 +73,18 @@ rescue LoadError
   EDIT_DETECTOR_AVAILABLE = false
 end
 
+TRANSPARENT_1X1_PNG_PATH = File.join(__dir__, '../../assets/transparent_1x1.png')
+
 module Processors
   class PostProcessor
     include Support::Loggable
+
+    # Platform/tracking domains to skip when looking for article URLs in post text.
+    # Avoids fetching OGP from tweet URLs, Bluesky links, or our own domains.
+    OGP_SKIP_DOMAINS = %w[
+      twitter.com x.com t.co bsky.app bsky.social
+      zpravobot.news nitter xcancel.com
+    ].freeze
 
     # Result struct for processing outcome
     Result = Struct.new(:status, :mastodon_id, :error, :skipped_reason, keyword_init: true) do
@@ -156,9 +198,36 @@ module Processors
 
       # Step 6: Process URLs
       processed_text = @url_step.call(processed_text, source_config)
-      
+
       # Callback for verbose logging
       options[:on_final]&.call(processed_text)
+
+      # Step 6b: Video dedup check (opt-in per source, skipped in dry_run)
+      video_dedup_hours = source_config.dig(:processing, :video_dedup_hours)
+      video_data_cache = nil
+      if !@dry_run && video_dedup_hours && MEDIA_DEDUP_AVAILABLE && HTTP_CLIENT_AVAILABLE
+        video_data_cache = check_video_dedup(source_id, post_id, post, video_dedup_hours.to_i)
+        if video_data_cache == :duplicate
+          mark_skipped(source_id, post_id, 'duplicate_video')
+          return Result.new(status: :skipped, skipped_reason: 'duplicate_video')
+        end
+      end
+
+      # Step 6c: OGP fetch (opt-in, only when post has no media and feature is available)
+      if !@dry_run && OGP_FETCHER_AVAILABLE &&
+         source_config.dig(:processing, :ogp_fetch_link_card)
+        if post.media.empty?
+          ogp_url = fetch_ogp_image_for_post(post, processed_text, source_id)
+          if ogp_url
+            post.media << Media.new(type: 'image', url: ogp_url, alt_text: '')
+            log_info("[#{source_id}] OGP: Přidán obrázek #{ogp_url}")
+          else
+            log_info("[#{source_id}] OGP: og:image nenalezen nebo fetch selhal")
+          end
+        else
+          log_debug("[#{source_id}] OGP: přeskočen — post již má #{post.media.size} médium/médií")
+        end
+      end
 
       # Step 7-8: Publish (or dry run)
       if @dry_run
@@ -170,7 +239,8 @@ module Processors
         processed_text,
         post,
         source_config,
-        in_reply_to_id: options[:in_reply_to_id]
+        in_reply_to_id: options[:in_reply_to_id],
+        video_data_cache: video_data_cache
       )
 
       unless publish_result[:success]
@@ -181,7 +251,7 @@ module Processors
       # Step 9: Mark as published
       mastodon_id = publish_result[:mastodon_id]
       mark_published(source_id, post, mastodon_id)
-      
+
       # Add to edit buffer for future edit detection
       if @edit_step.enabled?(platform) && mastodon_id
         begin
@@ -190,7 +260,19 @@ module Processors
           log_warn("[EditBuffer] Failed to add: #{e.message}")
         end
       end
-      
+
+      # Step 9b: Store video fingerprint after successful publication.
+      # Only stored when phash is available — records without phash can never trigger dedup.
+      if video_data_cache.is_a?(Hash) && video_data_cache[:phash] && MEDIA_DEDUP_AVAILABLE
+        begin
+          media_dedup.store!(source_id, video_data_cache[:data],
+                             post_id: post_id, media_url: video_data_cache[:url],
+                             phash_int: video_data_cache[:phash])
+        rescue StandardError => e
+          log_warn("[MediaDedup] Failed to store fingerprint: #{e.message}")
+        end
+      end
+
       log_info("[#{source_id}] Published: #{mastodon_id}")
       Result.new(status: :published, mastodon_id: mastodon_id)
 
@@ -200,7 +282,64 @@ module Processors
       Result.new(status: :failed, error: e.message)
     end
 
+    # Public wrapper around process_content for use in edit paths that need
+    # identical trimming behaviour as the normal publish pipeline (Step 5).
+    def trim_text(text, source_config, fallback_url: nil)
+      process_content(text, source_config, fallback_url: fallback_url)
+    end
+
     private
+
+    # ============================================
+    # Video Dedup helpers
+    # ============================================
+
+    def media_dedup
+      @media_dedup ||= Processors::MediaDedup.new(@state_manager, logger: @logger || as_logger)
+    end
+
+    # Download video and check for duplicate.
+    # Returns:
+    #   :duplicate                     — video already published, skip post
+    #   { url:, data: String, phash: } — new video, data + pHash cached for upload step
+    #   nil                            — no video found or all downloads failed (proceed normally)
+    def check_video_dedup(source_id, post_id, post, hours)
+      return nil unless post.respond_to?(:media)
+
+      video_media = Array(post.media).find { |m| m.respond_to?(:type) && m.type == 'video' }
+      return nil unless video_media&.url
+
+      begin
+        urls_to_try = ([video_media.url] + Array(video_media.url_variants).reject { |u| u == video_media.url }).compact
+
+        video_url = nil
+        video_data = nil
+
+        urls_to_try.each do |url|
+          response = HttpClient.download(url, max_size: 10 * 1024 * 1024)
+          next if response.nil? || response == :too_large || response.body.nil? || response.body.empty?
+
+          video_url = url
+          video_data = response.body
+          break
+        end
+
+        return nil unless video_data
+
+        # pHash path: perceptual hash via ImageMagick, robust against re-encoding.
+        # If phash is nil (ImageMagick unavailable or frame extraction failed), skip dedup entirely.
+        phash = THUMBNAIL_PHASH_AVAILABLE ? Processors::ThumbnailPhash.compute(video_data) : nil
+        if phash && media_dedup.duplicate_by_phash?(source_id, phash, hours: hours)
+          log_info("[#{source_id}] Video dedup (pHash): skipping duplicate for post #{post_id}")
+          return :duplicate
+        end
+
+        { url: video_url, data: video_data, phash: phash }
+      rescue StandardError => e
+        log_warn("[#{source_id}] Video dedup check failed (proceeding): #{e.message}")
+        nil
+      end
+    end
 
     # ============================================
     # Edit Detection helpers
@@ -417,10 +556,18 @@ module Processors
       truncation = source_config[:truncation] || {}
 
       # Priority: truncation.max_length (instance-specific) > formatting.max_length > processing.max_length > 500
-      # truncation.max_length is set per-bot to match the Mastodon instance character limit.
-      # processing.max_length is a platform-level fallback (e.g. 2400 for Twitter) and must
-      # not override the bot-specific instance limit.
-      max_length = truncation[:max_length] || formatting[:max_length] || processing[:max_length] || 500
+      # truncation.max_length is a hard per-bot limit matching the Mastodon instance character limit — trim exactly to it.
+      # processing.max_length is a platform-level soft limit (e.g. 2400 for Twitter) — trim to 90% of it
+      # to leave headroom for post-trim additions (URL rewriting, video fallback URLs, etc.).
+      # Standard Mastodon limit (≤500) uses exact value — no headroom factor needed.
+      soft_max = truncation[:max_length] || formatting[:max_length] || processing[:max_length] || 500
+      max_length = if truncation[:max_length]
+                     soft_max              # Hard per-bot limit: use exactly
+                   elsif soft_max > 500
+                     (soft_max * 0.9).to_i # High soft limit (e.g. Twitter 2400): apply 90% headroom
+                   else
+                     soft_max              # Standard Mastodon limit (≤500): use exactly
+                   end
       strategy = (processing[:trim_strategy] || 'smart').to_sym
       tolerance = processing[:smart_tolerance_percent] || 12
 
@@ -443,10 +590,17 @@ module Processors
         url_suffix = "\n#{read_more_prefix}#{fallback_url}"
       end
 
-      # max_length is the limit for the full post (body + suffix).
-      # Reduce effective body budget by the suffix length so the total stays within max_length.
+      # effective_max is the budget for the text body (before suffix is re-attached).
+      # When max_length is a total-post limit (Mastodon instance limit ≥500 or explicit truncation.max_length),
+      # subtract suffix_len so the full post (body + suffix) stays within the limit.
+      # When max_length is a body-only limit (e.g. RSS platform max_length: 200), the suffix is appended
+      # separately and does NOT count towards the body budget — do not subtract.
       suffix_len = url_suffix ? url_suffix.length : 0
-      effective_max = max_length - suffix_len
+      effective_max = if truncation[:max_length] || max_length >= 500
+                        max_length - suffix_len  # Total-post limit: make room for suffix
+                      else
+                        max_length               # Body-only limit: suffix is appended on top
+                      end
 
       # Process
       processor = Processors::ContentProcessor.new(
@@ -499,12 +653,12 @@ module Processors
     # Step 7-8: Publishing
     # ============================================
 
-    def publish_post(text, post, source_config, in_reply_to_id: nil)
+    def publish_post(text, post, source_config, in_reply_to_id: nil, video_data_cache: nil)
       publisher = get_publisher(source_config)
       visibility = source_config.dig(:target, :visibility) || 'public'
-    
-      # Upload media
-      media_ids = upload_media(publisher, post)
+
+      # Upload media (pass pre-downloaded video data if available to avoid double download)
+      media_ids = upload_media(publisher, post, video_data_cache: video_data_cache)
     
       # Video fallback: pokud měl post video (type: 'video' v media NEBO post.has_video) ale upload selhal,
       # zkus nejdřív nahrát thumbnail ze Syndication API jako náhradní obrázek;
@@ -541,6 +695,13 @@ module Processors
         end
       end
     
+      # Profile card blocker: pokud text obsahuje mention ale nemáme žádná média,
+      # přidáme průhledný 1×1px PNG aby Mastodon nezobrazil profile card prvního zmíněného profilu.
+      if media_ids.empty? && contains_mention?(text)
+        dummy_id = upload_dummy_transparent_image(publisher)
+        media_ids = [dummy_id] if dummy_id
+      end
+
       # Publish
       begin
         result = publisher.publish(
@@ -551,7 +712,7 @@ module Processors
         )
       rescue StandardError => e
         # Fallback: if parent post doesn't exist, retry as standalone
-        if in_reply_to_id && e.message =~ /Record not found|neexistuje/i
+        if in_reply_to_id && e.message =~ /Record not found|neexistuje|does not appear to exist/i
           log_warn "Thread parent #{in_reply_to_id} not found, publishing as standalone"
           result = publisher.publish(
             text,
@@ -569,11 +730,11 @@ module Processors
       { success: false, error: e.message }
     end
 
-    def upload_media(publisher, post)
+    def upload_media(publisher, post, video_data_cache: nil)
       return [] unless post.respond_to?(:media) && post.media
       return [] if post.media.empty?
 
-      # Filter out non-uploadable media types before parallel upload
+      # Filter out non-uploadable media types before upload
       uploadable = post.media.reject do |media|
         media.type == 'link_card' ||
           (media.type == 'video_thumbnail' && post.media.any? { |m| m.type == 'video' })
@@ -581,7 +742,26 @@ module Processors
 
       return [] if uploadable.empty?
 
-      # Build items for parallel upload (publisher handles MAX_MEDIA_COUNT limit)
+      # If we have pre-downloaded video bytes, upload the cached video directly
+      # to avoid downloading it a second time; upload other media items normally.
+      # When data is nil (large video >10MB), skip cache and fall through to URL-based upload.
+      if video_data_cache.is_a?(Hash) && !video_data_cache[:data].nil?
+        cached_url = video_data_cache[:url]
+        cached_data = video_data_cache[:data]
+        media_ids = []
+        uploadable.each do |media|
+          if media.url == cached_url
+            mid = publisher.upload_media_from_data(cached_data, url: cached_url, description: media.alt_text)
+            media_ids << mid if mid
+          else
+            items = [{ url: media.url, description: media.alt_text, url_variants: media.url_variants }]
+            media_ids.concat(publisher.upload_media_parallel(items))
+          end
+        end
+        return media_ids
+      end
+
+      # Default: parallel URL-based upload (publisher handles MAX_MEDIA_COUNT limit)
       media_items = uploadable.map do |media|
         { url: media.url, description: media.alt_text, url_variants: media.url_variants }
       end
@@ -640,6 +820,144 @@ module Processors
 
     def mark_skipped(source_id, post_id, reason)
       @state_manager.log_skip(source_id, post_id: post_id, reason: reason)
+    end
+
+    # ============================================
+    # Profile Card Blocker (Dummy Image)
+    # ============================================
+
+    # Detects presence of a Mastodon-resolvable mention (@handle or @handle@domain)
+    # in formatted text. Uses same negative lookbehind as format_mentions regex
+    # to avoid false positives on email addresses (user@domain.com).
+    # @param text [String] Formatted Mastodon text
+    # @return [Boolean]
+    def contains_mention?(text)
+      return false if text.nil? || text.empty?
+      text.match?(/(?<![.\w\/])@\w+/)
+    end
+
+    # Upload transparent 1×1px PNG to prevent Mastodon profile card hijack.
+    # Called when post has mentions but no other media attachments.
+    # Non-fatal: returns nil on failure (post continues without dummy image).
+    # @param publisher [Publishers::MastodonPublisher]
+    # @return [String, nil] Media ID or nil on failure
+    def upload_dummy_transparent_image(publisher)
+      unless File.exist?(TRANSPARENT_1X1_PNG_PATH)
+        log_warn("Dummy transparent PNG not found: #{TRANSPARENT_1X1_PNG_PATH}")
+        return nil
+      end
+
+      data = File.binread(TRANSPARENT_1X1_PNG_PATH)
+      result = publisher.upload_media(
+        data,
+        filename: 'transparent.png',
+        content_type: 'image/png',
+        description: nil
+      )
+      log_info("  📎 Dummy 1×1px image uploaded (profile card blocker)") if result
+      result
+    rescue StandardError => e
+      log_warn("  Dummy image upload failed: #{e.message}")
+      nil
+    end
+
+    # ============================================
+    # Step 6c: OGP Image Fetch
+    # ============================================
+
+    # Locate the article URL in the post and attempt to fetch its og:image.
+    #
+    # Tři fallback vrstvy pro URL:
+    #   1. post.raw[:link_card_url] — uložena během build_syndication_post z expandovaného textu
+    #      (spolehlivá i pokud se expand_tco_links zdaří; t.co URL se expanduje on-the-fly)
+    #   2. První non-platform URL v processed_text (po formátování a URL rewriting)
+    #   3. První non-platform URL v post.text (před formátováním — záloha)
+    #
+    # @param post [Post] Post object
+    # @param processed_text [String] Post text after URL processing (t.co expanded)
+    # @param source_id [String] Source identifier for logging
+    # @return [String, nil] og:image URL or nil
+    def fetch_ogp_image_for_post(post, processed_text, source_id = nil)
+      # Priority 0: card image ze Syndication API (Twitter ji pre-fetchuje sám → pbs.twimg.com)
+      # Nevyžaduje scraping cílového článku, obchází blokování třetích stran.
+      if post.raw.is_a?(Hash)
+        card_image = post.raw[:card_image]
+        if card_image.to_s.start_with?('https://')
+          log_info("[#{source_id}] OGP: card image ze Syndication API → #{card_image}") if source_id
+          return card_image
+        end
+      end
+
+      fetcher = Utils::OgpFetcher.new
+      article_url = nil
+
+      # Priority 1: post.raw[:link_card_url] — uložena v build_syndication_post
+      raw_link = post.raw.is_a?(Hash) ? post.raw[:link_card_url].to_s : ''
+      if raw_link.start_with?('http://', 'https://')
+        # Pokud je stále t.co → expandovat on-the-fly přes HEAD request
+        if raw_link.include?('t.co/')
+          expanded = expand_tco_url(raw_link)
+          article_url = expanded if expanded && !expanded.include?('t.co/')
+          log_info("[#{source_id}] OGP: t.co expandováno → #{article_url || '(selhalo)'}") if source_id
+        else
+          article_url = raw_link
+        end
+        log_info("[#{source_id}] OGP: URL z post.raw → #{article_url}") if source_id && article_url
+      end
+
+      # Priority 2: první non-platform URL v processed_text
+      unless article_url
+        article_url = extract_article_url_from_text(processed_text)
+        log_info("[#{source_id}] OGP: URL z processed_text → #{article_url}") if source_id && article_url
+      end
+
+      # Priority 3: první non-platform URL přímo v post.text (před formátováním)
+      unless article_url
+        article_url = extract_article_url_from_text(post.respond_to?(:text) ? post.text.to_s : '')
+        log_info("[#{source_id}] OGP: URL z post.text → #{article_url}") if source_id && article_url
+      end
+
+      unless article_url
+        log_info("[#{source_id}] OGP: žádná article URL nenalezena (t.co v textu? platforma bez URL?)") if source_id
+        return nil
+      end
+
+      fetcher.fetch_og_image(article_url)
+    rescue StandardError => e
+      log_warn("[OGP] fetch_ogp_image_for_post failed: #{e.message}")
+      nil
+    end
+
+    # Extract the first URL from text that is not a social/platform URL.
+    # Strips trailing punctuation from matched URLs (., , ; : ! ? etc.)
+    #
+    # @param text [String] Post text
+    # @return [String, nil] First article URL or nil
+    def extract_article_url_from_text(text)
+      return nil if text.nil? || text.empty?
+
+      urls = text.scan(%r{https?://[^\s>)]+})
+      urls.each do |raw_url|
+        # Strip trailing punctuation that regex may have captured
+        url = raw_url.sub(/[.,;:!?…]+$/, '')
+        next if OGP_SKIP_DOMAINS.any? { |domain| url.include?(domain) }
+        return url
+      end
+      nil
+    end
+
+    # Expand a single t.co URL via HTTP HEAD redirect.
+    # Used as on-the-fly fallback when post.raw[:link_card_url] is still a t.co link.
+    #
+    # @param tco_url [String] t.co URL
+    # @return [String, nil] Expanded URL or nil on failure
+    def expand_tco_url(tco_url)
+      return nil unless HTTP_CLIENT_AVAILABLE
+
+      response = HttpClient.head(tco_url, open_timeout: 3, read_timeout: 3)
+      response['location'] if response.is_a?(Net::HTTPRedirection)
+    rescue StandardError
+      nil
     end
 
     # ============================================

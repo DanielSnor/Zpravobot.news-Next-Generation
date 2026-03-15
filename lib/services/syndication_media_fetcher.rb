@@ -158,6 +158,7 @@ module Services
         video_thumbnail: extract_video_thumbnail(data),
         video_url: extract_video_url(data),
         video_url_variants: extract_video_url_variants(data),
+        card_image: extract_card_image(data),
         display_name: data.dig('user', 'name'),
         username: data.dig('user', 'screen_name'),
         created_at: data['created_at'],
@@ -278,6 +279,23 @@ module Services
       video_media&.dig('media_url_https')
     end
     
+    # Extract card image URL from Syndication API card data.
+    # Twitter pre-fetches og:image and stores it on pbs.twimg.com — avoids
+    # scraping third-party article pages that may block bots.
+    #
+    # @param data [Hash] Parsed JSON
+    # @return [String, nil] Card image URL or nil
+    def extract_card_image(data)
+      bv = data.dig('card', 'binding_values')
+      return nil unless bv.is_a?(Hash)
+
+      %w[photo_image_full_size_large thumbnail_image_large thumbnail_image].each do |key|
+        url = bv.dig(key, 'image_value', 'url')
+        return url if url.to_s.start_with?('https://')
+      end
+      nil
+    end
+
     # Build failure result hash
     #
     # @param error [String] Error message
@@ -291,6 +309,7 @@ module Services
         video_thumbnail: nil,
         video_url: nil,
         video_url_variants: [],
+        card_image: nil,
         display_name: nil,
         username: nil,
         created_at: nil,
