@@ -187,7 +187,10 @@ module Config
         map[mastodon_account.to_s.downcase] = mastodon_account.to_s
 
         # Layer 2: explicit Twitter handle (only for Twitter sources)
+        # Přeskočit pokud source.local_handle: false — zdroj je agregátor,
+        # ne kanonický mirror daného Twitter handle (např. betabot_ct24zive_twitter)
         next unless source_hash[:platform].to_s == 'twitter'
+        next if source_hash.dig(:source, :local_handle) == false
         handle = source_hash.dig(:source, :handle)
         map[handle.to_s.downcase] = mastodon_account.to_s if handle
       end

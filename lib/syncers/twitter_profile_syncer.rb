@@ -143,6 +143,10 @@ module Syncers
       log "  Nitter: #{nitter_instance}"
     end
 
+    def build_profile_url(handle)
+      "https://x.com/#{handle}"
+    end
+
     def build_profile_url_fallback(handle)
       "https://x.com/#{handle}"
     end

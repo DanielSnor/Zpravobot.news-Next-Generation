@@ -18,8 +18,10 @@ require_relative '../lib/processors/media_dedup'
 
 # Mock StateManager — in-memory fingerprint store
 class MockStateManagerDedup
+  HAMMING_THRESHOLD = 10
+
   def initialize
-    @fingerprints = {}  # "source_id:hash" => { post_id:, created_at: }
+    @fingerprints = {}  # "source_id:hash" => { post_id:, media_url:, phash_int:, created_at: }
   end
 
   def find_media_fingerprint(source_id, sha256_hash, hours:)
@@ -31,9 +33,22 @@ class MockStateManagerDedup
     entry
   end
 
-  def store_media_fingerprint(source_id:, sha256_hash:, post_id: nil, media_url: nil)
+  def find_similar_media_phash(source_id, phash_int, hours:, threshold: HAMMING_THRESHOLD)
+    cutoff = Time.now - (hours * 3600)
+    @fingerprints.each do |key, entry|
+      next unless key.start_with?("#{source_id}:")
+      next if entry[:created_at] < cutoff
+      next if entry[:phash_int].nil?
+
+      distance = (phash_int ^ entry[:phash_int]).to_s(2).count('1')
+      return { post_id: entry[:post_id], distance: distance } if distance <= threshold
+    end
+    nil
+  end
+
+  def store_media_fingerprint(source_id:, sha256_hash:, post_id: nil, media_url: nil, phash_int: nil)
     key = "#{source_id}:#{sha256_hash}"
-    @fingerprints[key] ||= { post_id: post_id, media_url: media_url, created_at: Time.now }
+    @fingerprints[key] ||= { post_id: post_id, media_url: media_url, phash_int: phash_int, created_at: Time.now }
     true
   end
 
@@ -50,6 +65,18 @@ class MockStateManagerDedup
     @fingerprints[key] = {
       post_id: 'old_post',
       media_url: nil,
+      phash_int: nil,
+      created_at: Time.now - (age_hours * 3600)
+    }
+  end
+
+  # Test helper — inject a fingerprint with specific phash_int value
+  def inject_phash_fingerprint(source_id, sha256_hash, phash_int, age_hours: 0)
+    key = "#{source_id}:#{sha256_hash}"
+    @fingerprints[key] = {
+      post_id: 'phash_post',
+      media_url: nil,
+      phash_int: phash_int,
       created_at: Time.now - (age_hours * 3600)
     }
   end
@@ -108,10 +135,14 @@ class MediaDedupTest
     test_cleanup_keeps_recent_entries
     test_cleanup_returns_deleted_count
     test_full_lifecycle
-    # URL-hash path (large videos >10MB)
-    test_url_hash_same_url_same_fingerprint
-    test_url_hash_full_lifecycle
-    test_url_hash_content_and_url_hash_coexist
+    # pHash path (perceptual dedup)
+    test_phash_duplicate_false_when_no_fingerprint
+    test_phash_duplicate_true_when_similar_hash
+    test_phash_duplicate_false_when_exceeds_threshold
+    test_phash_duplicate_false_for_nil_phash
+    test_phash_store_saves_phash_int
+    test_phash_store_nil_phash_stores_without_phash
+    test_phash_full_lifecycle
 
     puts
     puts '=' * 60
@@ -335,60 +366,128 @@ class MediaDedupTest
     end
   end
 
-  # URL-hash path tests (large videos >10MB)
-  # When HttpClient.download returns :too_large, post_processor passes the URL string
-  # as "data" to duplicate?/store! instead of binary video bytes.
-  # MediaDedup doesn't distinguish — it hashes whatever string it receives.
+  # ============================================================
+  # pHash path tests (perceptual dedup)
+  # ============================================================
 
-  def test_url_hash_same_url_same_fingerprint
-    test('URL-hash: same URL string → same SHA-256 hash (stable fingerprint)') do
-      url = 'https://video.twimg.com/ext_tw_video/123456789/pu/vid/1280x720/abc.mp4'
-      hash1 = Digest::SHA256.hexdigest(url)
-      hash2 = Digest::SHA256.hexdigest(url)
-      assert_equal hash1, hash2
+  def test_phash_duplicate_false_when_no_fingerprint
+    test('duplicate_by_phash?: returns false when no phash fingerprint in DB') do
+      state = MockStateManagerDedup.new
+      dedup = Processors::MediaDedup.new(state)
+      result = dedup.duplicate_by_phash?('source_a', 0x40636f0f8f38310f, hours: 72)
+      assert_equal false, result
     end
   end
 
-  def test_url_hash_full_lifecycle
-    test('URL-hash: full lifecycle — first URL not duplicate, stored, second detected') do
+  def test_phash_duplicate_true_when_similar_hash
+    test('duplicate_by_phash?: returns true when Hamming distance ≤ threshold') do
       state = MockStateManagerDedup.new
       dedup = Processors::MediaDedup.new(state)
-      source_id = 'rainmaker1973_twitter'
-      video_url = 'https://video.twimg.com/ext_tw_video/999/pu/vid/1280x720/large.mp4'
+      base_hash = 0x40636f0f8f38310f
 
-      # First occurrence (simulated: post_processor passes url as fingerprint_data)
-      is_dup = dedup.duplicate?(source_id, video_url, hours: 72)
-      assert_equal false, is_dup, 'First occurrence should NOT be duplicate'
+      # Inject a stored fingerprint with exact same hash (Hamming: 0)
+      state.inject_phash_fingerprint('source_a', 'sha_for_test', base_hash)
 
-      # Publish succeeds → store using URL string as fingerprint_data
-      dedup.store!(source_id, video_url, post_id: 'tweet_large_001', media_url: video_url)
+      result = dedup.duplicate_by_phash?('source_a', base_hash, hours: 72)
+      assert_equal true, result
+    end
+  end
+
+  def test_phash_duplicate_false_when_exceeds_threshold
+    test('duplicate_by_phash?: returns false when Hamming distance > threshold (10)') do
+      state = MockStateManagerDedup.new
+      dedup = Processors::MediaDedup.new(state)
+      base_hash = 0x0000000000000000
+
+      # 11 bits different = Hamming 11 > threshold 10
+      different_hash = (1 << 11) - 1  # 0b11111111111
+
+      state.inject_phash_fingerprint('source_a', 'sha_for_test', base_hash)
+
+      result = dedup.duplicate_by_phash?('source_a', different_hash, hours: 72)
+      assert_equal false, result
+    end
+  end
+
+  def test_phash_duplicate_false_for_nil_phash
+    test('duplicate_by_phash?: returns false for nil phash_int (guard)') do
+      state = MockStateManagerDedup.new
+      state.inject_phash_fingerprint('source_a', 'sha_for_test', 0xFFFF)
+      dedup = Processors::MediaDedup.new(state)
+
+      result = dedup.duplicate_by_phash?('source_a', nil, hours: 72)
+      assert_equal false, result
+    end
+  end
+
+  def test_phash_store_saves_phash_int
+    test('store!: saves phash_int alongside sha256') do
+      state = MockStateManagerDedup.new
+      dedup = Processors::MediaDedup.new(state)
+      data = 'video binary content'
+      phash = 0x40636f0f8f38310f
+
+      dedup.store!('source_a', data, post_id: 'tweet_001', phash_int: phash)
       assert_equal 1, state.size
 
-      # Second occurrence (same URL) — should be duplicate
-      is_dup2 = dedup.duplicate?(source_id, video_url, hours: 72)
-      assert_equal true, is_dup2, 'Second occurrence (same URL) should be duplicate'
+      # Find it and verify phash_int was stored
+      hash = Digest::SHA256.hexdigest(data)
+      found = state.find_media_fingerprint('source_a', hash, hours: 72)
+      assert found, 'Expected fingerprint to be found'
+      assert_equal phash, found[:phash_int]
     end
   end
 
-  def test_url_hash_content_and_url_hash_coexist
-    test('URL-hash: content-hash and URL-hash fingerprints coexist independently') do
+  def test_phash_store_nil_phash_stores_without_phash
+    test('store!: stores with phash_int=nil (URL-hash path)') do
+      state = MockStateManagerDedup.new
+      dedup = Processors::MediaDedup.new(state)
+      url = 'https://video.twimg.com/ext_tw_video/123/pu/vid/large.mp4'
+
+      # URL-hash path: phash_int not provided (defaults to nil)
+      dedup.store!('source_a', url, post_id: 'tweet_large')
+      assert_equal 1, state.size
+
+      hash = Digest::SHA256.hexdigest(url)
+      found = state.find_media_fingerprint('source_a', hash, hours: 72)
+      assert found, 'Expected URL-hash fingerprint to be found'
+      assert_equal nil, found[:phash_int]
+    end
+  end
+
+  def test_phash_full_lifecycle
+    test('pHash full lifecycle: store with phash → detect duplicate → different source skipped') do
       state = MockStateManagerDedup.new
       dedup = Processors::MediaDedup.new(state)
       source_id = 'rainmaker1973_twitter'
+      video_data = 'binary mp4 content of weather video'
+      phash = 0x40636f0f8f38310f  # pretend this was computed from the video
 
-      small_video_data = 'binary mp4 bytes of small video'
-      large_video_url  = 'https://video.twimg.com/ext_tw_video/888/pu/vid/1280x720/large.mp4'
+      # First occurrence — not a duplicate
+      is_dup = dedup.duplicate_by_phash?(source_id, phash, hours: 72)
+      assert_equal false, is_dup, 'First occurrence should NOT be duplicate'
 
-      # Store both: content-hash (small video) and URL-hash (large video)
-      dedup.store!(source_id, small_video_data, post_id: 'tweet_small')
-      dedup.store!(source_id, large_video_url,  post_id: 'tweet_large', media_url: large_video_url)
-      assert_equal 2, state.size
+      # Store fingerprint
+      dedup.store!(source_id, video_data, post_id: 'tweet_001', phash_int: phash)
+      assert_equal 1, state.size
 
-      # Both should be detected as duplicates on second occurrence
-      assert_equal true, dedup.duplicate?(source_id, small_video_data, hours: 72),
-                   'Small video (content-hash) should be duplicate'
-      assert_equal true, dedup.duplicate?(source_id, large_video_url, hours: 72),
-                   'Large video (URL-hash) should be duplicate'
+      # Same video (exact same hash) — should be duplicate
+      is_dup2 = dedup.duplicate_by_phash?(source_id, phash, hours: 72)
+      assert_equal true, is_dup2, 'Second occurrence (exact hash) should be duplicate'
+
+      # Nearly identical video (Hamming 3 = within threshold 10) — also duplicate
+      near_hash = phash ^ 0b111  # flip 3 bits
+      is_dup3 = dedup.duplicate_by_phash?(source_id, near_hash, hours: 72)
+      assert_equal true, is_dup3, 'Nearly identical hash (Hamming 3) should be duplicate'
+
+      # Clearly different video (Hamming 20 > threshold) — NOT duplicate
+      far_hash = phash ^ 0xFFFFF  # flip 20 bits
+      is_dup4 = dedup.duplicate_by_phash?(source_id, far_hash, hours: 72)
+      assert_equal false, is_dup4, 'Very different hash (Hamming 20) should NOT be duplicate'
+
+      # Different source — NOT duplicate (per-source dedup)
+      is_dup5 = dedup.duplicate_by_phash?('other_source', phash, hours: 72)
+      assert_equal false, is_dup5, 'Different source should NOT be duplicate'
     end
   end
 

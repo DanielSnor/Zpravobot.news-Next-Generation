@@ -21,11 +21,11 @@ module Utils
 
     USER_AGENT = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 ' \
                  '(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
-    TIMEOUT_SECONDS = 3
-    MAX_RETRIES = 1       # 1 retry = celkem 2 pokusy
-    RETRY_DELAY = 1       # sekunda před retry
-    MAX_BODY_BYTES = 8192 # číst jen prvních 8KB (og:image je vždy v <head>)
-    MAX_REDIRECTS = 3
+    TIMEOUT_SECONDS = 5
+    MAX_RETRIES = 1        # 1 retry = celkem 2 pokusy
+    RETRY_DELAY = 1        # sekunda před retry
+    MAX_BODY_BYTES = 32_768 # číst prvních 32KB — moderní <head> bývá větší kvůli inline stylům
+    MAX_REDIRECTS = 5       # více redirectů pro www↔non-www, http→https apod.
 
     # Fetch og:image URL from given article URL.
     # Returns absolute og:image URL or nil on any failure (silent degradation).
@@ -73,7 +73,10 @@ module Utils
 
       request = Net::HTTP::Get.new(uri.request_uri)
       request['User-Agent'] = USER_AGENT
-      request['Accept'] = 'text/html,application/xhtml+xml,*/*'
+      request['Accept'] = 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8'
+      request['Accept-Language'] = 'en-US,en;q=0.9'
+      request['Accept-Encoding'] = 'identity'  # Zakázat gzip — chceme čitelný text bez dekomprese
+      request['Cache-Control'] = 'no-cache'
 
       partial_body = +''
 
@@ -97,6 +100,7 @@ module Utils
           return partial_body.empty? ? nil : partial_body[0, MAX_BODY_BYTES]
 
         else
+          log "OGP: HTTP #{response.code} pro #{url}", level: :warn
           return nil
         end
       end

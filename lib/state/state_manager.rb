@@ -207,10 +207,15 @@ module State
       @media_fingerprints.find(source_id, sha256_hash, hours: hours)
     end
 
-    def store_media_fingerprint(source_id:, sha256_hash:, post_id: nil, media_url: nil)
+    def find_similar_media_phash(source_id, phash_int, hours:, threshold: 10)
+      ensure_connection
+      @media_fingerprints.find_similar_phash(source_id, phash_int, hours: hours, threshold: threshold)
+    end
+
+    def store_media_fingerprint(source_id:, sha256_hash:, post_id: nil, media_url: nil, phash_int: nil)
       ensure_connection
       @media_fingerprints.store(source_id: source_id, sha256_hash: sha256_hash,
-                                post_id: post_id, media_url: media_url)
+                                post_id: post_id, media_url: media_url, phash_int: phash_int)
     end
 
     def cleanup_media_fingerprints(retention_hours: 96)
