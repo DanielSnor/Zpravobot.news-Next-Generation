@@ -73,7 +73,7 @@ rescue LoadError
   EDIT_DETECTOR_AVAILABLE = false
 end
 
-TRANSPARENT_1X1_PNG_PATH = File.join(__dir__, '../../assets/transparent_1x1.png')
+TRANSPARENT_1X1_PNG_PATH = File.join(__dir__, '../../assets/white_strip_1280x1.png')
 
 module Processors
   class PostProcessor
@@ -206,7 +206,9 @@ module Processors
       video_dedup_hours = source_config.dig(:processing, :video_dedup_hours)
       video_data_cache = nil
       if !@dry_run && video_dedup_hours && MEDIA_DEDUP_AVAILABLE && HTTP_CLIENT_AVAILABLE
-        video_data_cache = check_video_dedup(source_id, post_id, post, video_dedup_hours.to_i)
+        max_video_mb = source_config.dig(:processing, :max_video_size_mb)
+        max_video_bytes = max_video_mb ? max_video_mb * 1024 * 1024 : nil
+        video_data_cache = check_video_dedup(source_id, post_id, post, video_dedup_hours.to_i, max_video_bytes: max_video_bytes)
         if video_data_cache == :duplicate
           mark_skipped(source_id, post_id, 'duplicate_video')
           return Result.new(status: :skipped, skipped_reason: 'duplicate_video')
@@ -303,11 +305,13 @@ module Processors
     #   :duplicate                     — video already published, skip post
     #   { url:, data: String, phash: } — new video, data + pHash cached for upload step
     #   nil                            — no video found or all downloads failed (proceed normally)
-    def check_video_dedup(source_id, post_id, post, hours)
+    def check_video_dedup(source_id, post_id, post, hours, max_video_bytes: nil)
       return nil unless post.respond_to?(:media)
 
       video_media = Array(post.media).find { |m| m.respond_to?(:type) && m.type == 'video' }
       return nil unless video_media&.url
+
+      download_limit = max_video_bytes || (10 * 1024 * 1024)
 
       begin
         urls_to_try = ([video_media.url] + Array(video_media.url_variants).reject { |u| u == video_media.url }).compact
@@ -316,7 +320,7 @@ module Processors
         video_data = nil
 
         urls_to_try.each do |url|
-          response = HttpClient.download(url, max_size: 10 * 1024 * 1024)
+          response = HttpClient.download(url, max_size: download_limit)
           next if response.nil? || response == :too_large || response.body.nil? || response.body.empty?
 
           video_url = url
@@ -657,8 +661,11 @@ module Processors
       publisher = get_publisher(source_config)
       visibility = source_config.dig(:target, :visibility) || 'public'
 
+      max_video_mb = source_config.dig(:processing, :max_video_size_mb)
+      max_size = max_video_mb ? max_video_mb * 1024 * 1024 : nil
+
       # Upload media (pass pre-downloaded video data if available to avoid double download)
-      media_ids = upload_media(publisher, post, video_data_cache: video_data_cache)
+      media_ids = upload_media(publisher, post, video_data_cache: video_data_cache, max_size: max_size)
     
       # Video fallback: pokud měl post video (type: 'video' v media NEBO post.has_video) ale upload selhal,
       # zkus nejdřív nahrát thumbnail ze Syndication API jako náhradní obrázek;
@@ -730,7 +737,7 @@ module Processors
       { success: false, error: e.message }
     end
 
-    def upload_media(publisher, post, video_data_cache: nil)
+    def upload_media(publisher, post, video_data_cache: nil, max_size: nil)
       return [] unless post.respond_to?(:media) && post.media
       return [] if post.media.empty?
 
@@ -742,6 +749,8 @@ module Processors
 
       return [] if uploadable.empty?
 
+      publisher_opts = max_size ? { max_size: max_size } : {}
+
       # If we have pre-downloaded video bytes, upload the cached video directly
       # to avoid downloading it a second time; upload other media items normally.
       # When data is nil (large video >10MB), skip cache and fall through to URL-based upload.
@@ -751,11 +760,11 @@ module Processors
         media_ids = []
         uploadable.each do |media|
           if media.url == cached_url
-            mid = publisher.upload_media_from_data(cached_data, url: cached_url, description: media.alt_text)
+            mid = publisher.upload_media_from_data(cached_data, url: cached_url, description: media.alt_text, **publisher_opts)
             media_ids << mid if mid
           else
             items = [{ url: media.url, description: media.alt_text, url_variants: media.url_variants }]
-            media_ids.concat(publisher.upload_media_parallel(items))
+            media_ids.concat(publisher.upload_media_parallel(items, **publisher_opts))
           end
         end
         return media_ids
@@ -766,7 +775,7 @@ module Processors
         { url: media.url, description: media.alt_text, url_variants: media.url_variants }
       end
 
-      publisher.upload_media_parallel(media_items)
+      publisher.upload_media_parallel(media_items, **publisher_opts)
     end
 
     def get_publisher(source_config)
