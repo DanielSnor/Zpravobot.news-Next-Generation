@@ -115,6 +115,7 @@ processing:
   trim_strategy: "smart"            # Strategie zkracování
   smart_tolerance_percent: 12       # Tolerance pro smart trimming (%)
   ogp_fetch_link_card: true         # Fetchovat og:image z odkazovaných článků; potlačit: ogp_fetch_link_card: false
+  max_video_size_mb: 10             # Maximální velikost videa v MB; per-source lze snížit (šetří místo na disku)
 
 # ------------------------------------------------------------
 # SCHEDULING - Plánování stahování
