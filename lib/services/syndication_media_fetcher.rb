@@ -29,16 +29,16 @@ module Services
     include Support::Loggable
     ENDPOINT = 'https://cdn.syndication.twimg.com/tweet-result'
     
-    # Retry configuration
-    MAX_RETRIES = 3
-    RETRY_DELAYS = [1, 2, 4].freeze  # exponential backoff
-    
-    # Timeouts
+    # Retry configuration (kanonické hodnoty z HttpClient)
+    MAX_RETRIES  = HttpClient::DEFAULT_MAX_RETRIES
+    RETRY_DELAYS = HttpClient::DEFAULT_RETRY_DELAYS  # exponential backoff
+
+    # Timeouts (záměrně kratší než HttpClient default — Syndication API)
     OPEN_TIMEOUT = 5
     READ_TIMEOUT = 5
-    
+
     # User agent (Googlebot works reliably)
-    USER_AGENT = 'Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)'
+    USER_AGENT = HttpClient::GOOGLEBOT_UA
     
     class << self
       # Fetch media and text from Twitter Syndication API
