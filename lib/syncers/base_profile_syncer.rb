@@ -23,40 +23,19 @@
 #
 # ============================================================
 
-require 'json'
-require 'uri'
 require_relative '../utils/http_client'
-require_relative '../utils/format_helpers'
 require_relative '../support/loggable'
 require_relative 'image_cache_manager'
 require_relative 'mastodon_profile_updater'
+require_relative 'profile_fields_builder'
 
 module Syncers
   class BaseProfileSyncer
     include Support::Loggable
+    include ProfileFieldsBuilder
 
     USER_AGENT = 'Zpravobot/1.0 (+https://zpravobot.news)'
     DEFAULT_CACHE_DIR = ImageCacheManager::DEFAULT_CACHE_DIR
-
-    FIELD_LABELS = {
-      'cs' => { managed: 'spravuje:', retention: 'retence:', days: 'dní', from: 'z' },
-      'sk' => { managed: 'spravované:', retention: 'retencia:', days: 'dní', from: 'z' },
-      'en' => { managed: 'managed by:', retention: 'retention:', days: 'days', from: 'from' }
-    }.freeze
-
-    VALID_RETENTION_DAYS = [7, 30, 90, 180].freeze
-    MANAGED_BY = '@zpravobot@zpravobot.news'
-
-    # Short display labels for each source platform, used in the SPRAVUJE field.
-    # e.g. 'twitter' => 'X', 'bluesky' => 'Bluesky'
-    PLATFORM_LABELS = {
-      'twitter'   => 'X',
-      'bluesky'   => 'Bluesky',
-      'facebook'  => 'FB',
-      'instagram' => 'IG',
-      'youtube'   => 'YT',
-      'rss'       => 'RSS'
-    }.freeze
 
     attr_reader :mastodon_instance, :mastodon_token,
                 :language, :retention_days, :cache_dir, :use_cache, :mentions_config
@@ -325,74 +304,6 @@ module Syncers
       else
         log "  ✔ #{label} downloaded (#{data[:data].bytesize} bytes)"
       end
-    end
-
-    # ============================================
-    # Profile URL & Fields
-    # ============================================
-
-    # Build profile URL based on mentions_config from platform YAML
-    # @param handle [String] Platform handle
-    # @return [String] Profile URL
-    def build_profile_url(handle)
-      config_type = mentions_config['type'] || mentions_config[:type]
-      config_value = mentions_config['value'] || mentions_config[:value]
-
-      case config_type
-      when 'prefix'
-        "#{config_value}#{handle}"
-      when 'domain_suffix'
-        "https://#{config_value}/#{handle}"
-      else
-        build_profile_url_fallback(handle)
-      end
-    end
-
-    # Fallback URL when mentions_config type is unknown (subclass can override)
-    def build_profile_url_fallback(handle)
-      "https://#{platform_name.downcase}.com/#{handle}"
-    end
-
-    # Build all 4 metadata fields
-    # @param handle [String] Platform handle
-    # @param current_fields [Array<Hash>] Current Mastodon fields
-    # @param extra_data [Hash] Additional profile data (e.g., Facebook website,
-    #   or source_platforms: ['youtube', 'instagram'] for multi-platform aggregators)
-    # @return [Array<Hash>] New fields array
-    def build_fields(handle, current_fields, extra_data = {})
-      labels = FIELD_LABELS[language]
-      source_platforms = extra_data[:source_platforms]
-
-      web_value = extract_web_value(current_fields)
-      profile_url = build_profile_url(handle)
-
-      [
-        { name: field_prefix, value: profile_url },
-        { name: 'web:', value: web_value },
-        { name: labels[:managed], value: build_managed_by_value(source_platforms: source_platforms) },
-        { name: labels[:retention], value: "#{retention_days} #{labels[:days]}" }
-      ]
-    end
-
-    # Extract web: field value from current fields
-    # @param fields [Array<Hash>] Current fields
-    # @return [String] Web value or '""'
-    def extract_web_value(fields)
-      web_field = fields.find { |f| f[:name].downcase.start_with?('web') }
-      value = web_field&.dig(:value)&.strip
-
-      (value.nil? || value.empty?) ? '""' : value.chomp('/')
-    end
-
-    # Build the value for the SPRAVUJE field, e.g. "@zpravobot@zpravobot.news z X"
-    # @param source_platforms [Array<String>, nil] Override platform list (for multi-platform
-    #   aggregators in TASK-3). When nil, defaults to [platform_key] from the syncer subclass.
-    # @return [String] Full managed-by string with platform suffix
-    def build_managed_by_value(source_platforms: nil)
-      labels = FIELD_LABELS[language]
-      platforms = source_platforms || [platform_key]
-      platform_str = platforms.map { |p| PLATFORM_LABELS[p] || p }.join(', ')
-      "#{MANAGED_BY} #{labels[:from]} #{platform_str}"
     end
 
     # ============================================
