@@ -107,14 +107,7 @@ module Syncers
           html = response.body
 
           if html =~ /<a[^>]*class="profile-card-fullname"[^>]*>([^<]+)<\/a>/
-            display_name = $1.strip
-            display_name = display_name
-              .gsub('&amp;', '&')
-              .gsub('&lt;', '<')
-              .gsub('&gt;', '>')
-              .gsub('&quot;', '"')
-              .gsub('&#39;', "'")
-
+            display_name = HtmlCleaner.decode_html_entities($1.strip)
             return display_name unless display_name.empty?
           end
         end
