@@ -598,9 +598,9 @@ module Syncers
 
     # Retry wrapper for fetch_platform_profile — handles transient network errors.
     # Default: 3 retries with [1, 2, 4] s exponential backoff.
-    FETCH_RETRY_DELAYS = [1, 2, 4].freeze
+    FETCH_RETRY_DELAYS = HttpClient::DEFAULT_RETRY_DELAYS
 
-    def with_retry(max_retries: 3, delays: FETCH_RETRY_DELAYS, &block)
+    def with_retry(max_retries: HttpClient::DEFAULT_MAX_RETRIES, delays: FETCH_RETRY_DELAYS, &block)
       attempts = 0
       begin
         block.call

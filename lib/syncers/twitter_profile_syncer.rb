@@ -101,14 +101,7 @@ module Syncers
 
         uri = URI("#{nitter}/#{handle}")
 
-        http = Net::HTTP.new(uri.host, uri.port)
-        http.use_ssl = uri.scheme == 'https'
-        http.open_timeout = 5
-        http.read_timeout = 10
-
-        request = Net::HTTP::Get.new(uri)
-        request['User-Agent'] = USER_AGENT
-        response = http.request(request)
+        response = HttpClient.get(uri, user_agent: USER_AGENT, open_timeout: 5, read_timeout: 10)
 
         if response.is_a?(Net::HTTPSuccess)
           html = response.body
