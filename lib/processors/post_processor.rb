@@ -850,13 +850,14 @@ module Processors
     # ============================================
 
     # Detects presence of a Mastodon-resolvable mention (@handle or @handle@domain)
-    # in formatted text. Uses same negative lookbehind as format_mentions regex
-    # to avoid false positives on email addresses (user@domain.com).
+    # or a Bluesky profile URL (bsky.app/profile/...) in formatted text.
+    # Uses same negative lookbehind as format_mentions regex to avoid false
+    # positives on email addresses (user@domain.com).
     # @param text [String] Formatted Mastodon text
     # @return [Boolean]
     def contains_mention?(text)
       return false if text.nil? || text.empty?
-      text.match?(/(?<![.\w\/])@\w+/)
+      text.match?(/(?<![.\w\/])@\w+/) || text.include?('bsky.app/profile/')
     end
 
     # Upload transparent 1×1px PNG to prevent Mastodon profile card hijack.
