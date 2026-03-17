@@ -27,9 +27,9 @@ require 'json'
 require 'uri'
 require_relative '../utils/http_client'
 require_relative '../utils/format_helpers'
-require_relative '../utils/html_cleaner'
 require_relative '../support/loggable'
 require_relative 'image_cache_manager'
+require_relative 'mastodon_profile_updater'
 
 module Syncers
   class BaseProfileSyncer
@@ -79,6 +79,11 @@ module Syncers
         use_cache: @use_cache,
         download_options: image_download_options,
         validate_content_type: validate_image_content_type?
+      )
+
+      @profile_updater = MastodonProfileUpdater.new(
+        instance_url: @mastodon_instance,
+        access_token: @mastodon_token
       )
     end
 
@@ -175,7 +180,7 @@ module Syncers
       # All 4 metadata fields
       if sync_fields
         log '  Fetching current Mastodon profile fields...'
-        current_fields = fetch_mastodon_fields
+        current_fields = @profile_updater.fetch_fields
 
         new_fields = build_fields(profile[:handle], current_fields, profile.merge(source_platforms: @source_platforms))
 
@@ -222,7 +227,7 @@ module Syncers
 
       # Update Mastodon profile
       log '  Updating Mastodon profile...'
-      result = update_mastodon_profile(params, files)
+      result = @profile_updater.update(params, files)
 
       if result[:success]
         log '✅ Profile synced successfully!', level: :success
@@ -391,84 +396,6 @@ module Syncers
     end
 
     # ============================================
-    # Mastodon API
-    # ============================================
-
-    def fetch_mastodon_fields
-      url = "#{mastodon_instance}/api/v1/accounts/verify_credentials"
-      response = HttpClient.get(url, headers: mastodon_auth_headers)
-
-      unless response.is_a?(Net::HTTPSuccess)
-        raise "Failed to fetch Mastodon profile: #{response.code}"
-      end
-
-      data = JSON.parse(response.body)
-      fields = data['fields'] || []
-
-      fields.map { |f| { name: f['name'], value: sanitize_html(f['value']) } }
-    end
-
-    def sanitize_html(html)
-      HtmlCleaner.sanitize_html(html)
-    end
-
-    def update_mastodon_profile(params, files)
-      uri = URI("#{mastodon_instance}/api/v1/accounts/update_credentials")
-
-      if files.any?
-        boundary = "----ZpravobotBoundary#{rand(1_000_000_000)}"
-        body = build_multipart_body(params, files, boundary)
-
-        request = Net::HTTP::Patch.new(uri)
-        request['Content-Type'] = "multipart/form-data; boundary=#{boundary}"
-        request.body = body
-      else
-        request = Net::HTTP::Patch.new(uri)
-        request['Content-Type'] = 'application/x-www-form-urlencoded'
-        request.body = URI.encode_www_form(params)
-      end
-
-      request['Authorization'] = "Bearer #{mastodon_token}"
-      request['User-Agent'] = HttpClient::DEFAULT_UA
-
-      response = HttpClient.patch_raw(uri, request)
-
-      if response.is_a?(Net::HTTPSuccess)
-        data = JSON.parse(response.body)
-        { success: true, account: data }
-      else
-        error = begin
-          JSON.parse(response.body)['error']
-        rescue StandardError
-          response.body
-        end
-        { success: false, error: error }
-      end
-    end
-
-    def build_multipart_body(params, files, boundary)
-      body = ''.b
-
-      params.each do |key, value|
-        body << "--#{boundary}\r\n".b
-        body << "Content-Disposition: form-data; name=\"#{key}\"\r\n\r\n".b
-        body << value.to_s.dup.force_encoding('UTF-8').b
-        body << "\r\n".b
-      end
-
-      files.each do |key, file_data|
-        body << "--#{boundary}\r\n".b
-        body << "Content-Disposition: form-data; name=\"#{key}\"; filename=\"#{file_data[:filename]}\"\r\n".b
-        body << "Content-Type: #{file_data[:content_type]}\r\n\r\n".b
-        body << file_data[:data].b
-        body << "\r\n".b
-      end
-
-      body << "--#{boundary}--\r\n".b
-      body
-    end
-
-    # ============================================
     # HTTP Helpers — delegate to HttpClient
     # ============================================
 
@@ -494,10 +421,6 @@ module Syncers
         end
         raise
       end
-    end
-
-    def mastodon_auth_headers
-      { 'Authorization' => "Bearer #{mastodon_token}" }
     end
 
     # Options passed to HttpClient.download when fetching images.
