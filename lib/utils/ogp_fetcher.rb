@@ -44,11 +44,11 @@ module Utils
         extract_og_image(html)
       rescue StandardError => e
         if attempts <= MAX_RETRIES
-          log "OGP fetch failed (attempt #{attempts}), retrying in #{RETRY_DELAY}s: #{e.message}", level: :warn
+          log_warn "OGP fetch failed (attempt #{attempts}), retrying in #{RETRY_DELAY}s: #{e.message}"
           sleep RETRY_DELAY
           retry
         else
-          log "OGP fetch failed after #{attempts} attempts: #{e.message}", level: :warn
+          log_warn "OGP fetch failed after #{attempts} attempts: #{e.message}"
           nil
         end
       end
@@ -100,7 +100,7 @@ module Utils
           return partial_body.empty? ? nil : partial_body[0, MAX_BODY_BYTES]
 
         else
-          log "OGP: HTTP #{response.code} pro #{url}", level: :warn
+          log_warn "OGP: HTTP #{response.code} pro #{url}"
           return nil
         end
       end
