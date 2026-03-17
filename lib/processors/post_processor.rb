@@ -231,6 +231,20 @@ module Processors
         end
       end
 
+      # Step 6d: Link card thumbnail (opt-in, only when post has only link_card media)
+      # Bluesky poskytuje thumbnail přímo v API odpovědi (external.thumb) — bez HTTP requestu.
+      if source_config.dig(:processing, :ogp_fetch_link_card)
+        if post.media.any? && post.media.all?(&:link_card?)
+          thumb_url = post.media.find { |m| m.link_card? }&.thumbnail_url
+          if thumb_url
+            post.media << Media.new(type: 'image', url: thumb_url, alt_text: '')
+            log_info("[#{source_id}] Link card thumbnail: Přidán obrázek #{thumb_url}")
+          else
+            log_debug("[#{source_id}] Link card thumbnail: přeskočen — thumbnail_url chybí")
+          end
+        end
+      end
+
       # Step 7-8: Publish (or dry run)
       if @dry_run
         log_info("[#{source_id}] DRY RUN - would publish: #{processed_text[0..100]}...")

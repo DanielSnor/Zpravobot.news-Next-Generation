@@ -66,6 +66,7 @@ mentions:
 processing:
   max_length: 500                   # Maximální délka finálního příspěvku
   trim_strategy: smart              # Strategie zkracování: smart / truncate
+  ogp_fetch_link_card: true         # Přidat thumbnail z link card (Bluesky CDN, bez HTTP requestu)
 
 # ------------------------------------------------------------
 # SCHEDULING - Plánování stahování
