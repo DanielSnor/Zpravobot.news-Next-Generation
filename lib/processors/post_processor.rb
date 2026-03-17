@@ -260,6 +260,11 @@ module Processors
       )
 
       unless publish_result[:success]
+        if publish_result[:skipped]
+          log_warn("[#{source_id}] Skipped: no text and no media")
+          mark_skipped(source_id, post_id, 'empty_content')
+          return Result.new(status: :skipped, skipped_reason: 'empty_content')
+        end
         log_error("[#{source_id}] Publish failed: #{publish_result[:error]}")
         return Result.new(status: :failed, error: publish_result[:error])
       end
@@ -680,7 +685,12 @@ module Processors
 
       # Upload media (pass pre-downloaded video data if available to avoid double download)
       media_ids = upload_media(publisher, post, video_data_cache: video_data_cache, max_size: max_size)
-    
+
+      # Skip posts with no text and no media — nothing to publish, mark as skipped so runner doesn't retry.
+      if (text.nil? || text.strip.empty?) && media_ids.empty?
+        return { success: false, skipped: true, error: 'empty_content' }
+      end
+
       # Video fallback: pokud měl post video (type: 'video' v media NEBO post.has_video) ale upload selhal,
       # zkus nejdřív nahrát thumbnail ze Syndication API jako náhradní obrázek;
       # pokud to nejde (nebo thumbnail není k dispozici), přidej odkaz na originál.
