@@ -84,11 +84,10 @@ module Syncers
     # Class-level API
     # ============================================
 
-    @class_cache_dir = DEFAULT_CACHE_DIR
     @class_nitter_instance = DEFAULT_NITTER
 
     class << self
-      attr_accessor :class_cache_dir, :class_nitter_instance
+      attr_accessor :class_nitter_instance
 
       # Fetch display name from Twitter profile via Nitter
       # @param handle [String] Twitter handle (without @)

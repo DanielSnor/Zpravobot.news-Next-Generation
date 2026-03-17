@@ -25,20 +25,18 @@
 
 require 'json'
 require 'uri'
-require 'digest'
-require 'fileutils'
 require_relative '../utils/http_client'
 require_relative '../utils/format_helpers'
 require_relative '../utils/html_cleaner'
 require_relative '../support/loggable'
+require_relative 'image_cache_manager'
 
 module Syncers
   class BaseProfileSyncer
     include Support::Loggable
 
     USER_AGENT = 'Zpravobot/1.0 (+https://zpravobot.news)'
-    DEFAULT_CACHE_DIR = ENV['ZBNW_DIR'] ? "#{ENV['ZBNW_DIR']}/cache/profiles" : 'cache/profiles'
-    IMAGE_CACHE_TTL = 86400 * 7 # 7 days in seconds
+    DEFAULT_CACHE_DIR = ImageCacheManager::DEFAULT_CACHE_DIR
 
     FIELD_LABELS = {
       'cs' => { managed: 'spravuje:', retention: 'retence:', days: 'dní', from: 'z' },
@@ -75,7 +73,13 @@ module Syncers
       @mentions_config = mentions_config || default_mentions_config
       @source_platforms = source_platforms
 
-      ensure_cache_dir if use_cache
+      @image_cache = ImageCacheManager.new(
+        source_handle: source_handle,
+        cache_dir: @cache_dir,
+        use_cache: @use_cache,
+        download_options: image_download_options,
+        validate_content_type: validate_image_content_type?
+      )
     end
 
     # ============================================
@@ -188,7 +192,7 @@ module Syncers
       # Avatar
       if sync_avatar && profile[:avatar_url]
         log "  Downloading avatar (#{profile[:avatar_url][0, 80]}...)"
-        avatar_data = download_image_cached(profile[:avatar_url], 'avatar', force: force)
+        avatar_data = @image_cache.download_image_cached(profile[:avatar_url], 'avatar', force: force)
         if avatar_data
           log_image_result('Avatar', avatar_data)
           files[:avatar] = avatar_data
@@ -203,7 +207,7 @@ module Syncers
       if sync_banner && b_url
         b_label = banner_key == :cover_url ? 'cover photo' : 'banner'
         log "  Downloading #{b_label}..."
-        banner_data = download_image_cached(b_url, 'banner', force: force)
+        banner_data = @image_cache.download_image_cached(b_url, 'banner', force: force)
         if banner_data
           log_image_result(b_label.capitalize, banner_data)
           files[:header] = banner_data
@@ -260,63 +264,22 @@ module Syncers
     end
 
     # ============================================
-    # Class-level API (for cross-component usage)
+    # Class-level API (delegates to ImageCacheManager)
     # ============================================
 
-    @class_cache_dir = DEFAULT_CACHE_DIR
-
     class << self
-      attr_accessor :class_cache_dir
-
       # Clear all cached images for a handle
       # @param handle [String] Platform handle
       # @return [Integer] Number of deleted files
       def clear_cache(handle)
-        ensure_class_cache_dir
-
-        handle_key = handle.gsub(/[^a-zA-Z0-9]/, '_')
-        patterns = [
-          "avatar_#{handle_key}_*",
-          "banner_#{handle_key}_*"
-        ]
-
-        deleted = 0
-        patterns.each do |pattern|
-          Dir.glob(File.join(@class_cache_dir, pattern)).each do |f|
-            File.delete(f) rescue nil
-            deleted += 1
-          end
-          # Also delete .meta files
-          Dir.glob(File.join(@class_cache_dir, "#{pattern}.meta")).each do |f|
-            File.delete(f) rescue nil
-          end
-        end
-
-        deleted
+        ImageCacheManager.clear_cache(handle)
       end
 
       # Get cache statistics
       # @return [Hash] Cache statistics
       def cache_stats
-        ensure_class_cache_dir
-
-        files = Dir.glob(File.join(@class_cache_dir, '*')).reject { |f| f.end_with?('.meta') }
-        total_size = files.sum { |f| File.size(f) rescue 0 }
-
-        {
-          total_files: files.count,
-          total_size_bytes: total_size,
-          total_size_human: FormatHelpers.format_bytes(total_size),
-          cache_dir: @class_cache_dir
-        }
+        ImageCacheManager.cache_stats
       end
-
-      private
-
-      def ensure_class_cache_dir
-        FileUtils.mkdir_p(@class_cache_dir) unless Dir.exist?(@class_cache_dir)
-      end
-
     end
 
     private
@@ -425,89 +388,6 @@ module Syncers
       platforms = source_platforms || [platform_key]
       platform_str = platforms.map { |p| PLATFORM_LABELS[p] || p }.join(', ')
       "#{MANAGED_BY} #{labels[:from]} #{platform_str}"
-    end
-
-    # ============================================
-    # Cache Management
-    # ============================================
-
-    def ensure_cache_dir
-      FileUtils.mkdir_p(cache_dir) unless Dir.exist?(cache_dir)
-    end
-
-    def cache_key_for_url(url, prefix)
-      hash = Digest::SHA256.hexdigest(url)[0, 16]
-      handle_key = source_handle.gsub(/[^a-zA-Z0-9]/, '_')
-      "#{prefix}_#{handle_key}_#{hash}"
-    end
-
-    def cache_path(key)
-      File.join(cache_dir, key)
-    end
-
-    def read_image_cache(key)
-      return nil unless use_cache
-
-      path = cache_path(key)
-      meta_path = "#{path}.meta"
-
-      return nil unless File.exist?(path) && File.exist?(meta_path)
-
-      # Check TTL
-      if (Time.now - File.mtime(path)) > IMAGE_CACHE_TTL
-        File.delete(path) rescue nil
-        File.delete(meta_path) rescue nil
-        return nil
-      end
-
-      meta = JSON.parse(File.read(meta_path), symbolize_names: true)
-      data = File.binread(path)
-
-      {
-        data: data,
-        content_type: meta[:content_type],
-        filename: meta[:filename],
-        from_cache: true,
-        cached_at: File.mtime(path)
-      }
-    rescue StandardError => e
-      log "  ⚠️ Cache read error: #{e.message}", level: :warn
-      nil
-    end
-
-    def write_image_cache(key, data, content_type, filename)
-      return unless use_cache
-
-      path = cache_path(key)
-      meta_path = "#{path}.meta"
-
-      File.binwrite(path, data)
-      File.write(meta_path, { content_type: content_type, filename: filename }.to_json)
-    rescue StandardError => e
-      log "  ⚠️ Cache write error: #{e.message}", level: :warn
-    end
-
-    # ============================================
-    # Image Download with Cache
-    # ============================================
-
-    def download_image_cached(url, type, force: false)
-      cache_key = cache_key_for_url(url, type)
-
-      # Try cache first (unless forcing)
-      unless force
-        cached = read_image_cache(cache_key)
-        return cached if cached
-      end
-
-      # Download fresh
-      image_data = download_image(url)
-      return nil unless image_data
-
-      # Cache the result
-      write_image_cache(cache_key, image_data[:data], image_data[:content_type], image_data[:filename])
-
-      image_data.merge(from_cache: false)
     end
 
     # ============================================
@@ -622,40 +502,9 @@ module Syncers
 
     # Options passed to HttpClient.download when fetching images.
     # Subclasses can override to add custom headers or user_agent.
+    # Called once during initialize to configure @image_cache.
     def image_download_options
       {}
-    end
-
-    def download_image(url)
-      response = HttpClient.download(url, **image_download_options)
-
-      return nil unless response&.is_a?(Net::HTTPSuccess)
-
-      content_type = response['content-type']&.split(';')&.first || 'image/jpeg'
-
-      if validate_image_content_type?
-        unless content_type.start_with?('image/')
-          log "  Invalid content type: #{content_type}", level: :warn
-          return nil
-        end
-      end
-
-      ext = case content_type
-            when 'image/jpeg' then 'jpg'
-            when 'image/png' then 'png'
-            when 'image/gif' then 'gif'
-            when 'image/webp' then 'webp'
-            else 'jpg'
-            end
-
-      {
-        data: response.body,
-        content_type: content_type,
-        filename: "profile.#{ext}"
-      }
-    rescue StandardError => e
-      log "  Failed to download image: #{e.message}", level: :warn
-      nil
     end
   end
 end

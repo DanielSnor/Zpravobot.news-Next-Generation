@@ -95,11 +95,7 @@ module Syncers
     # Class-level API
     # ============================================
 
-    @class_cache_dir = DEFAULT_CACHE_DIR
-
     class << self
-      attr_accessor :class_cache_dir
-
       # Fetch display name from Bluesky profile
       # @param handle [String] Bluesky handle (e.g. "nesestra.bsky.social")
       # @return [String, nil] Display name or nil if failed
