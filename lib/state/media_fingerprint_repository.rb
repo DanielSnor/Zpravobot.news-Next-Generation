@@ -1,6 +1,6 @@
 # frozen_string_literal: true
 
-require_relative '../support/loggable'
+require_relative 'base_repository'
 
 module State
   # Repository for media fingerprints (video deduplication)
@@ -14,12 +14,7 @@ module State
   #   find_similar_phash() — Hamming scan on phash_int (small videos, re-encoding robust)
   #
   # Retention: records older than 96h are cleaned up by cleanup().
-  class MediaFingerprintRepository
-    include Support::Loggable
-
-    def initialize(db)
-      @db = db
-    end
+  class MediaFingerprintRepository < BaseRepository
 
     # Find existing fingerprint within the lookup window
     #
