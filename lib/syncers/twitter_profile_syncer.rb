@@ -84,11 +84,10 @@ module Syncers
     # Class-level API
     # ============================================
 
-    @class_cache_dir = DEFAULT_CACHE_DIR
     @class_nitter_instance = DEFAULT_NITTER
 
     class << self
-      attr_accessor :class_cache_dir, :class_nitter_instance
+      attr_accessor :class_nitter_instance
 
       # Fetch display name from Twitter profile via Nitter
       # @param handle [String] Twitter handle (without @)
@@ -101,27 +100,13 @@ module Syncers
 
         uri = URI("#{nitter}/#{handle}")
 
-        http = Net::HTTP.new(uri.host, uri.port)
-        http.use_ssl = uri.scheme == 'https'
-        http.open_timeout = 5
-        http.read_timeout = 10
-
-        request = Net::HTTP::Get.new(uri)
-        request['User-Agent'] = USER_AGENT
-        response = http.request(request)
+        response = HttpClient.get(uri, user_agent: USER_AGENT, open_timeout: 5, read_timeout: 10)
 
         if response.is_a?(Net::HTTPSuccess)
           html = response.body
 
           if html =~ /<a[^>]*class="profile-card-fullname"[^>]*>([^<]+)<\/a>/
-            display_name = $1.strip
-            display_name = display_name
-              .gsub('&amp;', '&')
-              .gsub('&lt;', '<')
-              .gsub('&gt;', '>')
-              .gsub('&quot;', '"')
-              .gsub('&#39;', "'")
-
+            display_name = HtmlCleaner.decode_html_entities($1.strip)
             return display_name unless display_name.empty?
           end
         end

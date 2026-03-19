@@ -53,10 +53,10 @@ fi
 
 # Helper funkce — sudo rsync musí být quoted jako jeden argument
 do_rsync() {
-    rsync -avz $RSYNC_DRY --rsync-path="sudo rsync" -e "ssh $SSH_OPTS" "$@"
+    rsync -avz $RSYNC_DRY --exclude='.DS_Store' --rsync-path="sudo rsync" -e "ssh $SSH_OPTS" "$@"
 }
 do_rsync_delete() {
-    rsync -avz $RSYNC_DRY --delete --rsync-path="sudo rsync" -e "ssh $SSH_OPTS" "$@"
+    rsync -avz $RSYNC_DRY --delete --exclude='.DS_Store' --rsync-path="sudo rsync" -e "ssh $SSH_OPTS" "$@"
 }
 
 echo "============================================================"

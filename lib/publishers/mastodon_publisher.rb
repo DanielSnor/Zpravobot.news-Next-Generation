@@ -213,8 +213,9 @@ module Publishers
     # @param url [String] URL of image/video to upload
     # @param description [String] Alt text for accessibility
     # @param url_variants [Array<String>] Fallback URLs to try if primary is too large (best-first)
+    # @param max_size [Integer] Maximum allowed file size in bytes (default: MAX_MEDIA_SIZE)
     # @return [String, nil] Media ID or nil on failure
-    def upload_media_from_url(url, description: nil, url_variants: [])
+    def upload_media_from_url(url, description: nil, url_variants: [], max_size: MAX_MEDIA_SIZE)
       urls_to_try = ([url] + (url_variants || []).reject { |u| u == url }).compact
 
       urls_to_try.each_with_index do |try_url, idx|
@@ -230,9 +231,9 @@ module Publishers
 
         log "Downloading media from: #{try_url}#{label}"
 
-        response = HttpClient.download(try_url, max_size: MAX_MEDIA_SIZE)
+        response = HttpClient.download(try_url, max_size: max_size)
         if response == :too_large
-          log "Skipping media over #{MAX_MEDIA_SIZE / 1024 / 1024}MB: #{try_url}", level: :warn
+          log "Skipping media over #{max_size / 1024 / 1024}MB: #{try_url}", level: :warn
           next
         end
         unless response
@@ -363,8 +364,9 @@ module Publishers
     # Order of returned media_ids matches the input order (nil slots removed).
     #
     # @param media_items [Array<Hash>] each with :url (required) and :description (optional)
+    # @param max_size [Integer] Maximum allowed file size in bytes (default: MAX_MEDIA_SIZE)
     # @return [Array<String>] media IDs in original order, failed uploads excluded
-    def upload_media_parallel(media_items)
+    def upload_media_parallel(media_items, max_size: MAX_MEDIA_SIZE)
       return [] if media_items.nil? || media_items.empty?
 
       items = media_items.first(MAX_MEDIA_COUNT)
@@ -378,7 +380,7 @@ module Publishers
         Thread.new(item, idx) do |it, i|
           Thread.current[:index] = i
           begin
-            upload_media_from_url(it[:url], description: it[:description], url_variants: it[:url_variants])
+            upload_media_from_url(it[:url], description: it[:description], url_variants: it[:url_variants], max_size: max_size)
           rescue StandardError => e
             log "Media upload failed (#{i + 1}/#{items.size}): #{e.message}", level: :warn
             nil
@@ -400,10 +402,11 @@ module Publishers
     # @param data [String] Binary media data (already downloaded)
     # @param url [String] Original URL — used for extension/type detection fallback
     # @param description [String, nil] Alt text for accessibility
+    # @param max_size [Integer] Maximum allowed file size in bytes (default: MAX_MEDIA_SIZE)
     # @return [String, nil] Media ID or nil on failure
-    def upload_media_from_data(data, url:, description: nil)
+    def upload_media_from_data(data, url:, description: nil, max_size: MAX_MEDIA_SIZE)
       return nil if data.nil? || data.empty?
-      return nil if data.bytesize > MAX_MEDIA_SIZE
+      return nil if data.bytesize > max_size
 
       content_type = detect_content_type(url, data)
       if content_type == 'application/octet-stream'

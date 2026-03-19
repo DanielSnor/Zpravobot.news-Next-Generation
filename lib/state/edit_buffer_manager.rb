@@ -1,15 +1,10 @@
 # frozen_string_literal: true
 
-require_relative '../support/loggable'
+require_relative 'base_repository'
 
 module State
   # Repository for edit detection buffer management
-  class EditBufferManager
-    include Support::Loggable
-
-    def initialize(db)
-      @db = db
-    end
+  class EditBufferManager < BaseRepository
 
     # Add post to edit detection buffer
     #

@@ -74,7 +74,7 @@ class MockParallelPublisher < Publishers::MastodonPublisher
     @fail_urls = urls
   end
 
-  def upload_media_from_url(url, description: nil, url_variants: nil)
+  def upload_media_from_url(url, description: nil, url_variants: nil, max_size: nil)
     sleep(@upload_delay) if @upload_delay > 0
 
     if @fail_urls.include?(url)

@@ -1,16 +1,11 @@
 # frozen_string_literal: true
 
 require_relative '../utils/hash_helpers'
-require_relative '../support/loggable'
+require_relative 'base_repository'
 
 module State
   # Repository for source scheduling and error tracking
-  class SourceStateRepository
-    include Support::Loggable
-
-    def initialize(db)
-      @db = db
-    end
+  class SourceStateRepository < BaseRepository
 
     # Get source state
     # @param source_id [String] Source identifier

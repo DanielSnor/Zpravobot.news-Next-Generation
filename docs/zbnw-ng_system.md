@@ -1,6 +1,6 @@
 # ZBNW-NG (Zpravobot Next Generation) – Systémová dokumentace
 
-> **Poslední aktualizace:** 2026-03-02
+> **Poslední aktualizace:** 2026-03-16
 > **Stav:** Produkční
 > **Umístění:** `/app/data/zbnw-ng/` (produkce), `/app/data/zbnw-ng-test/` (test)
 
@@ -312,12 +312,28 @@ Každý post prochází jednotnou pipeline v PostProcessor:
 │    - Detect/remove truncated URLs (ending with …)               │
 │    - Deduplicate URLs at end                                    │
 ├─────────────────────────────────────────────────────────────────┤
+│ 6b. VIDEO DEDUP (opt-in, video posts only)                      │
+│    MediaDedup + ThumbnailPhash:                                 │
+│    - Download video data (1×, cached for upload)                │
+│    - Compute aHash (ImageMagick 8×8 grayscale) → phash_int     │
+│    - Hamming distance scan vs. DB (threshold ≤ 10)             │
+│    → :duplicate if similar video found within dedup window      │
+│    Requires `video_dedup_hours` in source YAML                  │
+├─────────────────────────────────────────────────────────────────┤
+│ 6c. OGP IMAGE FETCH (opt-in, Twitter default: enabled)          │
+│    OgpFetcher:                                                  │
+│    - Only if post.media.empty? (no photo/video)                 │
+│    - Streaming partial read (32KB) → parse og:image            │
+│    - Attach as native image attachment (bypasses scraper blocks)│
+│    Requires `ogp_fetch_link_card: true` in platform YAML        │
+├─────────────────────────────────────────────────────────────────┤
 │ 7. MEDIA UPLOAD                                                 │
 │    Download from source URL → Upload to Mastodon (v2 API)       │
 │    v2 API returns 202 → poll GET /api/v1/media/:id              │
 │    until 200 (ready), backoff 1-5s, max 10 attempts             │
 │    Limit: max MAX_MEDIA_COUNT (4) per post, rest skipped        │
 │    Skip: link_cards, video_thumbnails when video exists         │
+│    Video: reuses pre-downloaded data from Step 6b (no re-DL)   │
 │    Safety net: post-upload trim media_ids to MAX_MEDIA_COUNT    │
 │    Return: array of media_ids                                   │
 ├─────────────────────────────────────────────────────────────────┤
@@ -325,6 +341,8 @@ Každý post prochází jednotnou pipeline v PostProcessor:
 │    MastodonPublisher.publish(                                   │
 │      text, media_ids, visibility, in_reply_to_id                │
 │    )                                                            │
+│    Profile card blocker: pokud mention ale žádná média →       │
+│      přidá assets/white_strip_1280x1.png jako dummy attachment  │
 │    Retry on rate limit (429) and server errors (5xx)            │
 │    Thread fallback: if parent post not found → standalone       │
 ├─────────────────────────────────────────────────────────────────┤
@@ -335,7 +353,10 @@ Každý post prochází jednotnou pipeline v PostProcessor:
 │    )                                                            │
 │    state_manager.log_publish(...)                               │
 ├─────────────────────────────────────────────────────────────────┤
-│ 9b. ADD TO EDIT BUFFER (Twitter/Bluesky only)                   │
+│ 9b. STORE VIDEO FINGERPRINT (video dedup only)                  │
+│    Po úspěšném publishu: store phash_int + SHA-256 do DB        │
+├─────────────────────────────────────────────────────────────────┤
+│ 9c. ADD TO EDIT BUFFER (Twitter/Bluesky only)                   │
 │    edit_detector.add_to_buffer(source_id, post_id, username,    │
 │      text, mastodon_id: mastodon_status_id)                     │
 └─────────────────────────────────────────────────────────────────┘
@@ -788,7 +809,7 @@ Centrální formatter, na který delegují platform-specific wrappery.
 
 **Poznámka:** Regex používá negative lookbehind `(?<![.\w\/])` aby neovlivňoval e-mailové adresy (např. `user@domain.com` zůstane nezměněn). `build_header` (hlavička repostu/quotu) používá stejnou `format_single_mention` logiku jako tělo.
 
-**Profile card blocker:** Pokud post obsahuje mention ale nemá jiná média, `PostProcessor` přidá průhledný 1×1px PNG jako dummy přílohu — Mastodon pak nezobrazí matoucí profile card.
+**Profile card blocker:** Pokud post obsahuje mention ale nemá jiná média, `PostProcessor` přidá `assets/white_strip_1280x1.png` jako dummy přílohu — Mastodon pak nezobrazí matoucí profile card.
 
 **URL rewriting:**
 
@@ -1016,7 +1037,8 @@ class State::StateManager
 
   # Media Fingerprints (→ MediaFingerprintRepository)
   def find_media_fingerprint(source_id, sha256_hash, hours:)
-  def store_media_fingerprint(source_id:, sha256_hash:, post_id:, media_url:)
+  def find_similar_media_phash(source_id, phash_int, hours:)   # Hamming distance scan
+  def store_media_fingerprint(source_id:, sha256_hash:, post_id:, media_url:, phash_int: nil)
   def cleanup_media_fingerprints(retention_hours: 96)
 end
 ```
@@ -1173,7 +1195,7 @@ end
 
 **Soubor:** `lib/processors/media_dedup.rb`
 
-SHA-256 deduplikace videí — zamezuje opakovanému publikování stejného videa v rámci jednoho zdroje.
+pHash/aHash deduplikace videí — zamezuje opakovanému publikování vizuálně shodných videí v rámci jednoho zdroje. Robustnější než SHA-256 vůči re-encodingu a CDN URL změnám.
 
 **Problém:** @rainmaker1973 opakuje videa v 24-48h cyklech (~140 duplikátů/den).
 
@@ -1184,12 +1206,16 @@ SHA-256 deduplikace videí — zamezuje opakovanému publikování stejného vid
 
 ```ruby
 class Processors::MediaDedup
-  def duplicate?(source_id, data, hours:)
-    # Vrací true pokud stejný SHA-256 hash byl publishován u tohoto zdroje v posledních N hodinách
+  def duplicate_by_phash?(source_id, phash_int, hours:)
+    # Primární metoda — Hamming distance scan (threshold ≤ 10)
   end
 
-  def store!(source_id, data, post_id:, media_url: nil)
-    # Uloží fingerprint po úspěšném publishu
+  def duplicate?(source_id, data, hours:)
+    # SHA-256 přesný match — zachován pro diagnostiku
+  end
+
+  def store!(source_id, data, post_id:, media_url: nil, phash_int: nil)
+    # Uloží fingerprint (sha256 + phash_int) po úspěšném publishu
   end
 
   def cleanup(retention_hours: 96)
@@ -1202,8 +1228,8 @@ end
 
 | Krok | Akce |
 |------|------|
-| Step 6b | Stáhne video, vypočte SHA-256, zkontroluje DB → `:duplicate` → skip `duplicate_video` |
-| Step 9b | Po úspěšném publishu uloží fingerprint |
+| Step 6b | Stáhne video, compute pHash (ImageMagick), zkontroluje DB → `:duplicate` → skip |
+| Step 9b | Po úspěšném publishu uloží fingerprint (phash_int + sha256) |
 
 `video_data_cache` v `ProcessingContext` — předává stažená data mezi kroky (`:duplicate` \| `{ url:, data: }` \| `nil`)
 
@@ -1215,6 +1241,44 @@ processing:
 ```
 
 Bez `video_dedup_hours` klíče je dedup transparentně přeskočen.
+
+---
+
+### ThumbnailPhash
+
+**Soubor:** `lib/processors/thumbnail_phash.rb`
+
+Perceptuální hashing (aHash — Average Hash) pro video frames via ImageMagick.
+
+```ruby
+phash = Processors::ThumbnailPhash.compute(video_binary_data)   # => Integer | nil
+ThumbnailPhash.similar?(phash1, phash2)                         # => Boolean
+ThumbnailPhash.hamming(phash1, phash2)                          # => Integer (0..64)
+```
+
+**Požadavky:** ImageMagick `convert` v PATH. Fallback: `nil` → dedup tiše přeskočen.
+
+---
+
+### OgpFetcher
+
+**Soubor:** `lib/utils/ogp_fetcher.rb`
+
+Fetchuje `og:image` z cílového článku a přikládá jako nativní médium. Obchází Mastodon scraper blokovaný zpravodajskými weby.
+
+```ruby
+fetcher = Utils::OgpFetcher.new
+image_url = fetcher.fetch_image_url('https://example.com/article')  # => String | nil
+```
+
+**Aktivace v platform YAML:**
+
+```yaml
+processing:
+  ogp_fetch_link_card: true   # Twitter default: true; potlačit per-source: false
+```
+
+Guard: spustí se pouze pokud `post.media.empty?` (tweet bez vlastního foto/videa).
 
 ---
 

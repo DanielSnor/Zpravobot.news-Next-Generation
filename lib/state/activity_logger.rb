@@ -1,16 +1,11 @@
 # frozen_string_literal: true
 
 require 'json'
-require_relative '../support/loggable'
+require_relative 'base_repository'
 
 module State
   # Repository for activity logging (diagnostics)
-  class ActivityLogger
-    include Support::Loggable
-
-    def initialize(db)
-      @db = db
-    end
+  class ActivityLogger < BaseRepository
 
     # Log an activity
     # @param source_id [String, nil] Source identifier (nil for system logs)

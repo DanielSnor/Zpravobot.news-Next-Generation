@@ -81,16 +81,6 @@ module Syncers
       parse_youtube_profile(html)
     end
 
-    # ============================================
-    # Class-level API
-    # ============================================
-
-    @class_cache_dir = DEFAULT_CACHE_DIR
-
-    class << self
-      attr_accessor :class_cache_dir
-    end
-
     private
 
     # ============================================

@@ -57,8 +57,8 @@ module Processors
     include Support::Loggable
     include Support::ThreadingSupport
 
-    RETRY_ATTEMPTS = 3
-    RETRY_DELAYS   = [1, 2, 4].freeze   # sekundy, exponential backoff
+    RETRY_ATTEMPTS = HttpClient::DEFAULT_MAX_RETRIES
+    RETRY_DELAYS   = HttpClient::DEFAULT_RETRY_DELAYS  # sekundy, exponential backoff
 
     SYNDICATION_SKIP_URL_PATTERNS = [
       %r{twimg\.com}, %r{twitter\.com}, %r{x\.com/}, %r{nitter\.},

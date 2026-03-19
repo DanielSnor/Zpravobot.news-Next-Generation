@@ -1,16 +1,11 @@
 # frozen_string_literal: true
 
 require_relative '../utils/hash_helpers'
-require_relative '../support/loggable'
+require_relative 'base_repository'
 
 module State
   # Repository for published posts deduplication and thread tracking
-  class PublishedPostsRepository
-    include Support::Loggable
-
-    def initialize(db)
-      @db = db
-    end
+  class PublishedPostsRepository < BaseRepository
 
     # Check if post was already published
     # @param source_id [String] Source identifier

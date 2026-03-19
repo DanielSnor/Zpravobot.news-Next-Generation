@@ -112,16 +112,6 @@ module Syncers
       parse_instagram_profile(html)
     end
 
-    # ============================================
-    # Class-level API
-    # ============================================
-
-    @class_cache_dir = DEFAULT_CACHE_DIR
-
-    class << self
-      attr_accessor :class_cache_dir
-    end
-
     private
 
     # ============================================

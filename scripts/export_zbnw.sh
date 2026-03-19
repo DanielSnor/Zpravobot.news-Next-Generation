@@ -33,7 +33,7 @@ echo "" >> "$OUTPUT"
   # Adresáře
   find ./bin -type f -name "*.rb"
   find ./scripts -type f -name "*.sh" 2>/dev/null
-  find ./docs -type f 2>/dev/null
+  # find ./docs -type f 2>/dev/null  # docs vynechány z exportu
   find ./test -type f 2>/dev/null
   find ./lib -type f -name "*.rb"
   find ./config -type f \( -name "*.yml" \) | grep -v "/sources/"
