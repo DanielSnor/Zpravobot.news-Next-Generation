@@ -5,7 +5,11 @@ class SourceGenerator
     data = {}
 
     # 1. Platforma
-    data[:platform] = ask_choice('Platforma', PLATFORMS)
+    data[:platform] = PLATFORM_MAP[ask_choice('Platforma', PLATFORM_OPTIONS)]
+    if %w[facebook instagram].include?(data[:platform])
+      data[:rss_source_type] = data[:platform]
+      data[:platform] = 'rss'
+    end
     puts
 
     # 2. Pro Bluesky: typ zdroje (handle vs feed) - PRED collect_source_data
@@ -18,9 +22,13 @@ class SourceGenerator
     collect_source_data(data)
     puts
 
-    # 4. Pro RSS: typ zdroje (RSS, Facebook, Instagram, jiny)
+    # 4. Pro RSS: typ zdroje (RSS, jiny) - FB/IG uz nastaveno z volby platformy
     if data[:platform] == 'rss'
-      collect_rss_source_type(data)
+      if data[:rss_source_type].nil?
+        collect_rss_source_type(data)
+      elsif data[:rss_source_type] == 'facebook'
+        collect_facebook_handle_for_rss(data)
+      end
       puts
     end
 
@@ -438,7 +446,7 @@ class SourceGenerator
         default_sync = !data[:is_aggregator]
         data[:profile_sync_enabled] = ask_yes_no('Povolit sync profilu?', default: default_sync)
         if data[:profile_sync_enabled]
-          default_retention = data[:social_profile_platform] == 'youtube' ? '180' : '90'
+          default_retention = '30'
           data[:retention_days] = ask_choice('Retence (dní)', RETENTION_OPTIONS.map(&:to_s), default: default_retention).to_i
         end
       end
@@ -462,7 +470,7 @@ class SourceGenerator
         end
 
         if data[:profile_sync_enabled]
-          default_retention = data[:platform] == 'youtube' ? '180' : '90'
+          default_retention = '30'
           data[:retention_days] = ask_choice('Retence (dní)', RETENTION_OPTIONS.map(&:to_s), default: default_retention).to_i
         end
       end

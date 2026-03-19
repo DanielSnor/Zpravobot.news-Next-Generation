@@ -198,7 +198,7 @@ class SourceGenerator
       lines << 'profile_sync:'
       lines << "  enabled: #{data[:profile_sync_enabled]}"
       if data[:profile_sync_enabled]
-        default_retention = data[:platform] == 'youtube' ? 180 : 90
+        default_retention = 30
         lines << "  retention_days: #{data[:retention_days]}" if data[:retention_days] && data[:retention_days] != default_retention
       end
       lines << ''
