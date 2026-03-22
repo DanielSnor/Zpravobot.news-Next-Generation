@@ -73,7 +73,7 @@ rescue LoadError
   EDIT_DETECTOR_AVAILABLE = false
 end
 
-TRANSPARENT_1X1_PNG_PATH = File.join(__dir__, '../../assets/white_strip_1280x1.png')
+MENTION_BLOCKER_PNG_PATH = File.join(__dir__, '../../assets/white_strip_1280x1.png')
 
 module Processors
   class PostProcessor
@@ -84,6 +84,18 @@ module Processors
     OGP_SKIP_DOMAINS = %w[
       twitter.com x.com t.co bsky.app bsky.social
       zpravobot.news nitter xcancel.com
+    ].freeze
+
+    # URL prefixes that indicate a prefix-style profile mention.
+    # These cause Mastodon to render a profile card — trigger the profile card blocker.
+    # Suffix mentions (@handle@twitter.com) do not generate profile cards and are excluded.
+    PROFILE_URL_PREFIXES = %w[
+      bsky.app/profile/
+      x.com/
+      twitter.com/
+      facebook.com/
+      instagram.com/
+      youtube.com/
     ].freeze
 
     # Result struct for processing outcome
@@ -861,13 +873,13 @@ module Processors
 
     # Detects presence of a Mastodon-resolvable mention (@handle or @handle@domain)
     # or a Bluesky profile URL (bsky.app/profile/...) in formatted text.
-    # Uses same negative lookbehind as format_mentions regex to avoid false
-    # positives on email addresses (user@domain.com).
+    # Detects prefix-style profile mentions that cause Mastodon to render a profile card.
+    # Suffix mentions (@handle@twitter.com) do not generate profile cards and are excluded.
     # @param text [String] Formatted Mastodon text
     # @return [Boolean]
     def contains_mention?(text)
       return false if text.nil? || text.empty?
-      text.match?(/(?<![.\w\/])@\w+/) || text.include?('bsky.app/profile/')
+      PROFILE_URL_PREFIXES.any? { |prefix| text.include?(prefix) }
     end
 
     # Upload transparent 1×1px PNG to prevent Mastodon profile card hijack.
@@ -876,12 +888,12 @@ module Processors
     # @param publisher [Publishers::MastodonPublisher]
     # @return [String, nil] Media ID or nil on failure
     def upload_dummy_transparent_image(publisher)
-      unless File.exist?(TRANSPARENT_1X1_PNG_PATH)
-        log_warn("Dummy transparent PNG not found: #{TRANSPARENT_1X1_PNG_PATH}")
+      unless File.exist?(MENTION_BLOCKER_PNG_PATH)
+        log_warn("Dummy transparent PNG not found: #{MENTION_BLOCKER_PNG_PATH}")
         return nil
       end
 
-      data = File.binread(TRANSPARENT_1X1_PNG_PATH)
+      data = File.binread(MENTION_BLOCKER_PNG_PATH)
       result = publisher.upload_media(
         data,
         filename: 'transparent.png',

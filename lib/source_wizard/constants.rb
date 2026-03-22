@@ -1,11 +1,17 @@
 # frozen_string_literal: true
 
 class SourceGenerator
-  PLATFORMS = %w[twitter bluesky rss youtube].freeze
+  PLATFORMS = %w[twitter bluesky facebook instagram rss youtube].freeze
+  PLATFORM_OPTIONS = ['twitter', 'bluesky', 'facebook (via RSS.app)', 'instagram (via RSS.app)', 'rss', 'youtube'].freeze
+  PLATFORM_MAP = {
+    'twitter' => 'twitter', 'bluesky' => 'bluesky',
+    'facebook (via RSS.app)' => 'facebook', 'instagram (via RSS.app)' => 'instagram',
+    'rss' => 'rss', 'youtube' => 'youtube'
+  }.freeze
   PRIORITIES = %w[high normal low].freeze
   VISIBILITIES = %w[public unlisted private].freeze
   LANGUAGES = %w[cs sk en].freeze
-  RETENTION_OPTIONS = [7, 30, 90, 180].freeze
+  RETENTION_OPTIONS = [7, 14, 30, 90, 180].freeze
   DEFAULT_INSTANCE = 'https://zpravobot.news'
 
   # Content mode options for RSS/YouTube
@@ -56,10 +62,9 @@ class SourceGenerator
   BLUESKY_SOURCE_TYPE_MAP = { 'Profil (handle)' => 'handle', 'Custom feed' => 'feed' }.freeze
 
   # RSS source type UI options
-  RSS_SOURCE_TYPE_OPTIONS = ['RSS', 'Facebook (via RSS.app)', 'Instagram (via RSS.app)', 'Jiný (vlastní název)'].freeze
+  RSS_SOURCE_TYPE_OPTIONS = ['RSS', 'Jiný (vlastní název)'].freeze
   RSS_SOURCE_TYPE_MAP = {
-    'RSS' => 'rss', 'Facebook (via RSS.app)' => 'facebook',
-    'Instagram (via RSS.app)' => 'instagram', 'Jiný (vlastní název)' => 'other'
+    'RSS' => 'rss', 'Jiný (vlastní název)' => 'other'
   }.freeze
 
   # Twitter URL domain UI options

@@ -182,6 +182,9 @@ class SourceGenerator
       lines << '# Synchronizace profilu'
       lines << 'profile_sync:'
       lines << "  enabled: #{data[:profile_sync_enabled] ? 'true' : 'false'}"
+      if data[:profile_sync_enabled]
+        lines << "  retention_days: #{data[:retention_days] || 30}"
+      end
       if data[:social_profile_platform] && data[:social_profile_handle]
         lines << '  social_profile:'
         lines << "    platform: #{data[:social_profile_platform]}"
@@ -198,8 +201,7 @@ class SourceGenerator
       lines << 'profile_sync:'
       lines << "  enabled: #{data[:profile_sync_enabled]}"
       if data[:profile_sync_enabled]
-        default_retention = data[:platform] == 'youtube' ? 180 : 90
-        lines << "  retention_days: #{data[:retention_days]}" if data[:retention_days] && data[:retention_days] != default_retention
+        lines << "  retention_days: #{data[:retention_days] || 30}"
       end
       lines << ''
     elsif data[:platform] == 'bluesky' && data[:bluesky_source_type] == 'feed'

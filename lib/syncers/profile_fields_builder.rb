@@ -31,7 +31,7 @@ module Syncers
       'en' => { managed: 'managed by:', retention: 'retention:', days: 'days', from: 'from' }
     }.freeze
 
-    VALID_RETENTION_DAYS = [7, 30, 90, 180].freeze
+    VALID_RETENTION_DAYS = [7, 14, 30, 90, 180].freeze
     MANAGED_BY = '@zpravobot@zpravobot.news'
 
     # Short display labels for each source platform, used in the SPRAVUJE field.

@@ -84,6 +84,8 @@ module State
     # @param media_url [String, nil] Media URL for diagnostics
     # @param phash_int [Integer, nil] aHash 64-bit integer; nil for URL-hash entries
     def store(source_id:, sha256_hash:, post_id: nil, media_url: nil, phash_int: nil)
+      # PostgreSQL bigint is signed 64-bit; convert unsigned aHash to signed if needed
+      phash_int = phash_int - (1 << 64) if phash_int && phash_int > ((1 << 63) - 1)
       @db.conn.exec_params(
         <<~SQL,
           INSERT INTO media_fingerprints (source_id, sha256_hash, post_id, media_url, phash_int)

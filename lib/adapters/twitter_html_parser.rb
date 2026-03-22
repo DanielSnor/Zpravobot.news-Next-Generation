@@ -324,8 +324,10 @@ module Adapters
     end
 
     # Detect video from HTML
+    # Only search the main tweet section, not replies (which start at <div id="r")
     def detect_video_from_html(html)
-      html.include?('>Video<') || html.include?('video_thumb') || html.include?('<video') || html.include?('video-container')
+      main = html.split('<div id="r"').first || html
+      main.include?('>Video<') || main.include?('video_thumb') || main.include?('<video') || main.include?('video-container')
     end
   end
 end
