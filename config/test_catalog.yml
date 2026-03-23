@@ -461,7 +461,7 @@ tests:
     category: unit
     tags: [offline, config]
     exit_code_reliable: true
-    description: "SourceManager: pause/resume/retire YAML edit, file move, InitTimeHelpers, ProblematicSourcesCheck backward compat (TASK-4)"
+    description: "SourceManager: pause/resume/retire YAML edit, file move, InitTimeHelpers, ProblematicSourcesCheck backward compat, mastodon_accounts.yml cleanup po retire (TASK-4)"
 
   test_local_mentions:
     file: test/test_local_mentions.rb
@@ -490,6 +490,13 @@ tests:
     tags: [offline, utils]
     exit_code_reliable: true
     description: "OgpFetcher: og:image extrakce, retry logika, tiché selhání"
+
+  test_source_report:
+    file: test/test_source_report.rb
+    category: unit
+    tags: [offline, reporting, mastodon]
+    exit_code_reliable: true
+    description: "SourceReporter: diff detekce, formátování postů (nové/smazané boty), split na vlákna, snapshot lifecycle (Phase 2)"
 
   # =====================================================
   # VISUAL / DIAGNOSTIC (no real assertions)

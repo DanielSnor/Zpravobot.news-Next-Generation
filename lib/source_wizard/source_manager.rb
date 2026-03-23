@@ -93,10 +93,15 @@ class SourceManager
   # Trvale vyřadí zdroj (vždy vyžaduje interaktivní potvrzení).
   # YAML přesunut do config/sources/retired/
   # DB: source_state + published_posts smazány; activity_log zachován
+  # Po retire: nabídne cleanup záznamu v mastodon_accounts.yml
   # @return [Boolean]
   def retire(source_id)
     yaml_path = source_yaml_path(source_id)
     return false unless validate_source_exists!(yaml_path, source_id)
+
+    # Přečíst mastodon_account před přesunutím YAML
+    source_content   = File.read(yaml_path, encoding: 'UTF-8')
+    mastodon_account = source_content[/^\s*mastodon_account:\s*(.+)$/, 1]&.strip
 
     retired_dir  = File.join(@config_dir, 'sources', 'retired')
     retired_path = File.join(retired_dir, "#{source_id}.yml")
@@ -121,6 +126,12 @@ class SourceManager
     puts "  \u{1F5D1}\uFE0F  #{source_id}: vyřazeno"
     puts "     YAML: #{retired_path}"
     puts "     DB:   záznamy smazány"
+    puts
+
+    # Cleanup mastodon_accounts.yml
+    cleanup_mastodon_account_after_retire(mastodon_account, source_id) if mastodon_account
+
+    puts "  \u26A0\uFE0F  Nezapomeň disablovat Mastodon účet na instanci!"
     puts
     true
   end
@@ -204,6 +215,72 @@ class SourceManager
     )
 
     File.write(yaml_path, content, encoding: 'UTF-8')
+  end
+
+  def mastodon_accounts_path
+    File.join(@config_dir, 'mastodon_accounts.yml')
+  end
+
+  # Vrátí pole source IDs, které sdílejí stejný mastodon_account (kromě retire-ovaného zdroje).
+  def other_sources_for_account(account_id, exclude_source_id)
+    sources_dir = File.join(@config_dir, 'sources')
+    return [] unless Dir.exist?(sources_dir)
+
+    Dir.glob(File.join(sources_dir, '*.yml')).map do |path|
+      src_id = File.basename(path, '.yml')
+      next if src_id == exclude_source_id
+
+      content = begin
+        File.read(path, encoding: 'UTF-8')
+      rescue StandardError
+        next
+      end
+      src_id if content.match?(/^\s*mastodon_account:\s*#{Regexp.escape(account_id)}\s*$/)
+    end.compact
+  end
+
+  # Po retire: zkontroluje, zda má účet jiné zdroje, a nabídne smazání z mastodon_accounts.yml.
+  def cleanup_mastodon_account_after_retire(account_id, retired_source_id)
+    others = other_sources_for_account(account_id, retired_source_id)
+
+    if others.empty?
+      puts "  \u{1F5D1}\uFE0F  Mastodon účet '#{account_id}' nemá žádné další zdroje."
+      if ask_yes_no("     Smazat z mastodon_accounts.yml?", default: false)
+        remove_from_mastodon_accounts(account_id)
+      end
+      puts
+    else
+      count = others.size
+      label = count == 1 ? 'aktivní zdroj' : 'aktivní zdroje'
+      puts "  \u2139\uFE0F  Mastodon účet '#{account_id}' má ještě #{count} #{label}:"
+      others.each { |s| puts "     \u2022 #{s}" }
+      puts "     Záznam v mastodon_accounts.yml ponechán."
+      puts
+    end
+  end
+
+  # Smaže blok account_id z mastodon_accounts.yml (text-based, zachová komentáře a formátování).
+  def remove_from_mastodon_accounts(account_id)
+    path = mastodon_accounts_path
+    unless File.exist?(path)
+      puts "  \u26A0\uFE0F  mastodon_accounts.yml nenalezen: #{path}"
+      return
+    end
+
+    content = File.read(path, encoding: 'UTF-8')
+    # Smazat blok: volitelný předcházející newline, řádek account_id: a všechny odsazené řádky
+    new_content = content.sub(
+      /\n?^#{Regexp.escape(account_id)}:\n(?:[ \t][^\n]*\n)*/m,
+      ''
+    )
+
+    if new_content == content
+      puts "  \u26A0\uFE0F  Záznam '#{account_id}' v mastodon_accounts.yml nenalezen"
+      return
+    end
+
+    File.write(path, new_content, encoding: 'UTF-8')
+    puts "  \u2705  '#{account_id}' smazán z mastodon_accounts.yml"
   end
 
   def get_db_connection

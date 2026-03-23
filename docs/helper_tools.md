@@ -2,8 +2,8 @@
 
 Dokumentace helper aplikací a monitoring systému pro ZBNW-NG.
 
-> **Poslední aktualizace:** 2026-02-27
-> **Změny:** Přidán retry_failed_queue.rb (IFTTT failed queue retry); manage_source.rb (TASK-4)
+> **Poslední aktualizace:** 2026-03-23
+> **Změny:** Přidán analyze_domain_fixes.rb (nástroj pro url_domain_fixes u Twitter/Bluesky zdrojů)
 
 ---
 
@@ -18,6 +18,7 @@ Dokumentace helper aplikací a monitoring systému pro ZBNW-NG.
 - [command_listener.rb (Údržbot)](#command_listenerrb-údržbot) - Interaktivní příkazy přes Mastodon mentions
 - [broadcast.rb](#broadcastrb) - Hromadné publikování zpráv na Mastodon účty
 - [process_broadcast_queue.rb](#process_broadcast_queuerb) - Cron processor pro tlambot broadcast
+- [analyze_domain_fixes.rb](#analyze_domain_fixesrb) - Analýza a aktualizace url_domain_fixes u Twitter/Bluesky zdrojů
 
 ---
 
@@ -1773,6 +1774,79 @@ tlambot:
 
 ---
 
+## analyze_domain_fixes.rb
+
+### Umístění
+`scripts/analyze_domain_fixes.rb`
+
+### Účel
+
+Analyzuje Twitter a Bluesky zdrojové soubory a navrhuje/aplikuje `url_domain_fixes` — seznam domén, kterým se v textu postu automaticky doplní `https://` (typicky Bluesky posty s holými doménami jako `denikn.cz/clanek`).
+
+Data extrahuje ze dvou zdrojů:
+1. **`web:` pole Mastodon profilu** — nejspolehlivější zdroj (přímo doména webu účtu)
+2. **Bio text profilu** — holé domény zapsané v popisu účtu
+
+Domény již pokryté globálně v `config/global.yml` → `url.no_trim_domains` se automaticky vynechávají.
+
+### Použití
+
+```bash
+# 1. Analyzuj — stáhne profily z Mastodon API, uloží doporučení
+ruby scripts/analyze_domain_fixes.rb analyze
+
+# 2. Zkontroluj výsledky
+cat output/domain_fixes_recommendations.yml
+
+# 3. Aplikuj doporučení do yml souborů
+ruby scripts/analyze_domain_fixes.rb apply [--dry-run]
+
+# 4. Vyčisti domény globálně pokryté v global.yml
+ruby scripts/analyze_domain_fixes.rb cleanup [--dry-run]
+
+# Nebo vše najednou
+ruby scripts/analyze_domain_fixes.rb all [--dry-run]
+```
+
+### Přepínače
+
+| Přepínač | Popis |
+|----------|-------|
+| `--platform twitter\|bluesky` | Omezit na konkrétní platformu (výchozí: oboje) |
+| `--source ID` | Zpracovat jen jeden zdroj (mastodon_account nebo ID bez přípony) |
+| `--dry-run` | Pouze výpis, bez zápisu do souborů |
+
+```bash
+# Příklady
+ruby scripts/analyze_domain_fixes.rb analyze --platform bluesky
+ruby scripts/analyze_domain_fixes.rb analyze --source enkocz
+ruby scripts/analyze_domain_fixes.rb apply --dry-run
+ruby scripts/analyze_domain_fixes.rb cleanup --platform twitter
+```
+
+### Výstup
+
+- `output/domain_fixes_recommendations.yml` — mezisoubor s doporučeními (vstup pro `apply`)
+- Terminálový výpis s přehledem změn
+
+### Workflow
+
+```
+analyze → review output/domain_fixes_recommendations.yml → apply → cleanup
+```
+
+`analyze` a `cleanup` lze spustit s `--platform` pro dávkové zpracování jen jedné platformy.
+`apply` čte vždy celý `domain_fixes_recommendations.yml` bez ohledu na platformu.
+
+### Filtrování domén
+
+Skript automaticky vynechává:
+- Domény z `global.yml` → `url.no_trim_domains` (zkracovače, sociální sítě, speciální služby)
+- `linktr.ee`, `discord.gg`, `lnk.bio`, `buymeacoffee.com` a podobné agregátory/platební služby
+- Domény bez platné TLD nebo kratší než 4 znaky
+
+---
+
 ## Shrnutí
 
 | Nástroj | Účel | Spouštění |
@@ -1786,6 +1860,7 @@ tlambot:
 | `command_listener.rb` | Interaktivní příkazy přes Mastodon mentions | Cron (*/5) + manuálně |
 | `broadcast.rb` | Hromadné publikování zpráv na Mastodon účty | Manuálně |
 | `process_broadcast_queue.rb` | Zpracování tlambot broadcast fronty | Cron (*/5 via listener) |
+| `analyze_domain_fixes.rb` | Analýza a aktualizace `url_domain_fixes` u Twitter/Bluesky zdrojů | Manuálně |
 
 ### Health Check Přehled
 
@@ -1814,6 +1889,7 @@ tlambot:
 - **manage_source.rb** manipuluje `enabled` v YAML a `disabled_at` v **source_state** tabulce přes **SourceManager**; spouští init_time wizard při resume
 - **retry_failed_queue.rb** čte soubory z `queue/ifttt/failed/`, spolupracuje s **IftttQueueProcessor** (`retry_count` v JSON) a **QueueCheck** (DEAD_ soubory)
 - **process_broadcast_queue.rb** využívá **TlambotWebhookHandler** pro parsing webhook payloadů, **Broadcaster** pro account resolution, **MastodonPublisher** pro publish a favourite
+- **analyze_domain_fixes.rb** čte `config/sources/*_twitter.yml` a `*_bluesky*.yml`, volá Mastodon API (`/api/v1/accounts/lookup`), spolupracuje s `config/global.yml` (no_trim_domains) a zapisuje do `output/domain_fixes_recommendations.yml`
 
 ---
 

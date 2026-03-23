@@ -10,6 +10,7 @@
 
 require 'tmpdir'
 require 'fileutils'
+require 'set'
 require 'yaml'
 
 $LOAD_PATH.unshift File.expand_path('../lib', __dir__)
@@ -416,6 +417,192 @@ end
 
 test('SourceGenerator respond_to? collect_init_time') do
   SourceGenerator.new.respond_to?(:collect_init_time, true)
+end
+
+# ─────────────────────────────────────────────────────────────
+section('Retire cleanup: mastodon_accounts.yml')
+# ─────────────────────────────────────────────────────────────
+
+SAMPLE_ACCOUNTS_YML = <<~YAML
+  # Header
+  betabot:
+    token: "test_token"
+    aggregator: true
+    categories: [test]
+
+  aktualnecz:
+    token: "token_a"
+    aggregator: false
+    categories: [news]
+
+  ct24:
+    token: "token_b"
+    aggregator: false
+    categories: [news, politics]
+YAML
+
+# Helper: vytvoří tmpdir se dvěma sources a mastodon_accounts.yml
+def make_retire_fixture(extra_source_yaml: nil)
+  dir = Dir.mktmpdir('test_retire_cleanup_')
+  sources_dir = File.join(dir, 'sources')
+  FileUtils.mkdir_p(sources_dir)
+
+  # Primární zdroj k retire-ování
+  primary_yaml = <<~YAML
+    id: aktualnecz_twitter
+    platform: twitter
+    enabled: true
+    target:
+      mastodon_account: aktualnecz
+  YAML
+  File.write(File.join(sources_dir, 'aktualnecz_twitter.yml'), primary_yaml, encoding: 'UTF-8')
+
+  # Volitelný další zdroj pro stejný účet
+  if extra_source_yaml
+    File.write(File.join(sources_dir, 'aktualnecz_rss.yml'), extra_source_yaml, encoding: 'UTF-8')
+  end
+
+  # mastodon_accounts.yml
+  File.write(File.join(dir, 'mastodon_accounts.yml'), SAMPLE_ACCOUNTS_YML, encoding: 'UTF-8')
+
+  dir
+end
+
+test('remove_from_mastodon_accounts: smaže blok z mastodon_accounts.yml') do
+  dir = make_retire_fixture
+  begin
+    manager = SourceManager.new(config_dir: dir, db_schema: 'zpravobot_test')
+    manager.send(:remove_from_mastodon_accounts, 'aktualnecz')
+    content = File.read(File.join(dir, 'mastodon_accounts.yml'), encoding: 'UTF-8')
+    !content.include?('aktualnecz:') && !content.include?('token_a')
+  ensure
+    FileUtils.rm_rf(dir)
+  end
+end
+
+test('remove_from_mastodon_accounts: zachová ostatní záznamy') do
+  dir = make_retire_fixture
+  begin
+    manager = SourceManager.new(config_dir: dir, db_schema: 'zpravobot_test')
+    manager.send(:remove_from_mastodon_accounts, 'aktualnecz')
+    content = File.read(File.join(dir, 'mastodon_accounts.yml'), encoding: 'UTF-8')
+    content.include?('betabot:') && content.include?('ct24:')
+  ensure
+    FileUtils.rm_rf(dir)
+  end
+end
+
+test('remove_from_mastodon_accounts: zachová komentáře v souboru') do
+  dir = make_retire_fixture
+  begin
+    manager = SourceManager.new(config_dir: dir, db_schema: 'zpravobot_test')
+    manager.send(:remove_from_mastodon_accounts, 'aktualnecz')
+    content = File.read(File.join(dir, 'mastodon_accounts.yml'), encoding: 'UTF-8')
+    content.include?('# Header')
+  ensure
+    FileUtils.rm_rf(dir)
+  end
+end
+
+test('other_sources_for_account: vrátí prázdné pole když není jiný zdroj') do
+  dir = make_retire_fixture
+  begin
+    # aktualnecz_twitter.yml je ještě přítomen (nebylo retire-ováno)
+    manager = SourceManager.new(config_dir: dir, db_schema: 'zpravobot_test')
+    others = manager.send(:other_sources_for_account, 'aktualnecz', 'aktualnecz_twitter')
+    others.empty?
+  ensure
+    FileUtils.rm_rf(dir)
+  end
+end
+
+test('other_sources_for_account: najde další zdroj se stejným účtem') do
+  extra = <<~YAML
+    id: aktualnecz_rss
+    platform: rss
+    enabled: true
+    target:
+      mastodon_account: aktualnecz
+  YAML
+  dir = make_retire_fixture(extra_source_yaml: extra)
+  begin
+    manager = SourceManager.new(config_dir: dir, db_schema: 'zpravobot_test')
+    others = manager.send(:other_sources_for_account, 'aktualnecz', 'aktualnecz_twitter')
+    others == ['aktualnecz_rss']
+  ensure
+    FileUtils.rm_rf(dir)
+  end
+end
+
+test('other_sources_for_account: nezahrne exclude_source_id') do
+  dir = make_retire_fixture
+  begin
+    manager = SourceManager.new(config_dir: dir, db_schema: 'zpravobot_test')
+    others = manager.send(:other_sources_for_account, 'aktualnecz', 'aktualnecz_twitter')
+    !others.include?('aktualnecz_twitter')
+  ensure
+    FileUtils.rm_rf(dir)
+  end
+end
+
+test('cleanup_orphaned_accounts: detekuje osiřelý účet') do
+  # Simulujeme přímo logiku skriptu (bez spouštění bin/)
+  dir = Dir.mktmpdir('test_orphaned_')
+  begin
+    sources_dir = File.join(dir, 'sources')
+    FileUtils.mkdir_p(sources_dir)
+
+    # accounts.yml obsahuje aktualnecz
+    accounts_content = "aktualnecz:\n  token: \"x\"\n  categories: [news]\n"
+    File.write(File.join(dir, 'mastodon_accounts.yml'), accounts_content, encoding: 'UTF-8')
+
+    # Žádný zdroj pro aktualnecz → osiřelý
+    active_accounts = Set.new
+    Dir.glob(File.join(sources_dir, '*.yml')).each do |path|
+      content = File.read(path, encoding: 'UTF-8') rescue next
+      ma = content[/^\s*mastodon_account:\s*(.+)$/, 1]&.strip
+      active_accounts.add(ma) if ma
+    end
+
+    account_ids = []
+    File.read(File.join(dir, 'mastodon_accounts.yml'), encoding: 'UTF-8').each_line do |line|
+      next if line.match?(/^\s*#/)
+      m = line.match(/^([A-Za-z0-9_]+):\s*$/)
+      account_ids << m[1] if m
+    end
+
+    excluded = %w[betabot]
+    orphaned = account_ids.reject { |id| excluded.include?(id) || active_accounts.include?(id) }
+    orphaned == ['aktualnecz']
+  ensure
+    FileUtils.rm_rf(dir)
+  end
+end
+
+test('cleanup_orphaned_accounts: nepovažuje betabot za osiřelého') do
+  dir = Dir.mktmpdir('test_orphaned_betabot_')
+  begin
+    sources_dir = File.join(dir, 'sources')
+    FileUtils.mkdir_p(sources_dir)
+
+    accounts_content = "betabot:\n  token: \"x\"\n  categories: [test]\n"
+    File.write(File.join(dir, 'mastodon_accounts.yml'), accounts_content, encoding: 'UTF-8')
+
+    active_accounts = Set.new
+
+    account_ids = []
+    File.read(File.join(dir, 'mastodon_accounts.yml'), encoding: 'UTF-8').each_line do |line|
+      next if line.match?(/^\s*#/)
+      m = line.match(/^([A-Za-z0-9_]+):\s*$/)
+      account_ids << m[1] if m
+    end
+
+    excluded = %w[betabot]
+    orphaned = account_ids.reject { |id| excluded.include?(id) || active_accounts.include?(id) }
+    orphaned.empty?
+  ensure
+    FileUtils.rm_rf(dir)
+  end
 end
 
 # ─────────────────────────────────────────────────────────────

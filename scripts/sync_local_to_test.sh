@@ -98,11 +98,12 @@ do_rsync \
 echo ""
 
 # ============================================================
-# 4. scripts/*.sh
+# 4. scripts/*.sh + scripts/*.rb
 # ============================================================
-echo -e "${CYAN}=== scripts/*.sh ===${NC}"
+echo -e "${CYAN}=== scripts/*.sh + scripts/*.rb ===${NC}"
 do_rsync \
     --include='*.sh' \
+    --include='*.rb' \
     --exclude='*' \
     "$LOCAL_DIR/scripts/" "$REMOTE:$TEST_DIR/scripts/"
 echo ""

@@ -99,10 +99,10 @@ for f in "$TEST_DIR"/*.sh; do
 done
 echo ""
 
-# 4. scripts/*.sh
-echo -e "${CYAN}=== scripts/*.sh ===${NC}"
+# 4. scripts/*.sh + scripts/*.rb
+echo -e "${CYAN}=== scripts/*.sh + scripts/*.rb ===${NC}"
 mkdir -p "$PROD_DIR/scripts"
-for f in "$TEST_DIR"/scripts/*.sh; do
+for f in "$TEST_DIR"/scripts/*.sh "$TEST_DIR"/scripts/*.rb; do
     [ -f "$f" ] || continue
     fname=$(basename "$f")
     copy_file "$f" "$PROD_DIR/scripts/" "scripts/$fname"
@@ -224,7 +224,7 @@ echo ""
 echo "bin/*.rb: $(ls -1 "$PROD_DIR"/bin/*.rb 2>/dev/null | wc -l) souborů"
 echo "lib/**/*.rb: $(find "$PROD_DIR/lib" -name "*.rb" 2>/dev/null | wc -l) souborů"
 echo "*.sh (root): $(ls -1 "$PROD_DIR"/*.sh 2>/dev/null | wc -l) souborů"
-echo "scripts/*.sh: $(ls -1 "$PROD_DIR"/scripts/*.sh 2>/dev/null | wc -l) souborů"
+echo "scripts/: $(ls -1 "$PROD_DIR"/scripts/*.sh "$PROD_DIR"/scripts/*.rb 2>/dev/null | wc -l) souborů"
 echo "docs/: $(find "$PROD_DIR/docs" -type f 2>/dev/null | wc -l) souborů"
 echo "test/: $(find "$PROD_DIR/test" -type f 2>/dev/null | wc -l) souborů"
 echo "config/platforms/*.yml: $(ls -1 "$PROD_DIR"/config/platforms/*.yml 2>/dev/null | wc -l) souborů"
