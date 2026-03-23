@@ -174,7 +174,6 @@ class SourceGenerator
 
     show_profile_sync = data[:platform] == 'twitter' ||
                         (data[:platform] == 'bluesky' && data[:bluesky_source_type] != 'feed') ||
-                        data[:platform] == 'instagram' ||
                         (data[:platform] == 'rss' && data[:rss_source_type] == 'facebook' && data[:handle]) ||
                         data[:platform] == 'youtube'
 
@@ -194,7 +193,15 @@ class SourceGenerator
     elsif rss_instagram
       lines << '# Synchronizace profilu'
       lines << 'profile_sync:'
-      lines << '  enabled: false'
+      lines << "  enabled: #{data[:profile_sync_enabled] ? 'true' : 'false'}"
+      if data[:profile_sync_enabled]
+        lines << "  retention_days: #{data[:retention_days] || 30}"
+        if data[:social_profile_platform] && data[:social_profile_handle]
+          lines << '  social_profile:'
+          lines << "    platform: #{data[:social_profile_platform]}"
+          lines << "    handle: #{data[:social_profile_handle]}"
+        end
+      end
       lines << ''
     elsif show_profile_sync
       lines << '# Synchronizace profilu'

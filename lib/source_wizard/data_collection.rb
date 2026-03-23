@@ -68,7 +68,7 @@ class SourceGenerator
         data[:profile_sync_enabled] = !data[:is_aggregator]
       elsif data[:platform] == 'bluesky' && data[:bluesky_source_type] != 'feed'
         data[:profile_sync_enabled] = !data[:is_aggregator]
-      elsif data[:platform] == 'instagram'
+      elsif data[:platform] == 'rss' && data[:rss_source_type] == 'instagram'
         data[:profile_sync_enabled] = !data[:is_aggregator]
       elsif data[:platform] == 'rss' && data[:rss_source_type] == 'facebook' && data[:handle]
         data[:profile_sync_enabled] = !data[:is_aggregator]
@@ -422,7 +422,7 @@ class SourceGenerator
 
     show_profile_sync = data[:platform] == 'twitter' ||
                         (data[:platform] == 'bluesky' && data[:bluesky_source_type] != 'feed') ||
-                        data[:platform] == 'instagram' ||
+                        (data[:platform] == 'rss' && data[:rss_source_type] == 'instagram') ||
                         (data[:platform] == 'rss' && data[:rss_source_type] == 'facebook' && data[:handle]) ||
                         data[:platform] == 'youtube'
 
@@ -457,6 +457,19 @@ class SourceGenerator
       data[:profile_sync_enabled] = ask_yes_no('Povolit sync profilu?', default: default_sync)
 
       if data[:profile_sync_enabled]
+        if data[:platform] == 'rss' && data[:rss_source_type] == 'instagram'
+          puts '  Instagram handle (bez @, např. tom.holic)'
+          handle = ask('Instagram handle', required: false).strip
+          handle = handle.gsub(/^@/, '')
+          if handle.empty?
+            puts '  ⚠️  Handle nevyplněn — sync profilu bude zakázán'
+            data[:profile_sync_enabled] = false
+          else
+            data[:social_profile_platform] = 'instagram'
+            data[:social_profile_handle] = handle
+          end
+        end
+
         if data[:platform] == 'youtube'
           puts '  YouTube handle (bez @, např. MistrdaBingu)'
           puts '  ℹ️  Bez handle nebude sync profilu fungovat'
