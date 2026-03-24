@@ -887,6 +887,10 @@ module Adapters
     def expand_tco(tco_url)
       return nil unless tco_url&.match?(%r{https?://t\.co/})
 
+      # Strip trailing ellipsis (unicode … or ascii ...) added by IFTTT when URL is truncated
+      tco_url = tco_url.gsub(/[\u2026\.]{1,3}\z/, '')
+      return nil unless tco_url.match?(%r{https?://t\.co/\w})
+
       response = HttpClient.head(tco_url, open_timeout: 3, read_timeout: 3)
 
       case response

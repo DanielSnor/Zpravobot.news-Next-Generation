@@ -7,6 +7,7 @@
 
 $LOAD_PATH.unshift File.expand_path('../lib', __dir__)
 require_relative '../lib/adapters/twitter_adapter'
+require_relative '../lib/adapters/twitter_nitter_adapter'
 require_relative '../lib/adapters/bluesky_adapter'
 require_relative '../lib/adapters/rss_adapter'
 require_relative '../lib/adapters/youtube_adapter'
@@ -122,6 +123,60 @@ test("fix_media_url: external URL unchanged", 'https://pbs.twimg.com/media/image
 
 # Nil
 test("fix_media_url: nil returns nil", nil, tw_media.send(:fix_media_url, nil))
+
+# =============================================================================
+# TWITTER NITTER ADAPTER
+# =============================================================================
+section("TwitterNitterAdapter: expand_tco — ellipsis stripping")
+
+suppress_output
+tw_nitter = Adapters::TwitterNitterAdapter.new(nitter_instance: 'http://nitter:8080')
+restore_output
+
+# Stub HttpClient.head to capture what URL it receives and return a redirect
+original_head = HttpClient.method(:head)
+fetched_urls = []
+mock_redirect = Class.new(Net::HTTPRedirection) do
+  def [](key) = key == 'location' ? 'https://example.com/article' : nil
+end.new('1.1', '301', 'Moved')
+
+HttpClient.define_singleton_method(:head) do |url, **_kwargs|
+  fetched_urls << url
+  mock_redirect
+end
+
+fetched_urls.clear
+result = tw_nitter.send(:expand_tco, "https://t.co/mzcQPHZ4\u2026")
+test("expand_tco: unicode ellipsis stripped before fetch",
+     'https://t.co/mzcQPHZ4', fetched_urls.first)
+test("expand_tco: unicode ellipsis — returns expanded URL",
+     'https://example.com/article', result)
+
+fetched_urls.clear
+result = tw_nitter.send(:expand_tco, 'https://t.co/mzcQPHZ4...')
+test("expand_tco: ascii ellipsis stripped before fetch",
+     'https://t.co/mzcQPHZ4', fetched_urls.first)
+test("expand_tco: ascii ellipsis — returns expanded URL",
+     'https://example.com/article', result)
+
+fetched_urls.clear
+result = tw_nitter.send(:expand_tco, 'https://t.co/AbCdEfGh')
+test("expand_tco: clean URL — no stripping, fetched as-is",
+     'https://t.co/AbCdEfGh', fetched_urls.first)
+test("expand_tco: clean URL — returns expanded URL",
+     'https://example.com/article', result)
+
+fetched_urls.clear
+result = tw_nitter.send(:expand_tco, "https://t.co/\u2026")
+test("expand_tco: only ellipsis after t.co/ — returns nil without fetching",
+     nil, result)
+test("expand_tco: only ellipsis — no HTTP call made",
+     0, fetched_urls.size)
+
+test("expand_tco: nil input returns nil", nil, tw_nitter.send(:expand_tco, nil))
+test("expand_tco: non-tco URL returns nil", nil, tw_nitter.send(:expand_tco, 'https://example.com/foo'))
+
+HttpClient.define_singleton_method(:head, original_head)
 
 # =============================================================================
 # BLUESKY ADAPTER

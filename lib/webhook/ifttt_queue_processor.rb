@@ -240,12 +240,18 @@ module Webhook
     def safe_find_config_for_username(username)
       normalized = username.to_s.gsub(/^@/, '').downcase
 
-      # Try username as source id
-      config = safe_load_source(normalized)
+      # Primary: find by handle (correct naming: source_platform.yml)
+      config = find_source_by_handle('twitter', normalized)
       return config if config
 
-      # Try to find by handle
-      find_source_by_handle('twitter', normalized)
+      # Fallback: try plain username — only succeeds if platform suffix is missing (misconfiguration)
+      config = safe_load_source(normalized)
+      if config
+        log "safe_find_config_for_username(#{username}): found as '#{normalized}' but missing platform suffix — should be '#{normalized}_twitter'", level: :warn
+        return config
+      end
+
+      nil
     rescue StandardError => e
       log "safe_find_config_for_username(#{username}): #{e.message}", level: :warn
       nil
@@ -521,18 +527,17 @@ module Webhook
         end
       end
 
-      # Secondary: Try username as source id
-      config = safe_load_source(normalized_username)
+      # Secondary: Search Twitter sources by handle (correct naming: source_platform.yml)
+      config = find_source_by_handle('twitter', normalized_username)
       if config
-        log "Found by username as source_id: #{config[:id]}"
+        log "Found by handle: #{config[:id]}"
         return enrich_mentions(config)
       end
 
-      # Tertiary: Search Twitter sources by handle
-      log 'Trying fallback: search by handle in twitter sources'
-      config = find_source_by_handle('twitter', normalized_username)
+      # Tertiary: Try plain username — only succeeds if platform suffix is missing (misconfiguration)
+      config = safe_load_source(normalized_username)
       if config
-        log "Found by handle fallback: #{config[:id]}"
+        log "Found by username '#{normalized_username}' but missing platform suffix — should be '#{normalized_username}_twitter'", level: :warn
         return enrich_mentions(config)
       end
 

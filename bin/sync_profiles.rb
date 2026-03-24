@@ -329,8 +329,13 @@ class ProfileSyncRunner
     sync_config = source.data.dig(:profile_sync) || {}
 
     # Nativní Instagram zdroje: handle z source.handle
+    # RSS+instagram zdroje (via RSS.app): handle z social_profile — delegovat na sync_rss
     instagram_handle = source.source_handle
     unless instagram_handle
+      social_profile = sync_config[:social_profile]
+      if social_profile && social_profile[:handle]
+        return sync_instagram_for_rss(source, social_profile[:handle].to_s, sync_config)
+      end
       Logging.warn("[#{source.id}] Instagram profile sync: no source.handle configured, skipping")
       @stats[:skipped] += 1
       return
