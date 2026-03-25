@@ -21,6 +21,7 @@
 require 'json'
 require 'fileutils'
 require 'set'
+require_relative '../logging'
 require_relative '../adapters/twitter_nitter_adapter'
 require_relative '../config/config_loader'
 require_relative '../state/state_manager'
@@ -675,6 +676,8 @@ if __FILE__ == $PROGRAM_NAME
       options[:interval] = i
     end
   end.parse!
+
+  Logging.setup(name: 'ifttt_processor', dir: ENV.fetch('ZBNW_LOG_DIR', 'logs'))
 
   processor = Webhook::IftttQueueProcessor.new
 

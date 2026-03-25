@@ -18,12 +18,12 @@ source "${SCRIPT_DIR}/env.sh"
 
 # ============================================================
 # Process a single queue (prod or test)
-# Usage: process_queue <queue_dir> <log_file> <label>
+# Usage: process_queue <queue_dir> <label>
+# Logging (timestamps + daily rotation) handled by Ruby Logging module.
 # ============================================================
 process_queue() {
     local queue_dir="$1"
-    local log_file="$2"
-    local label="$3"
+    local label="$2"
 
     local pending_dir="${queue_dir}/pending"
     local pending_count
@@ -35,7 +35,7 @@ process_queue() {
 
     echo "[$(date '+%Y-%m-%d %H:%M:%S')] [${label}] Processing ${pending_count} pending webhooks..."
 
-    IFTTT_QUEUE_DIR="$queue_dir" bundle exec ruby lib/webhook/ifttt_queue_processor.rb 2>&1 | tee -a "$log_file"
+    IFTTT_QUEUE_DIR="$queue_dir" bundle exec ruby lib/webhook/ifttt_queue_processor.rb 2>&1
 
     echo "[$(date '+%Y-%m-%d %H:%M:%S')] [${label}] Queue processing complete"
 }
@@ -43,13 +43,7 @@ process_queue() {
 cd "$ZBNW_DIR" || exit 1
 
 # Prod queue
-process_queue \
-    "${IFTTT_QUEUE_DIR}" \
-    "${ZBNW_LOG_DIR}/ifttt_processor.log" \
-    "prod"
+process_queue "${IFTTT_QUEUE_DIR}" "prod"
 
 # Test queue
-process_queue \
-    "${IFTTT_QUEUE_DIR_TEST}" \
-    "${ZBNW_LOG_DIR}/ifttt_processor_test.log" \
-    "test"
+process_queue "${IFTTT_QUEUE_DIR_TEST}" "test"
