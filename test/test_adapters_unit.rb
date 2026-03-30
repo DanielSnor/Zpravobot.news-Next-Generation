@@ -413,6 +413,33 @@ media_priority = rss_mc2.send(:entry_media, mock_entry_both)
 test("entry_media: enclosure takes priority over media:content",
      'https://example.com/enclosure.jpg', media_priority[0].url)
 
+section("RssAdapter: resolve_media_url")
+
+rss_resolver = Adapters::RssAdapter.new(feed_url: 'https://ieuro.cz/feed/')
+rss_resolver.instance_variable_set(:@feed_base_url, 'https://ieuro.cz')
+
+test("resolve_media_url: absolute URL unchanged",
+     'https://ieuro.cz/assets/img.jpg',
+     rss_resolver.send(:resolve_media_url, 'https://ieuro.cz/assets/img.jpg'))
+
+test("resolve_media_url: root-relative URL resolved",
+     'https://ieuro.cz/assets/2026/03/img.webp',
+     rss_resolver.send(:resolve_media_url, '/assets/2026/03/img.webp'))
+
+test("resolve_media_url: nil returns nil",
+     nil,
+     rss_resolver.send(:resolve_media_url, nil))
+
+test("resolve_media_url: empty string returns nil",
+     nil,
+     rss_resolver.send(:resolve_media_url, ''))
+
+rss_no_base = Adapters::RssAdapter.new(feed_url: 'https://example.com/feed')
+rss_no_base.instance_variable_set(:@feed_base_url, nil)
+test("resolve_media_url: relative URL without base returns nil",
+     nil,
+     rss_no_base.send(:resolve_media_url, '/assets/img.jpg'))
+
 section("RssAdapter: Constants")
 
 test("MAX_REDIRECTS is 5", 5, Adapters::RssAdapter::MAX_REDIRECTS)

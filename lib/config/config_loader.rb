@@ -98,6 +98,11 @@ module Config
     # @param account_id [String] Account identifier
     # @return [Hash] { token: '...', instance: '...' }
     def mastodon_credentials(account_id)
+      # Env var override: ZBNW_MASTODON_TOKEN_<ACCOUNT> or ZPRAVOBOT_REPORT_TOKEN for zpravobot
+      env_token = ENV["ZBNW_MASTODON_TOKEN_#{account_id.to_s.upcase}"] ||
+                  (account_id.to_s == 'zpravobot' ? ENV['ZPRAVOBOT_REPORT_TOKEN'] : nil)
+      return { token: env_token } if env_token
+
       accounts = load_yaml('mastodon_accounts.yml') || {}
       creds = accounts[account_id.to_sym]
       raise "Mastodon account not found: #{account_id}" unless creds

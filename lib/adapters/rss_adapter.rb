@@ -133,6 +133,13 @@ module Adapters
     end
 
     def parse_feed(url)
+      @feed_base_url = begin
+        parsed = URI.parse(url)
+        "#{parsed.scheme}://#{parsed.host}"
+      rescue URI::InvalidURIError
+        nil
+      end
+
       fetch_url(url) do |response|
         content = response.read
         content = sanitize_xml(content)
@@ -363,17 +370,14 @@ module Adapters
       # Primary: standard RSS enclosure
       if entry.respond_to?(:enclosure) && entry.enclosure
         enclosure = entry.enclosure
-        return [Media.new(
-          type: guess_media_type(enclosure.type),
-          url: enclosure.url,
-          alt_text: ''
-        )]
+        url = resolve_media_url(enclosure.url)
+        return [Media.new(type: guess_media_type(enclosure.type), url: url, alt_text: '')] if url
       end
 
       # Fallback: media:content (e.g. RSS.app feeds from Facebook/Instagram)
       if @media_content_map
         key = entry_id(entry) || entry_link(entry)
-        url = @media_content_map[key.to_s]
+        url = resolve_media_url(@media_content_map[key.to_s])
         return [Media.new(type: 'image', url: url, alt_text: '')] if url
       end
 
@@ -382,6 +386,19 @@ module Adapters
       source_id = @source_name || 'unknown'
       log "[#{source_id}] Error extracting media: #{e.message} (#{e.class})", level: :warn
       []
+    end
+
+    # Resolve relative media URLs against the feed's base URL.
+    # Some feeds (e.g. ieuro.cz) include root-relative paths like /assets/img.jpg
+    # instead of absolute URLs, causing MastodonPublisher to fail with "not an HTTP URI".
+    def resolve_media_url(url)
+      return nil if url.nil? || url.empty?
+      return url if url.start_with?('http://', 'https://')
+      return nil unless @feed_base_url
+
+      URI.join(@feed_base_url, url).to_s
+    rescue URI::InvalidURIError
+      nil
     end
 
     # Extract categories/tags

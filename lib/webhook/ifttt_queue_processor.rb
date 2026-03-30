@@ -264,10 +264,11 @@ module Webhook
     # @return [String, nil] Username or nil
     def extract_username_from_filename(filepath)
       filename = File.basename(filepath, '.json')
-      parts = filename.split('_')
-      return nil if parts.length < 3
-
-      parts[1]&.downcase
+      # Format: {timestamp}_{username}_{tweet_id} — timestamp i tweet_id jsou číselné
+      # Username může obsahovat podtržítka (např. lord_of_war_95)
+      if (match = filename.match(/^\d+_(.+)_\d+$/))
+        match[1].downcase
+      end
     end
 
     # Check if file is ready for batch processing
