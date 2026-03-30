@@ -1,6 +1,6 @@
 # RSS platforma v ZBNW-NG
 
-> **Poslední aktualizace:** 2026-03-03
+> **Poslední aktualizace:** 2026-03-30
 > **Stav:** Produkční
 
 ---
@@ -11,12 +11,12 @@
 2. [Architektura](#architektura)
 3. [RssAdapter](#rssadapter)
 4. [RssFormatter](#rssformatter)
-5. [FacebookProcessor](#facebookprocessor)
-6. [Konfigurace](#konfigurace)
-7. [RSS source types](#rss-source-types)
-8. [Content Modes](#content-modes)
-9. [Cron a scheduling](#cron-a-scheduling)
-10. [Časté problémy](#časté-problémy)
+5. [Konfigurace](#konfigurace)
+6. [Content Modes](#content-modes)
+7. [Cron a scheduling](#cron-a-scheduling)
+8. [Časté problémy](#časté-problémy)
+
+> **Facebook a Instagram přes RSS.app:** Viz [`rss.app_platform.md`](rss.app_platform.md)
 
 ---
 
@@ -26,8 +26,9 @@ RSS integrace v ZBNW-NG umožňuje:
 
 - **Stahování postů** ze standardních RSS 2.0 a Atom feedů
 - **Formátování** pro Mastodon (title/content kombinace)
-- **Zpracování sociálních sítí** - Facebook a Instagram přes RSS.app
 - **HTML čištění** a entity decoding
+
+Sociální sítě přes RSS.app (Facebook, Instagram, ...) viz [`rss.app_platform.md`](rss.app_platform.md).
 
 ### Klíčové vlastnosti
 
@@ -35,13 +36,12 @@ RSS integrace v ZBNW-NG umožňuje:
 |--------|------|----------|
 | RSS 2.0 | ✅ | Standardní RSS feedy |
 | Atom | ✅ | Atom feedy |
-| Facebook (via RSS.app) | ✅ | S em-dash duplikát odstraněním |
-| Instagram (via RSS.app) | ✅ | S mention transformací |
-| Media/Enclosures | ✅ | Obrázky, video, audio |
+| Media/Enclosures | ✅ | `<enclosure>` + `<media:content>` (RSS.app) |
 | HTML čištění | ✅ | Entity decoding, tag removal |
 | Pre-truncation | ✅ | Pro dlouhé HTML feedy |
 | Redirect following | ✅ | Automatické sledování 301/302/307/308 (max 5 hopů) |
-| Profile sync | ✅ | Pro Facebook sources via `FacebookProfileSyncer` (Browserless.io) |
+| Relativní URL media | ✅ | Root-relative cesty doplněny na absolute |
+| Sociální sítě (RSS.app) | → | Viz `rss.app_platform.md` |
 
 ---
 
@@ -52,15 +52,10 @@ RSS integrace v ZBNW-NG umožňuje:
 │  RSS Feed (HTTP)    │────▶│   RssAdapter     │────▶│   RssFormatter    │
 │  (RSS 2.0 / Atom)   │     │  (fetch + parse) │     │  (format text)    │
 └─────────────────────┘     └──────────────────┘     └───────────────────┘
-                                    │                         │
-                                    │                         ▼
-                                    │                ┌───────────────────┐
-                                    │                │ FacebookProcessor │
-                                    │                │ (optional FB fix) │
-                                    │                └───────────────────┘
-                                    ▼                         │
-┌─────────────────────┐     ┌──────────────────┐              │
-│  Mastodon API       │◀────│ MastodonPublisher│◀─────────────┘
+                                                               │
+                                                               ▼
+┌─────────────────────┐     ┌──────────────────┐
+│  Mastodon API       │◀────│ MastodonPublisher│
 │                     │     │                  │
 └─────────────────────┘     └──────────────────┘
 ```
@@ -71,10 +66,10 @@ RSS integrace v ZBNW-NG umožňuje:
 |--------|------|
 | `lib/adapters/rss_adapter.rb` | Stahování a parsing feedů |
 | `lib/formatters/rss_formatter.rb` | Formátování textu |
-| `lib/processors/facebook_processor.rb` | Facebook-specific čištění |
 | `lib/utils/html_cleaner.rb` | HTML entity decoding |
-| `lib/syncers/facebook_profile_syncer.rb` | Profile sync pro Facebook (Browserless.io) |
 | `config/platforms/rss.yml` | Výchozí nastavení platformy |
+
+Pro RSS.app (FB/IG) viz [`rss.app_platform.md`](rss.app_platform.md).
 
 ---
 
@@ -412,27 +407,13 @@ DEFAULT_CONFIG = {
 
 > **Poznámka:** Mentions transformace je vypnuta. `@username` zůstává jako prostý text.
 
-### Mentions transformace podle source type
+### Mentions transformace
 
 **AKTUÁLNÍ STAV: VYPNUTO**
 
-Mentions transformace je **vypnutá** pro všechny platformy včetně Facebook a Instagram zdrojů.
+Mentions transformace je **vypnutá** pro RSS — `@username` zůstává jako prostý text bez transformace.
 
-```ruby
-# Aktuální produkční nastavení:
-MENTIONS_BY_SOURCE_TYPE = {
-  'facebook'  => { type: 'none', value: '' },
-  'instagram' => { type: 'none', value: '' },
-  'rss'       => { type: 'none', value: '' },
-  'other'     => { type: 'none', value: '' }
-}.freeze
-```
-
-**Důvod:** Mentions URL transformace (`@user` → `https://...`) způsobovala problémy s Mastodon náhledy - generoval se náhled na profil místo na článek.
-
-**Výsledek:** `@username` zůstává jako prostý text bez transformace.
-
-> **Poznámka:** Kód v `rss_formatter.rb` může stále obsahovat starou konfiguraci s URL prefixes, ale `mentions: { type: 'none' }` v platform YAML přepisuje toto nastavení.
+**Důvod:** URL transformace (`@user` → `https://...`) způsobovala problémy s Mastodon link preview — generoval se náhled profilu místo článku.
 
 ### Formát výstupu
 
@@ -457,115 +438,7 @@ Titulek článku — Obsah článku nebo perex...
 https://example.com/clanek
 ```
 
-### Facebook preprocessing
-
-Pro Facebook zdroje se automaticky volá FacebookProcessor:
-
-```ruby
-def format(post)
-  raise ArgumentError, "Post cannot be nil" if post.nil?
-  
-  # Pre-processing: Facebook-specific processing
-  if @config[:rss_source_type] == 'facebook'
-    post = apply_facebook_preprocessing(post)
-  end
-  
-  # Delegate to UniversalFormatter
-  @universal.format(post, runtime_config)
-end
-```
-
----
-
-## FacebookProcessor
-
-### Umístění
-`lib/processors/facebook_processor.rb`
-
-### Účel
-
-Zpracovává Facebook-specifické problémy z RSS.app feedů:
-- **Em-dash duplikáty** - Reels často mají "Text… — Text…" (title i description jsou stejné)
-
-### Příklad problému
-
-RSS.app pro Facebook Reels vrací:
-```
-Title: "Čo ďalšie odznelo? bit.ly/xxx"
-Description: "Čo ďalšie odznelo? bit.ly/xxx"
-```
-
-Bez zpracování by výstup byl:
-```
-Čo ďalšie odznelo? bit.ly/xxx — Čo ďalšie odznelo? bit.ly/xxx
-```
-
-### Řešení
-
-```ruby
-class FacebookProcessor
-  EM_DASH_SEPARATOR = ' — '
-  SIMILARITY_THRESHOLD = 0.6
-
-  def process(text)
-    return '' if text.nil? || text.empty?
-
-    result = text.dup
-
-    # Remove em-dash duplicates
-    result = remove_emdash_duplicate(result)
-
-    result.strip
-  end
-
-  def remove_emdash_duplicate(text)
-    return text unless text.include?(EM_DASH_SEPARATOR)
-
-    parts = text.split(EM_DASH_SEPARATOR, 2)
-    return text if parts.length < 2
-
-    first_part = parts[0].strip
-    second_part = parts[1].strip
-
-    # Skip if either part is empty
-    return text if first_part.empty? || second_part.empty?
-
-    # Check for duplicate/similar content
-    if similar_content?(first_part, second_part)
-      # Return the longer (more complete) version
-      first_part.length >= second_part.length ? first_part : second_part
-    else
-      text
-    end
-  end
-
-  def similar_content?(text1, text2)
-    # Exact match
-    return true if normalize(text1) == normalize(text2)
-    
-    # One is prefix of the other
-    shorter, longer = [text1, text2].sort_by(&:length).map { |t| normalize(t) }
-    return true if longer.start_with?(shorter[0...(shorter.length * 0.7).to_i])
-    
-    # Word overlap similarity
-    words1 = normalize(text1).split(/\s+/).reject { |w| w.length < 3 }
-    words2 = normalize(text2).split(/\s+/).reject { |w| w.length < 3 }
-    
-    return false if words1.length < 3 || words2.length < 3
-    
-    intersection = (words1 & words2).size
-    union = (words1 | words2).size
-    
-    return false if union.zero?
-    
-    (intersection.to_f / union) >= SIMILARITY_THRESHOLD
-  end
-
-  def normalize(text)
-    text.downcase.gsub(/[…]|\.{3,}/, '').gsub(/[^\w\s]/, '').strip
-  end
-end
-```
+> **Facebook preprocessing:** Pro RSS.app FB feedy viz [`rss.app_platform.md`](rss.app_platform.md) — sekce FacebookProcessor.
 
 ---
 
@@ -666,115 +539,7 @@ profile_sync:
   enabled: false  # RSS nemá profily
 ```
 
-### Facebook zdroj via RSS.app (YAML)
-
-```yaml
-id: tvnoviny_facebook
-enabled: true
-platform: rss
-rss_source_type: facebook    # DŮLEŽITÉ!
-
-source:
-  feed_url: "https://rss.app/feeds/xxxxx.xml"
-  handle: "tvnovinyslovakia"  # Facebook page handle pro profile sync
-
-target:
-  mastodon_account: tvnovinyslovakia
-
-formatting:
-  source_name: "TV Noviny"
-
-# Filtrování - banned_phrases automaticky přidány pro FB zdroje
-filtering:
-  banned_phrases:
-    - "updated their cover photo"
-    - "updated their profile picture"
-    - "is with"
-    - "was live"
-
-# RSS.app content replacements
-processing:
-  content_replacements:
-    - { pattern: "^.+?\\s+(Posted|shared|updated status)$", replacement: "", flags: "i", literal: false }
-    - { pattern: "(When[^>]+deleted.)", replacement: "", flags: "gim", literal: false }
-
-# Profile sync přes Browserless.io (vyžaduje BROWSERLESS_TOKEN a Facebook cookies)
-profile_sync:
-  enabled: true
-  language: cs
-  retention_days: 90
-```
-
-> **Poznámka:** Profile sync pro Facebook vyžaduje:
-> - `source.handle` - Facebook page handle
-> - `BROWSERLESS_TOKEN` v env.sh
-> - Facebook cookies v `config/platforms/facebook.yml`
-> - Viz `lib/syncers/facebook_profile_syncer.rb` pro detaily
-
-### Instagram zdroj via RSS.app (YAML)
-
-```yaml
-id: brand_instagram
-enabled: true
-platform: rss
-rss_source_type: instagram   # DŮLEŽITÉ!
-
-source:
-  feed_url: "https://rss.app/feeds/yyyyy.xml"
-
-target:
-  mastodon_account: brand
-
-formatting:
-  source_name: "Brand"
-
-# Filtrování - banned_phrases automaticky přidány pro IG zdroje
-filtering:
-  banned_phrases:
-    - "updated their profile picture"
-
-processing:
-  content_replacements:
-    - { pattern: "^.+?\\s+(Posted|shared|updated status)$", replacement: "", flags: "i", literal: false }
-    - { pattern: "(When[^>]+deleted.)", replacement: "", flags: "gim", literal: false }
-
-profile_sync:
-  enabled: false
-```
-
----
-
-## RSS source types
-
-### Přehled typů
-
-| Typ | Popis | Profile sync | Banned phrases | Extra processing |
-|-----|-------|-------------|----------------|------------------|
-| `rss` | Standardní RSS feed | ❌ | ❌ | Žádný |
-| `facebook` | Facebook via RSS.app | ✅ (Browserless) | ✅ (4 fráze) | FacebookProcessor |
-| `instagram` | Instagram via RSS.app | ❌ | ✅ (1 fráze) | Content replacements |
-| `other` | Vlastní typ | ❌ | ❌ | Žádný |
-
-> **Poznámka:** Mentions transformace byla vypnuta pro všechny typy kvůli problémům s Mastodon náhledy.
-
-### Nastavení v source YAML
-
-```yaml
-rss_source_type: facebook  # Povinné pro FB/IG feedy!
-```
-
-### RSS.app content replacements
-
-Pro Facebook a Instagram feedy se doporučují tyto content replacements pro odstranění RSS.app šumu:
-
-```yaml
-processing:
-  content_replacements:
-    # Odstranění "Posted" / "shared" / "updated status" řádků
-    - { pattern: "^.+?\\s+(Posted|shared|updated status)$", replacement: "", flags: "i", literal: false }
-    # Odstranění GDPR warningů
-    - { pattern: "(When[^>]+deleted.)", replacement: "", flags: "gim", literal: false }
-```
+> **Facebook a Instagram zdroje přes RSS.app:** Viz [`rss.app_platform.md`](rss.app_platform.md) — obsahuje YAML příklady, konfiguraci, profile sync a RSS.app specifika.
 
 ---
 
@@ -900,24 +665,15 @@ HtmlCleaner.clean("&aacute; &nbsp; &mdash;")
 
 **Řešení:** HtmlCleaner podporuje 100+ entit včetně českých znaků s háčky a čárkami.
 
-### 4. Facebook Reels mají duplicitní text
-
-**Příčina:** `rss_source_type: facebook` není nastaveno.
-
-**Řešení:**
-```yaml
-rss_source_type: facebook  # Aktivuje FacebookProcessor
-```
-
-### 5. @mentions v textu
+### 4. @mentions v textu
 
 **Chování:** `@username` zůstává jako prostý text bez transformace na URL.
 
-**Důvod:** Mentions URL transformace byla záměrně vypnuta pro všechny platformy, protože způsobovala problémy s Mastodon náhledy (generoval se náhled na profil místo na článek).
+**Důvod:** URL transformace byla záměrně vypnuta — způsobovala problémy s Mastodon link preview (náhled profilu místo článku).
 
 **Poznámka:** Toto je očekávané chování, ne chyba.
 
-### 6. Media se nenahrávají
+### 5. Media se nenahrávají
 
 **Příčina:** Feed neobsahuje enclosures nebo jsou v nepodporovaném formátu.
 
@@ -927,9 +683,9 @@ rss_source_type: facebook  # Aktivuje FacebookProcessor
 curl -s "https://example.com/rss.xml" | grep -i enclosure
 ```
 
-**Poznámka:** RSS adapter extrahuje media pouze z `<enclosure>` tagů.
+**Poznámka:** RSS adapter extrahuje media z `<enclosure>` tagů i z `<media:content>` (RSS.app feedy). Pro RSS.app problémy viz [`rss.app_platform.md`](rss.app_platform.md).
 
-### 7. HTTP 403/404 při stahování feedu
+### 6. HTTP 403/404 při stahování feedu
 
 **Příčiny:**
 - Feed URL je neplatná
@@ -941,7 +697,7 @@ curl -s "https://example.com/rss.xml" | grep -i enclosure
 curl -H "User-Agent: Zpravobot/1.0" "https://example.com/rss.xml"
 ```
 
-### 8. HTTP 301/308 redirect
+### 7. HTTP 301/308 redirect
 
 **Chování:** Adapter automaticky sleduje redirecty (301, 302, 307, 308) až do 5 hopů. Redirect je logován jako WARNING, finální URL jako SUCCESS.
 
@@ -953,13 +709,13 @@ INFO: [RssAdapter] Followed to final URL: https://cestina20.cz/feed
 
 **Poznámka:** Permanentní redirecty (301, 308) naznačují, že by se měl aktualizovat `feed_url` v konfiguraci zdroje na novou URL. Adapter si poradí automaticky, ale přímá URL je efektivnější.
 
-### 9. Duplicitní posty
+### 8. Duplicitní posty
 
 **Příčina:** Feed nemá stabilní GUID/ID.
 
 **Řešení:** ZBNW-NG používá `entry_id` (GUID → link fallback) pro deduplikaci v DB.
 
-### 10. Nové posty se nepublikují — RSS.app zpoždění
+### 9. Nové posty se nepublikují — zpoždění agregátoru
 
 **Příznak:** Runner hlásí `Fetched 0 posts` přestože feed obsahuje nové články.
 
@@ -1066,77 +822,16 @@ end
 
 ## create_source.rb podpora
 
-Interaktivní generátor `bin/create_source.rb` podporuje RSS platformu:
-
-### RSS source types v generátoru
-
-```ruby
-RSS_SOURCE_TYPES = {
-  'rss' => { label: 'RSS', suffix: 'rss' },
-  'facebook' => { label: 'Facebook', suffix: 'facebook' },
-  'instagram' => { label: 'Instagram', suffix: 'instagram' },
-  'other' => { label: nil, suffix: nil }
-}.freeze
-```
+Interaktivní generátor `bin/create_source.rb` podporuje RSS platformu pro standardní feedy i RSS.app sociální sítě.
 
 ### Content modes v generátoru
 
 ```ruby
 CONTENT_MODES = {
-  'text' => { show_title_as_content: false, combine_title_and_content: false },
-  'title' => { show_title_as_content: true, combine_title_and_content: false },
+  'text'     => { show_title_as_content: false, combine_title_and_content: false },
+  'title'    => { show_title_as_content: true,  combine_title_and_content: false },
   'combined' => { show_title_as_content: false, combine_title_and_content: true }
 }.freeze
 ```
 
-### RSS.app content replacements
-
-```ruby
-RSSAPP_CONTENT_REPLACEMENTS = [
-  { pattern: "^.+?\\s+(Posted|shared|updated status)$", replacement: "", flags: "i", literal: false },
-  { pattern: "(When[^>]+deleted.)", replacement: "", flags: "gim", literal: false }
-].freeze
-```
-
-### Banned phrases (automaticky přidané)
-
-`create_source.rb` automaticky přidává banned_phrases pro FB/IG zdroje do YAML:
-
-```ruby
-RSSAPP_BANNED_PHRASES = {
-  'facebook' => [
-    "updated their cover photo",
-    "updated their profile picture",
-    "is with",
-    "was live"
-  ],
-  'instagram' => [
-    "updated their profile picture"
-  ]
-}.freeze
-```
-
-Tyto fráze filtrují noise posty, které nemají informační hodnotu.
-
-### Profile sync pro Facebook
-
-`create_source.rb` nabízí profile sync pro `rss_source_type: facebook` pokud je zadán `handle`.
-Sync používá `FacebookProfileSyncer` s Browserless.io API.
-
-**Požadavky:**
-- `BROWSERLESS_TOKEN` v env.sh
-- Facebook cookies v `config/platforms/facebook.yml`
-- `source.handle` v source YAML
-
-**Spuštění:**
-```bash
-./bin/sync_profiles.rb --source tvnoviny_facebook --dry-run
-```
-
-**Cron (každé 3 dny):**
-```bash
-0 3 */3 * * cd /app/data/zbnw-ng && source env.sh && bundle exec ruby bin/sync_profiles.rb --platform facebook
-```
-
-> **Poznámka:** `--platform facebook` interně filtruje RSS sources s `rss_source_type: facebook`.
-> V `sync_profiles.rb` se efektivní platforma detekuje jako `facebook` když `source.platform == 'rss' && source.rss_source_type == 'facebook'`.
+Pro RSS.app specifika (RSS source types, banned_phrases, profile sync) viz [`rss.app_platform.md`](rss.app_platform.md).

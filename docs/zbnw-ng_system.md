@@ -1,6 +1,6 @@
 # ZBNW-NG (Zpravobot Next Generation) – Systémová dokumentace
 
-> **Poslední aktualizace:** 2026-03-16
+> **Poslední aktualizace:** 2026-03-30
 > **Stav:** Produkční
 > **Umístění:** `/app/data/zbnw-ng/` (produkce), `/app/data/zbnw-ng-test/` (test)
 
@@ -153,6 +153,10 @@ Náhrada za IFTTT automatizace, které měly problémy:
 | `lib/broadcast/broadcaster.rb` | Core broadcast engine (account resolution, retry, progress) |
 | `lib/broadcast/tlambot_webhook_handler.rb` | Webhook parser pro tlambot (HMAC, routing, media) |
 | `lib/broadcast/tlambot_queue_processor.rb` | Queue processor pro automatické broadcasty |
+| `bin/zpravobot_stats.rb` | Týdenní hitparáda #ZpravobotTOP10 (cron ne neděli) |
+| `bin/trending_post.rb` | Quote posty pro trendující statusy na zpravobot.news |
+| `lib/stats/` | Knihovna týdenních statistik (snapshot, publishing, mastodon, skokan, formatter) |
+| `lib/trending/trending_checker.rb` | Core logika trending quote postingu |
 
 ---
 
@@ -1975,6 +1979,19 @@ psql "$CLOUDRON_POSTGRESQL_URL" -f db/migrate_test_schema.sql
 | `TLAMBOT_WEBHOOK_SECRET` | - | HMAC secret pro tlambot webhook verifikaci |
 | `BROADCAST_QUEUE_DIR` | `queue/broadcast` | Adresář broadcast queue |
 | `ZBNW_MASTODON_TOKEN_{ID}` | - | ENV override Mastodon tokenu (per account) |
+| `ZPRAVOBOT_REPORT_TOKEN` | - | Token pro @zpravobot (trending_post.rb, fallback) |
+| `ZBNW_MASTODON_TOKEN_ZPRAVOBOT` | - | Explicitní token pro @zpravobot (nejvyšší priorita) |
+| `ZPRAVOBOT_STATS_ACCOUNT` | `betabot` | Výchozí publisher účet pro zpravobot_stats.rb |
+| `ZBNW_TRENDING_STATE` | `data/trending_state.json` | Override cesty pro state soubor trending_post.rb |
+| `BROWSERLESS_TOKEN` | - | API token pro Browserless.io (Facebook/Instagram profile sync) |
+| `FB_COOKIE_DATR` | - | Facebook cookie `datr` (profile sync) |
+| `FB_COOKIE_C_USER` | - | Facebook cookie `c_user` (profile sync) |
+| `FB_COOKIE_XS` | - | Facebook cookie `xs` (profile sync) |
+| `FB_COOKIE_SB` | - | Facebook cookie `sb` (profile sync) |
+| `IG_COOKIE_SESSIONID` | - | Instagram cookie `sessionid` (profile sync) |
+| `IG_COOKIE_CSRFTOKEN` | - | Instagram cookie `csrftoken` (profile sync) |
+| `IG_COOKIE_DS_USER_ID` | - | Instagram cookie `ds_user_id` (profile sync) |
+| `IG_COOKIE_MID` | - | Instagram cookie `mid` (profile sync) |
 | `DEBUG` | - | Verbose logging |
 
 ---
@@ -2071,6 +2088,48 @@ psql "$CLOUDRON_POSTGRESQL_URL" -f db/migrate_test_schema.sql
 ```bash
 ./bin/process_broadcast_queue.rb     # Zpracovat broadcast queue (cron)
 ```
+
+### zpravobot_stats.rb
+
+```bash
+# Dry run — náhled CZ+SK postu na stdout
+./bin/zpravobot_stats.rb
+
+# Publikovat thread (CZ + SK reply)
+./bin/zpravobot_stats.rb --publish
+
+# Uložit snapshot bez publikace
+./bin/zpravobot_stats.rb --snapshot-only
+
+# Jen jeden jazyk
+./bin/zpravobot_stats.rb --publish --lang cz
+
+# Override týdne (zpětné generování)
+./bin/zpravobot_stats.rb --week 12 --publish
+
+# Jiný publisher účet
+./bin/zpravobot_stats.rb --publish --account betabot
+
+# Testovací schéma
+./bin/zpravobot_stats.rb --test
+```
+
+Cron: `0 20 * * 0` (neděle 20:00)
+
+### trending_post.rb
+
+```bash
+# Zkontrolovat trendy a citovat nové
+./bin/trending_post.rb
+
+# Dry run — bez HTTP POST
+./bin/trending_post.rb --dry-run
+
+# Testovací konfigurace
+./bin/trending_post.rb --test
+```
+
+Cron: `45 * * * *` (každou hodinu v :45) — spouštěno přes `cron_trending.sh`
 
 ---
 

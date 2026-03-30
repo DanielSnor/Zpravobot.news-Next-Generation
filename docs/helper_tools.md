@@ -2,8 +2,8 @@
 
 Dokumentace helper aplikací a monitoring systému pro ZBNW-NG.
 
-> **Poslední aktualizace:** 2026-03-23
-> **Změny:** Přidán analyze_domain_fixes.rb (nástroj pro url_domain_fixes u Twitter/Bluesky zdrojů)
+> **Poslední aktualizace:** 2026-03-30
+> **Změny:** Přidány zpravobot_stats.rb (týdenní hitparáda #ZpravobotTOP10) a trending_post.rb (trending quote posting)
 
 ---
 
@@ -19,6 +19,8 @@ Dokumentace helper aplikací a monitoring systému pro ZBNW-NG.
 - [broadcast.rb](#broadcastrb) - Hromadné publikování zpráv na Mastodon účty
 - [process_broadcast_queue.rb](#process_broadcast_queuerb) - Cron processor pro tlambot broadcast
 - [analyze_domain_fixes.rb](#analyze_domain_fixesrb) - Analýza a aktualizace url_domain_fixes u Twitter/Bluesky zdrojů
+- [zpravobot_stats.rb](#zpravobot_statsrb) - Týdenní hitparáda #ZpravobotTOP10 (CZ+SK thread)
+- [trending_post.rb](#trending_postrb) - Automatické quote posty pro trendující statusy
 
 ---
 
@@ -1847,6 +1849,194 @@ Skript automaticky vynechává:
 
 ---
 
+## zpravobot_stats.rb
+
+### Umístění
+`bin/zpravobot_stats.rb`
+
+### Účel
+
+Generuje a publikuje týdenní hitparádu Zpravobot botů jako Mastodon thread. Každou neděli vytvoří dva posty: CZ post (odpovídá jako reply na SK post) — oba sdílejí hashtag `#ZpravobotTOP10`.
+
+Post obsahuje:
+- **Nejsledovanější boty** — TOP N podle počtu followers
+- **Nejaktivnější boty** — TOP N podle počtu postů za uplynulý týden
+- **Skokan aktivity** — bot s největším relativním nárůstem postů (min. 20 postů předchozí týden)
+- **Skokan followers** — bot s největším absolutním nárůstem sledujících (dostupné od 2. týdne)
+- **TOP kategorie** — platformy/kategorie seřazené podle aktivity
+- Číslo týdne a datum rozsahu (Po – Ne)
+
+### Použití
+
+```bash
+# Dry run — vytiskne náhled na stdout bez publikace
+ruby bin/zpravobot_stats.rb
+
+# Publikovat CZ+SK thread
+ruby bin/zpravobot_stats.rb --publish
+
+# Uložit snapshot do DB, bez generování postu
+ruby bin/zpravobot_stats.rb --snapshot-only
+
+# Pouze CZ nebo SK post
+ruby bin/zpravobot_stats.rb --publish --lang cz
+ruby bin/zpravobot_stats.rb --publish --lang sk
+
+# Override čísla týdne (pro zpětné generování)
+ruby bin/zpravobot_stats.rb --week 12 --publish
+
+# Jiný publisher účet
+ruby bin/zpravobot_stats.rb --publish --account betabot
+
+# Testovací schéma (zpravobot_test)
+ruby bin/zpravobot_stats.rb --test
+```
+
+### Přepínače
+
+| Přepínač | Default | Popis |
+|----------|---------|-------|
+| `--publish` | `false` | Publikovat thread přes Mastodon API |
+| `--snapshot-only` | `false` | Uložit snapshot do DB, nevytvářet post |
+| `--week N` | aktuální ISO týden | Override čísla týdne |
+| `--account ID` | `betabot` | Mastodon účet pro publikaci |
+| `--lang cz\|sk` | oba | Generovat jen jeden jazykový post |
+| `--test` | `false` | Použít schéma `zpravobot_test` |
+
+### Publisher účet
+
+Priorita:
+1. `--account` CLI flag
+2. ENV proměnná `ZPRAVOBOT_STATS_ACCOUNT`
+3. výchozí: `betabot`
+
+### Cron
+
+```bash
+# Cloudron cron — každou neděli v 20:00
+0 20 * * 0  cd /app/data/zbnw-ng && ruby bin/zpravobot_stats.rb --publish 2>&1 >> logs/stats.log
+```
+
+### Architektura
+
+```
+bin/zpravobot_stats.rb          # CLI entry point (OptionParser, 11 kroků)
+lib/stats/snapshot_store.rb     # Uložení a načítání týdenních snapshotů (DB: account_stats_snapshot)
+lib/stats/publishing_stats.rb   # Statistiky publikování z DB (per-account, per-category)
+lib/stats/mastodon_stats.rb     # Fetch account stats z Mastodon API (followers, statuses)
+lib/stats/skokan_detector.rb    # Detekce největšího pohybu (aktivita + followers)
+lib/stats/stats_post_formatter.rb # Formátování textu hitparády (auto-truncate TOP10→5→3)
+```
+
+### DB tabulka
+
+`account_stats_snapshot` (migrace `db/patch_add_stats_snapshot.sql`):
+
+| Sloupec | Typ | Popis |
+|---------|-----|-------|
+| `account_id` | VARCHAR | Mastodon account ID |
+| `snapshot_date` | DATE | Datum snapshotu |
+| `followers` | INTEGER | Počet sledujících |
+| `statuses` | INTEGER | Celkový počet statusů |
+| `posts_week` | INTEGER | Postů publikovaných tento týden |
+
+Unikátní index na `(account_id, snapshot_date)` — upsert bezpečný.
+
+### Auto-truncate
+
+Pokud post přesáhne 2 500 znaků (limit instance zpravobot.news), `StatsPostFormatter` automaticky zkrátí pořadí: **TOP 10 → TOP 5 → TOP 3**. Pokud ani TOP 3 nevejde, vyhodí `RuntimeError`.
+
+### Zpracování jazykových skupin
+
+Skripta mapuje zdroje na jazykové skupiny (CZ/SK) podle pole `language:` v source YAML. Zdroje bez `language:` jsou implicitně `cs`. Post se generuje separátně pro každou skupinu a publikuje jako thread (SK reply na CZ post).
+
+---
+
+## trending_post.rb
+
+### Umístění
+`bin/trending_post.rb`
+
+### Účel
+
+Fetchuje trending statusy z Mastodon API (`/api/v1/trends/statuses`) a pro každý dosud neanoncovaný status publikuje quote post z účtu `@zpravobot`. Udržuje state v JSON souboru, aby se stejný status necitoval víckrát.
+
+### Použití
+
+```bash
+# Normální běh — zkontrolovat trendy a případně citovat
+ruby bin/trending_post.rb
+
+# Dry run — výpis co by se citovalo, bez publikace
+ruby bin/trending_post.rb --dry-run
+
+# Testovací konfigurace
+ruby bin/trending_post.rb --test
+```
+
+### Přepínače
+
+| Přepínač | Popis |
+|----------|-------|
+| `--dry-run` | Náhled bez HTTP POST |
+| `--test` | Načíst config z testovacího adresáře |
+| `-h, --help` | Nápověda |
+
+### Token pro @zpravobot
+
+Priorita:
+1. ENV `ZBNW_MASTODON_TOKEN_ZPRAVOBOT`
+2. ENV `ZPRAVOBOT_REPORT_TOKEN`
+3. `mastodon_accounts.yml` → klíč `:zpravobot` → `:token`
+
+### State soubor
+
+`data/trending_state.json` (override: ENV `ZBNW_TRENDING_STATE`):
+
+```json
+{
+  "announced_ids": ["123456789", "987654321"],
+  "last_check_at": "2026-03-30T14:00:00+02:00",
+  "last_post_at": "2026-03-30T14:00:05+02:00"
+}
+```
+
+FIFO rotace: uchovává maximálně 200 posledních ID. Soubor se vytvoří automaticky při prvním běhu.
+
+### Logika filtrování
+
+- Přeskočí statusy od `betabot`, `udrzbot`, `tlambot`
+- Přeskočí vlastní trending quote posty `@zpravobot` (quote field není nil)
+- Max 5 quote postů za jeden běh (`MAX_POSTS_PER_RUN`)
+- 2s throttle mezi posty
+
+### Format quote postu
+
+```
+📈 Na Zprávobot.news právě trenduje
+
+#zpravobot #trending
+```
+
+### Cron
+
+```bash
+# Cloudron cron — každou hodinu v :45
+45 * * * * /app/data/zbnw-ng/cron_trending.sh
+```
+
+`cron_trending.sh` nastaví env a spustí skript.
+
+### Architektura
+
+```
+bin/trending_post.rb               # CLI entry point
+lib/trending/trending_checker.rb   # Core logika (fetch → filter → publish)
+data/trending_state.json           # Persistentní state (announced_ids, last_check_at)
+```
+
+---
+
 ## Shrnutí
 
 | Nástroj | Účel | Spouštění |
@@ -1861,6 +2051,8 @@ Skript automaticky vynechává:
 | `broadcast.rb` | Hromadné publikování zpráv na Mastodon účty | Manuálně |
 | `process_broadcast_queue.rb` | Zpracování tlambot broadcast fronty | Cron (*/5 via listener) |
 | `analyze_domain_fixes.rb` | Analýza a aktualizace `url_domain_fixes` u Twitter/Bluesky zdrojů | Manuálně |
+| `zpravobot_stats.rb` | Týdenní hitparáda #ZpravobotTOP10 (CZ+SK thread) | Cron (0 20 * * 0) |
+| `trending_post.rb` | Quote posty pro trendující statusy na zpravobot.news | Cron (45 * * * *) |
 
 ### Health Check Přehled
 
@@ -1890,6 +2082,8 @@ Skript automaticky vynechává:
 - **retry_failed_queue.rb** čte soubory z `queue/ifttt/failed/`, spolupracuje s **IftttQueueProcessor** (`retry_count` v JSON) a **QueueCheck** (DEAD_ soubory)
 - **process_broadcast_queue.rb** využívá **TlambotWebhookHandler** pro parsing webhook payloadů, **Broadcaster** pro account resolution, **MastodonPublisher** pro publish a favourite
 - **analyze_domain_fixes.rb** čte `config/sources/*_twitter.yml` a `*_bluesky*.yml`, volá Mastodon API (`/api/v1/accounts/lookup`), spolupracuje s `config/global.yml` (no_trim_domains) a zapisuje do `output/domain_fixes_recommendations.yml`
+- **zpravobot_stats.rb** čte všechny source configs přes **ConfigLoader** (jazykové skupiny), fetchuje Mastodon API stats přes **MastodonStats**, čte DB přes **PublishingStats** + **SnapshotStore**, detekuje skoky přes **SkokanDetector**, formátuje přes **StatsPostFormatter** a publikuje přes **MastodonPublisher**
+- **trending_post.rb** fetchuje `/api/v1/trends/statuses` z zpravobot.news, udržuje state v `data/trending_state.json`, publikuje quote posty přes **TrendingChecker** z účtu `@zpravobot`
 
 ---
 
