@@ -118,8 +118,9 @@ class SourceManager
     FileUtils.mv(yaml_path, retired_path)
 
     with_db do |conn|
-      conn.exec_params('DELETE FROM source_state    WHERE source_id = $1', [source_id])
-      conn.exec_params('DELETE FROM published_posts WHERE source_id = $1', [source_id])
+      conn.exec_params('DELETE FROM source_state       WHERE source_id = $1', [source_id])
+      conn.exec_params('DELETE FROM published_posts    WHERE source_id = $1', [source_id])
+      conn.exec_params('DELETE FROM media_fingerprints WHERE source_id = $1', [source_id])
     end
 
     puts
