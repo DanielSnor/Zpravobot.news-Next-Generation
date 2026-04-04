@@ -121,12 +121,27 @@ class HealthMonitor
     lines << "\u{1F527} \u00dadr\u017ebot hl\u00e1s\u00ed [#{Time.now.strftime('%Y-%m-%d %H:%M')}]"
     lines << ""
 
-    # Nove problemy
-    if analysis[:new].any?
+    # Nove problemy — rozdelit critical a warning
+    new_critical = analysis[:new].select { |p| p[:level] == :critical }
+    new_warnings = analysis[:new].select { |p| p[:level] != :critical }
+
+    if new_critical.any?
       lines << "\u{1F6A8} Nov\u00e9 probl\u00e9my:"
-      analysis[:new].each do |problem|
-        icon = problem[:level] == :critical ? "\u274c" : "\u26a0\ufe0f"
-        lines << "#{icon} #{problem[:name]}: #{problem[:message]}"
+      new_critical.each do |problem|
+        lines << "\u274c #{problem[:name]}: #{problem[:message]}"
+        if problem[:remediation]
+          problem[:remediation].split("\n").each do |line|
+            lines << "   \u2192 #{line}"
+          end
+        end
+      end
+      lines << ""
+    end
+
+    if new_warnings.any?
+      lines << "\u26a0\ufe0f Varov\u00e1n\u00ed:"
+      new_warnings.each do |problem|
+        lines << "\u26a0\ufe0f #{problem[:name]}: #{problem[:message]}"
         if problem[:remediation]
           problem[:remediation].split("\n").each do |line|
             lines << "   \u2192 #{line}"

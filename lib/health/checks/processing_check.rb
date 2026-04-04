@@ -205,6 +205,9 @@ module HealthChecks
 
     def check_activity_trend
       current_hour = Time.now.hour
+      # Pracovní den (Po-Pá) = dow 1-5, víkend (So-Ne) = dow 0,6
+      is_weekend = [0, 6].include?(Time.now.wday)
+      day_type_condition = is_weekend ? 'EXTRACT(dow FROM created_at) IN (0, 6)' : 'EXTRACT(dow FROM created_at) BETWEEN 1 AND 5'
 
       result = @conn.exec_params(<<~SQL, [current_hour, current_hour])
         WITH today AS (
@@ -220,7 +223,8 @@ module HealthChecks
             SELECT created_at::date, COUNT(*) as daily_count
             FROM activity_log
             WHERE action = 'publish'
-            AND created_at::date BETWEEN CURRENT_DATE - 7 AND CURRENT_DATE - 1
+            AND created_at::date BETWEEN CURRENT_DATE - 28 AND CURRENT_DATE - 1
+            AND #{day_type_condition}
             AND EXTRACT(hour FROM created_at) <= $2
             GROUP BY created_at::date
           ) daily
