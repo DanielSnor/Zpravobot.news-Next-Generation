@@ -498,6 +498,20 @@ tests:
     exit_code_reliable: true
     description: "SourceReporter: diff detekce, formátování postů (nové/smazané boty), split na vlákna, snapshot lifecycle (Phase 2)"
 
+  test_zpravobot_stats:
+    file: test/test_zpravobot_stats.rb
+    category: unit
+    tags: [offline, stats, formatter]
+    exit_code_reliable: true
+    description: "ZpravobotStats: SkokanDetector (activity/followers, newcomer filter, edge cases), StatsPostFormatter (all 4 rotations, trend arrows, auto-truncation)"
+
+  test_trending_checker:
+    file: test/test_trending_checker.rb
+    category: unit
+    tags: [offline, mastodon, trending]
+    exit_code_reliable: true
+    description: "TrendingChecker: empty trends, already announced, new trends, MAX cap, state rotation, corrupted state, quote denied (422), dry run"
+
   # =====================================================
   # VISUAL / DIAGNOSTIC (no real assertions)
   # =====================================================

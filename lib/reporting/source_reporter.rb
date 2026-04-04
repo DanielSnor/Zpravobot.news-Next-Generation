@@ -20,19 +20,17 @@ module Reporting
     EXCLUDED_ACCOUNTS = %w[betabot].freeze
 
     INTROS_NEW_PLURAL = [
-      'Nové účty!!!',
-      'Nové účty na Zpravobotu!',
-      'Čerstvá posila na Zpravobotu!',
-      'Rozšiřujeme nabídku! Nově k dispozici:',
-      'Zpravobot se rozrůstá! Nově sledujeme:',
-      'Právě přidáno na Zpravobot:'
+      'Od minulého updatu:',
+      'Nově:',
+      'Tentokrát:',
+      'Dnes:'
     ].freeze
 
     INTROS_NEW_SINGULAR = [
-      'Nový účet na Zpravobotu!',
-      'Čerstvá posila na Zpravobotu!',
-      'Nově na Zpravobotu:',
-      'Právě přidáno na Zpravobot:'
+      'Od minulého updatu:',
+      'Nově:',
+      'Tentokrát:',
+      'Dnes:'
     ].freeze
 
     INTROS_DELETED_PLURAL = [
@@ -204,7 +202,8 @@ module Reporting
       end
 
       lines = []
-      by_category.keys.sort.each do |cat|
+      by_category.keys.sort.each_with_index do |cat, idx|
+        lines << '' if idx > 0
         lines << "#{cat}:"
         by_category[cat].sort.each do |id|
           lines << "• #{mention_for(id, accounts)}"

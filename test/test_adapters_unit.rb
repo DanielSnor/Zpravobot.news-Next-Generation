@@ -341,6 +341,105 @@ test("entry_media: nil enclosure returns []", [], rss2.send(:entry_media, mock_e
 mock_entry_plain = Object.new
 test("entry_media: no enclosure method returns []", [], rss2.send(:entry_media, mock_entry_plain))
 
+section("RssAdapter: extract_media_content_map")
+
+rss_mc = rss
+
+xml_with_media = <<~XML
+  <?xml version="1.0" encoding="UTF-8"?>
+  <rss version="2.0" xmlns:media="http://search.yahoo.com/mrss/">
+    <channel>
+      <item>
+        <guid>https://www.facebook.com/page/posts/abc123</guid>
+        <link>https://www.facebook.com/page/posts/abc123</link>
+        <media:content medium="image" url="https://example.com/photo.jpg"/>
+      </item>
+      <item>
+        <guid>https://www.facebook.com/page/posts/def456</guid>
+        <link>https://www.facebook.com/page/posts/def456</link>
+        <media:content medium="video" url="https://example.com/video.mp4"/>
+        <media:content medium="image" url="https://example.com/thumb.jpg"/>
+      </item>
+      <item>
+        <guid>https://www.facebook.com/page/posts/ghi789</guid>
+        <link>https://www.facebook.com/page/posts/ghi789</link>
+      </item>
+    </channel>
+  </rss>
+XML
+
+mc_map = rss_mc.send(:extract_media_content_map, xml_with_media)
+test("extract_media_content_map: image entry found by guid",
+     'https://example.com/photo.jpg', mc_map['https://www.facebook.com/page/posts/abc123'])
+test("extract_media_content_map: image entry found by link",
+     'https://example.com/photo.jpg', mc_map['https://www.facebook.com/page/posts/abc123'])
+test("extract_media_content_map: skips video medium, takes first image",
+     'https://example.com/thumb.jpg', mc_map['https://www.facebook.com/page/posts/def456'])
+test("extract_media_content_map: entry without media not in map",
+     nil, mc_map['https://www.facebook.com/page/posts/ghi789'])
+test("extract_media_content_map: invalid XML returns empty hash",
+     {}, rss_mc.send(:extract_media_content_map, 'not xml at all <<<'))
+
+section("RssAdapter: entry_media fallback to media:content")
+
+# Inject a media_content_map to simulate what parse_feed sets
+rss_mc2 = rss_mc
+rss_mc2.instance_variable_set(:@media_content_map, {
+  'https://www.facebook.com/page/posts/abc123' => 'https://example.com/photo.jpg'
+})
+
+# Use a guid Struct with .content like real RSS gem items
+MockRssGuid = Struct.new(:content)
+MockEntryWithGuid = Struct.new(:enclosure, :guid)
+
+mock_entry_guid = MockEntryWithGuid.new(nil, MockRssGuid.new('https://www.facebook.com/page/posts/abc123'))
+media_from_mc = rss_mc2.send(:entry_media, mock_entry_guid)
+test("entry_media: falls back to media:content when no enclosure",
+     1, media_from_mc.size)
+test("entry_media: media:content url correct",
+     'https://example.com/photo.jpg', media_from_mc[0].url)
+test("entry_media: media:content type is image",
+     'image', media_from_mc[0].type)
+
+mock_entry_unknown = MockEntryWithGuid.new(nil, MockRssGuid.new('https://www.facebook.com/page/posts/unknown'))
+test("entry_media: missing key in map returns []",
+     [], rss_mc2.send(:entry_media, mock_entry_unknown))
+
+# Enclosure takes priority over media:content
+mock_entry_both = Struct.new(:enclosure).new(
+  MockEnclosure.new(url: 'https://example.com/enclosure.jpg', type: 'image/jpeg', length: 0)
+)
+media_priority = rss_mc2.send(:entry_media, mock_entry_both)
+test("entry_media: enclosure takes priority over media:content",
+     'https://example.com/enclosure.jpg', media_priority[0].url)
+
+section("RssAdapter: resolve_media_url")
+
+rss_resolver = Adapters::RssAdapter.new(feed_url: 'https://ieuro.cz/feed/')
+rss_resolver.instance_variable_set(:@feed_base_url, 'https://ieuro.cz')
+
+test("resolve_media_url: absolute URL unchanged",
+     'https://ieuro.cz/assets/img.jpg',
+     rss_resolver.send(:resolve_media_url, 'https://ieuro.cz/assets/img.jpg'))
+
+test("resolve_media_url: root-relative URL resolved",
+     'https://ieuro.cz/assets/2026/03/img.webp',
+     rss_resolver.send(:resolve_media_url, '/assets/2026/03/img.webp'))
+
+test("resolve_media_url: nil returns nil",
+     nil,
+     rss_resolver.send(:resolve_media_url, nil))
+
+test("resolve_media_url: empty string returns nil",
+     nil,
+     rss_resolver.send(:resolve_media_url, ''))
+
+rss_no_base = Adapters::RssAdapter.new(feed_url: 'https://example.com/feed')
+rss_no_base.instance_variable_set(:@feed_base_url, nil)
+test("resolve_media_url: relative URL without base returns nil",
+     nil,
+     rss_no_base.send(:resolve_media_url, '/assets/img.jpg'))
+
 section("RssAdapter: Constants")
 
 test("MAX_REDIRECTS is 5", 5, Adapters::RssAdapter::MAX_REDIRECTS)

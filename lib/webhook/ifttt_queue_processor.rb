@@ -21,6 +21,7 @@
 require 'json'
 require 'fileutils'
 require 'set'
+require_relative '../logging'
 require_relative '../adapters/twitter_nitter_adapter'
 require_relative '../config/config_loader'
 require_relative '../state/state_manager'
@@ -263,10 +264,11 @@ module Webhook
     # @return [String, nil] Username or nil
     def extract_username_from_filename(filepath)
       filename = File.basename(filepath, '.json')
-      parts = filename.split('_')
-      return nil if parts.length < 3
-
-      parts[1]&.downcase
+      # Format: {timestamp}_{username}_{tweet_id} — timestamp i tweet_id jsou číselné
+      # Username může obsahovat podtržítka (např. lord_of_war_95)
+      if (match = filename.match(/^\d+_(.+)_\d+$/))
+        match[1].downcase
+      end
     end
 
     # Check if file is ready for batch processing
@@ -675,6 +677,8 @@ if __FILE__ == $PROGRAM_NAME
       options[:interval] = i
     end
   end.parse!
+
+  Logging.setup(name: 'ifttt_processor', dir: ENV.fetch('ZBNW_LOG_DIR', 'logs'))
 
   processor = Webhook::IftttQueueProcessor.new
 

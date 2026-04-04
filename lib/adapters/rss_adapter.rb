@@ -13,6 +13,7 @@
 require 'rss'
 require 'net/http'
 require 'uri'
+require 'rexml/document'
 require_relative 'base_adapter'
 require_relative '../utils/html_cleaner'
 require_relative '../utils/http_client'
@@ -132,9 +133,19 @@ module Adapters
     end
 
     def parse_feed(url)
+      @feed_base_url = begin
+        parsed = URI.parse(url)
+        "#{parsed.scheme}://#{parsed.host}"
+      rescue URI::InvalidURIError
+        nil
+      end
+
       fetch_url(url) do |response|
         content = response.read
         content = sanitize_xml(content)
+
+        # Extract media:content URLs before RSS parsing (which discards unknown namespaces)
+        @media_content_map = extract_media_content_map(content)
 
         # Parse with RSS library (supports both RSS and Atom)
         RSS::Parser.parse(content, false) # false = don't validate
@@ -142,6 +153,36 @@ module Adapters
     rescue RSS::Error => e
       log "RSS parsing error: #{e.message}", level: :error
       raise
+    end
+
+    # Build a map of { item_key => image_url } from media:content elements.
+    # Keyed by guid AND link so entry_media can find it via either.
+    def extract_media_content_map(xml)
+      map = {}
+      doc = REXML::Document.new(xml)
+
+      doc.elements.each('/rss/channel/item') do |item|
+        # Collect media:content image URLs (skip video thumbnails)
+        urls = []
+        item.elements.each do |child|
+          next unless child.expanded_name == 'media:content'
+          next unless child.attributes['medium'].nil? || child.attributes['medium'] == 'image'
+
+          url = child.attributes['url']
+          urls << url if url && !url.empty?
+        end
+        next if urls.empty?
+
+        # Register under both guid and link so either can be used as lookup key
+        [item.elements['guid']&.text&.strip, item.elements['link']&.text&.strip].compact.uniq.each do |key|
+          map[key] = urls.first
+        end
+      end
+
+      map
+    rescue StandardError => e
+      log "media:content extraction failed: #{e.message}", level: :warn
+      {}
     end
 
     # Strip trailing garbage after the closing root element tag.
@@ -326,19 +367,38 @@ module Adapters
 
     # Extract media/enclosures
     def entry_media(entry)
-      return [] unless entry.respond_to?(:enclosure) && entry.enclosure
+      # Primary: standard RSS enclosure
+      if entry.respond_to?(:enclosure) && entry.enclosure
+        enclosure = entry.enclosure
+        url = resolve_media_url(enclosure.url)
+        return [Media.new(type: guess_media_type(enclosure.type), url: url, alt_text: '')] if url
+      end
 
-      enclosure = entry.enclosure
-      
-      [Media.new(
-        type: guess_media_type(enclosure.type),
-        url: enclosure.url,
-        alt_text: ''
-      )]
+      # Fallback: media:content (e.g. RSS.app feeds from Facebook/Instagram)
+      if @media_content_map
+        key = entry_id(entry) || entry_link(entry)
+        url = resolve_media_url(@media_content_map[key.to_s])
+        return [Media.new(type: 'image', url: url, alt_text: '')] if url
+      end
+
+      []
     rescue StandardError => e
       source_id = @source_name || 'unknown'
       log "[#{source_id}] Error extracting media: #{e.message} (#{e.class})", level: :warn
       []
+    end
+
+    # Resolve relative media URLs against the feed's base URL.
+    # Some feeds (e.g. ieuro.cz) include root-relative paths like /assets/img.jpg
+    # instead of absolute URLs, causing MastodonPublisher to fail with "not an HTTP URI".
+    def resolve_media_url(url)
+      return nil if url.nil? || url.empty?
+      return url if url.start_with?('http://', 'https://')
+      return nil unless @feed_base_url
+
+      URI.join(@feed_base_url, url).to_s
+    rescue URI::InvalidURIError
+      nil
     end
 
     # Extract categories/tags
