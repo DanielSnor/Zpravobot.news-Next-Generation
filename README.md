@@ -102,8 +102,10 @@ ZBNW-NG vznikl, aby překonal omezení původního přístupu přes IFTTT:
 │                     PROCESOR PŘÍSPĚVKŮ                          │
 │  Kroky pipeline:                                                │
 │  1. Dedupe → 2. Detekce editací → 3. Filtrování obsahu →        │
-│  4. Formátování → 5. Zpracování obsahu → 6. Čištění URL →       │
-│  7. Upload médií → 8. Publikace → 9. Aktualizace stavu          │
+│  4. Formátování → 5. Zpracování obsahu →                        │
+│  6a. Čištění URL / 6b. Video dedup (pHash) / 6c. OGP fetch →   │
+│  7. Upload médií → 8. Publikace →                               │
+│  9a. Aktualizace stavu / 9b. Uložení media fingerprint          │
 └──────────────────────────┬──────────────────────────────────────┘
                            ▼
 ┌─────────────────────────────────────────────────────────────────┐
@@ -196,7 +198,7 @@ ruby bin/run_tests.rb
 ## Struktura projektu
 
 ```
-bin/                          # Vstupní body (8 skriptů)
+bin/                          # Vstupní body (17 skriptů)
   run_zbnw.rb                 # Hlavní runner (cron)
   run_tests.rb                # Test runner s generátorem reportů
   ifttt_webhook.rb            # IFTTT webhook HTTP server (~10-15 MB RAM)
@@ -204,27 +206,40 @@ bin/                          # Vstupní body (8 skriptů)
   command_listener.rb         # Údržbot interaktivní příkazy přes Mastodon
   sync_profiles.rb            # Runner pro sync profilů (avatar, banner, bio)
   create_source.rb            # Interaktivní průvodce konfigurací zdrojů
+  manage_source.rb            # Správa zdrojů — pause/resume/retire
   force_update_source.rb      # Reset stavu zdroje pro okamžité zpracování
+  retry_failed_queue.rb       # Opakování neúspěšných IFTTT webhooků
+  source_report.rb            # Týdenní report aktivity zdrojů
+  trending_post.rb            # Publikace trending příspěvku
+  zpravobot_stats.rb          # Týdenní statistiky (#ZpravobotStats)
+  broadcast.rb                # Odeslání zprávy všem/vybraným botům
+  process_broadcast_queue.rb  # Zpracování fronty broadcast zpráv
+  cleanup_duplicate_posts.rb  # Čištění duplicitních postů z DB
+  cleanup_orphaned_accounts.rb # Čištění osiřelých účtů
 
-lib/                          # Zdrojový kód (98 souborů)
+lib/                          # Zdrojový kód
   orchestrator.rb             # Koordinace systému
   logging.rb                  # Centralizované denní rotující logy
   errors.rb                   # Hierarchie chyb (Zpravobot::Error)
   adapters/                   # Zdrojové adaptery (Bluesky, Twitter, RSS, YouTube)
+  broadcast/                  # Broadcast queue (odesílání zpráv botům)
   config/                     # ConfigLoader, SourceConfig
   formatters/                 # Platformově specifické + UniversalFormatter
-  health/                     # Health monitor (14 souborů, CheckResult, AlertStateManager)
+  health/                     # Health monitor (CheckResult, AlertStateManager)
   models/                     # Post, Author, Media, PostTextWrapper
   monitoring/                 # Command Listener + Handlery
-  processors/                 # PostProcessor, ContentProcessor, Pipeline Steps, EditDetector
+  processors/                 # PostProcessor, ContentProcessor, Pipeline Steps, EditDetector, MediaDedup
   publishers/                 # MastodonPublisher
+  reporting/                  # Source report (aktivity, statistiky zdrojů)
   services/                   # SyndicationMediaFetcher
   source_wizard/              # Interaktivní generátor konfigurací (8 modulů)
   state/                      # StateManager facade + 5 repozitářů
+  stats/                      # Zpravobot týdeník (SnapshotStore, PublishingStats, SkokanDetector)
   support/                    # Loggable mixin, ThreadingSupport, OptionalProcessors
-  syncers/                    # BaseProfileSyncer + 3 podtřídy (Twitter, Bluesky, Facebook)
+  syncers/                    # 5 zdrojových syncerů + MastodonProfileUpdater + ImageCacheManager
   test_runner/                # Runner, OutputParser, ReportGenerator
-  utils/                      # HttpClient, HashHelpers, HtmlCleaner, FormatHelpers
+  trending/                   # Trending příspěvky
+  utils/                      # HttpClient, HashHelpers, HtmlCleaner, FormatHelpers, OgpFetcher
   webhook/                    # IftttQueueProcessor
 
 config/                       # Konfigurace
@@ -245,12 +260,18 @@ docs/                         # Dokumentace (9 souborů)
 | Komponenta | Soubor(y) | K čemu to je |
 |---|---|---|
 | **Orchestrator** | `lib/orchestrator.rb` | Načtení zdrojů → fetch → zpracování → publikace |
-| **PostProcessor** | `lib/processors/post_processor.rb` | Sjednocený 9-krokový zpracovatelský pipeline |
-| **Pipeline Steps** | `lib/processors/pipeline_steps.rb` | Rozložené kroky (Dedupe, Edit, Filter, URL) |
+| **PostProcessor** | `lib/processors/post_processor.rb` | Sjednocený pipeline (9 hlavních kroků + podkroky 6b/6c/9b) |
+| **Pipeline Steps** | `lib/processors/pipeline_steps.rb` | Rozložené kroky (Dedupe, Edit, Filter, URL, ProcessingContext) |
 | **StateManager** | `lib/state/state_manager.rb` | Facade → 5 repozitářů (DB, Posts, Sources, Activity, EditBuffer) |
 | **MastodonPublisher** | `lib/publishers/mastodon_publisher.rb` | Mastodon API (publikace, async upload médií, threading) |
 | **ContentProcessor** | `lib/processors/content_processor.rb` | Chytré zkracování, normalizace výpustek, URL-aware |
 | **EditDetector** | `lib/processors/edit_detector.rb` | Detekce editací na základě podobnosti (práh 80 %) |
+| **MediaDedup** | `lib/processors/media_dedup.rb` | Perceptuální deduplikace videí přes pHash/aHash (Hamming vzdálenost) |
+| **ThumbnailPhash** | `lib/processors/thumbnail_phash.rb` | Výpočet pHash přes ImageMagick (8×8 aHash) |
+| **OgpFetcher** | `lib/utils/ogp_fetcher.rb` | Fetch `og:image` z článku jako nativní médium (obchází scraper) |
+| **StatsPostFormatter** | `lib/stats/stats_post_formatter.rb` | Formátování týdenního #ZpravobotStats postu |
+| **SkokanDetector** | `lib/stats/skokan_detector.rb` | Detekce skokanu (relativní nárůst aktivity nebo followers) |
+| **SourceManager** | `lib/source_wizard/source_manager.rb` | Pause/resume/retire zdrojů přes CLI |
 | **Údržbot** | `lib/health/`, `lib/monitoring/` | Health monitoring + interaktivní příkazy přes Mastodon |
 
 ## Podporované platformy
@@ -361,11 +382,26 @@ Konfigurují se přes `env.sh`:
 
 ### Synchronizace profilů
 
+Týdenní rotace — každá platforma se synchronizuje jeden den v týdnu:
+
+| Den | Co dělá | Skript |
+|---|---|---|
+| Pondělí | Bluesky profily | `cron_profile_sync.sh --platform bluesky` |
+| Úterý | Facebook + Instagram profily | `cron_profile_sync.sh --platform facebook` + `instagram` |
+| Středa–Pátek | Twitter/X profily (rotace) | `cron_profile_sync.sh --platform twitter` |
+| Sobota | RSS (kontrola zdrojů) | — |
+| Neděle | YouTube profily | `cron_profile_sync.sh --platform youtube` |
+
+Sync profilů zahrnuje: avatar, banner, bio, URL, a fields. Syncery zdrojových platforem (BS/FB/IG/TW/YT) → `MastodonProfileUpdater` → Mastodon API.
+
+### Statistiky a reporting
+
 | Interval | Co dělá | Skript |
 |---|---|---|
-| `0 1 * * *` | Bluesky profily (denně) | `cron_profile_sync.sh --platform bluesky` |
-| `0 2 */3 * *` | Facebook profily (každé 3 dny) | `cron_profile_sync.sh --platform facebook` |
-| `0 3 */3 * *` | Twitter profily (každé 3 dny) | `cron_profile_sync.sh --platform twitter` |
+| `0 20 * * 0` | Týdenní #ZpravobotStats | `cron_stats.sh` |
+| `0 6 * * 1` | Týdenní source report | `cron_source_report.sh` |
+| `0 * * * *` | Retry IFTTT failed fronty | `cron_retry_failed.sh` |
+| konfigurovatelně | Trending příspěvek | `cron_trending.sh` |
 
 ### Monitoring (Údržbot)
 
@@ -397,7 +433,7 @@ ruby bin/run_tests.rb --list       # Výpis testů bez spuštění
 
 **Registr testů:** `config/test_catalog.yml` — kategorie (unit/network/e2e/db), tagy, timeouty.
 
-**Aktuální stav:** 62/62 unit testů PASS, 1 863 assertů, celkem 91 testových souborů.
+**Aktuální stav:** 68/68 unit testů PASS, 2 032 assertů.
 
 ## Monitoring (Údržbot)
 
@@ -575,12 +611,20 @@ IFTTT acts as a **real-time push trigger** (instant webhook on new tweet), while
 |--------|---------|
 | `run_zbnw.rb` | Main runner — `--platform`, `--source`, `--dry-run`, `--first-run` |
 | `ifttt_webhook.rb` | Lightweight HTTP server for IFTTT webhooks (~10-15 MB RAM) |
-| `sync_profiles.rb` | Avatar/banner/bio sync from source platforms |
+| `sync_profiles.rb` | Avatar/banner/bio sync from source platforms (BS/FB/IG/TW/YT) |
 | `health_monitor.rb` | Health checks — `--alert`, `--heartbeat`, `--details` |
 | `command_listener.rb` | Poll Mastodon mentions for interactive commands |
+| `manage_source.rb` | Pause/resume/retire sources via CLI |
 | `broadcast.rb` | Send a message to all/selected bot accounts |
+| `process_broadcast_queue.rb` | Process broadcast message queue |
+| `retry_failed_queue.rb` | Retry failed IFTTT webhooks |
+| `source_report.rb` | Weekly source activity report |
+| `trending_post.rb` | Publish trending content post |
+| `zpravobot_stats.rb` | Weekly #ZpravobotStats digest |
 | `create_source.rb` | Interactive source configuration wizard |
 | `force_update_source.rb` | Reset source state for immediate reprocessing |
+| `cleanup_duplicate_posts.rb` | Clean duplicate posts from DB |
+| `cleanup_orphaned_accounts.rb` | Clean orphaned bot accounts |
 | `run_tests.rb` | Test runner with HTML report generation |
 
 ## Cron Schedule (Production)
@@ -593,7 +637,11 @@ IFTTT acts as a **real-time push trigger** (instant webhook on new tweet), while
 | Every 15 min | Twitter content sync (rate-limited) |
 | Every 5 min | Command listener polling |
 | Every 10 min | Health check + alerting |
-| Daily | Profile sync (groups rotated), log rotation, heartbeat |
+| Hourly | IFTTT failed queue retry |
+| Weekly (day rotation) | Profile sync (Mon=BS, Tue=FB+IG, Wed–Fri=TW, Sat=RSS, Sun=YT) |
+| Sunday 20:00 | Weekly #ZpravobotStats post |
+| Monday 06:00 | Weekly source activity report |
+| Daily | Log rotation, heartbeat |
 
 ## Monitoring (Údržbot)
 
@@ -662,9 +710,8 @@ ruby bin/run_tests.rb --tag bluesky # Tests by tag
 ruby bin/run_tests.rb --file edit  # Tests matching "edit"
 ```
 
-- 91 test files (62 unit, 18 network, 2 db, 6 e2e)
-- 1963 assertions, all passing
-- Test catalog: `config/test_catalog.yml`
+- 68 unit tests PASS, 2 032 assertions
+- Test catalog: registered by category (unit/network/e2e/db), tags, timeouts
 
 ## Project Structure
 
@@ -684,7 +731,7 @@ lib/          98 library files (~20K LOC)
   source_wizard/ Interactive source configuration generator
   state/        StateManager facade + 5 repositories
   support/      Loggable mixin, ThreadingSupport
-  syncers/      Profile syncers (Twitter, Bluesky, Facebook)
+  syncers/      Profile syncers (Twitter, Bluesky, Facebook, Instagram, YouTube) + MastodonProfileUpdater
   test_runner/  Runner, parser, report generator
   utils/        HttpClient, HashHelpers, HtmlCleaner
   webhook/      IFTTT queue processor + pipeline
