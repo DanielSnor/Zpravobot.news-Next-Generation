@@ -117,6 +117,7 @@ module HealthChecks
         SELECT source_id, error_count, last_error
         FROM source_state
         WHERE error_count >= $1
+          AND disabled_at IS NULL
         ORDER BY error_count DESC
         LIMIT 5
       SQL

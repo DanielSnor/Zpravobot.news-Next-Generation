@@ -17,11 +17,11 @@ Zatímco původní projekt [Zpravobot.news](https://github.com/danielsnor/zpravo
 - [O projektu](#o-projektu)
 - [Mise](#mise)
 - [Proč ZBNW-NG?](#proč-zbnw-ng)
+- [Podporované platformy](#podporované-platformy)
 - [Technická architektura](#technická-architektura)
 - [Rychlý start](#rychlý-start)
 - [Struktura projektu](#struktura-projektu)
 - [Klíčové komponenty](#klíčové-komponenty)
-- [Podporované platformy](#podporované-platformy)
 - [Konfigurace](#konfigurace)
 - [Cron joby a plánování](#cron-joby-a-plánování)
 - [Testování](#testování)
@@ -72,6 +72,54 @@ ZBNW-NG vznikl, aby překonal omezení původního přístupu přes IFTTT:
 | Žádný monitoring | Údržbot: health checky, alerty, interaktivní příkazy |
 | Žádná synchronizace profilů | Automatický sync avataru/banneru/bio ze zdrojových platforem |
 
+## Podporované platformy
+
+Každá platforma může být zdrojem **obsahu** (příspěvky), zdrojem **profilových dat** (avatar, banner, bio), nebo obojím. Profily se synchronizují automaticky přes `sync_profiles.rb` a zapisují zpět na Mastodon přes `MastodonProfileUpdater`.
+
+### Zdroje obsahu
+
+| Platforma | Adapter | Zdroj dat | Funkce |
+|---|---|---|---|
+| ✅ **Twitter/X** | `TwitterAdapter` + `TwitterNitterAdapter` + `TwitterTweetProcessor` | IFTTT webhooky + Nitter scraping | Unifikovaná pipeline, 5-stupňový Tier fallback, threading, detekce editací |
+| ✅ **Bluesky** | `BlueskyAdapter` | AT Protocol API | Feedy + profily, podpora vláken přes AT URI |
+| ✅ **Facebook** | `RssAdapter` | RSS feed přes [RSS.app](https://rss.app) | Příspěvky přes RSS.app bridge (Facebook nemá veřejné API) |
+| ✅ **Instagram** | `RssAdapter` | RSS feed přes [RSS.app](https://rss.app) | Příspěvky přes RSS.app bridge; profily přes vlastní syncer |
+| ✅ **RSS / Atom** | `RssAdapter` | RSS 2.0 / Atom | Univerzální RSS pro ostatní zdroje |
+| ✅ **YouTube** | `YouTubeAdapter` | YouTube RSS feed | Filtrování Shorts, práce s miniaturami |
+
+### Synchronizace profilů
+
+| Platforma | Syncer | Jak | Co se synchronizuje |
+|---|---|---|---|
+| ✅ **Twitter/X** | `TwitterProfileSyncer` | Nitter scraping | Avatar, banner, bio, URL |
+| ✅ **Bluesky** | `BlueskyProfileSyncer` | AT Protocol API | Avatar, banner, bio, URL |
+| ✅ **Facebook** | `FacebookProfileSyncer` | Browserless.io | Avatar, banner, bio, web |
+| ✅ **Instagram** | `InstagramProfileSyncer` | Browserless.io + cookies | Avatar, bio |
+| ✅ **YouTube** | `YoutubeProfileSyncer` | Přímý HTTP, `ytInitialData` JSON | Avatar, banner, bio |
+
+### Hybridní architektura Twitter/X
+
+Integrace Twitteru používá pětistupňový systém s postupným fallbackem:
+
+| Tier | Zdroj dat | Média | Plný text | Kdy se použije |
+|------|-----------|-------|-----------|----------------|
+| **1** | IFTTT | ❌ | ✅ (krátký) | Krátký tweet bez médií a vláken |
+| **1.5** | IFTTT + Syndication API | ✅ | ⚠️ možná zkrácený | `nitter_processing: false` v konfiguraci |
+| **2** | IFTTT + Nitter | ✅ | ✅ | Média, dlouhý text, RT, vlákna |
+| **3.5** | Syndication fallback | ✅ | ⚠️ možná zkrácený | Nitter selhal → stále máme média |
+| **3** | IFTTT fallback | ❌ | ⚠️ zkrácený | Finální degradovaný režim |
+
+**Proč IFTTT?** Twitter nemá veřejné API pro sledování nových tweetů. Existují v zásadě dvě cesty — pollovat Nitter RSS feed, nebo nechat IFTTT poslat webhook v momentě, kdy se tweet objeví. IFTTT funguje jako **real-time push trigger** (okamžité notifikace přes oficiální Twitter API), zatímco Nitter slouží jako **obohacovač dat** (doplní plný text, média, vlákna). Bez IFTTT by bylo nutné pollovat Nitter RSS pro všechny sledované zdroje každé cca 2 minuty, což při desítkách účtů rychle naráží na rate limity.
+
+**Pro menší projekty** (nižší desítky zdrojů) je čistý Nitter RSS polling naprosto dostačující a IFTTT není potřeba — `TwitterAdapter.fetch_posts()` tenhle režim podporuje. IFTTT se vyplatí až při větším počtu sledovaných účtů.
+
+**Nitter a burner účty:** Nitter vyžaduje pro scraping Twitteru tzv. burner účty (jednorázové Twitter účty s cookies). Orientačně je potřeba zhruba 1 burner účet na 10 sledovaných zdrojů. Cookies občas expirují a vyžadují ruční obnovu, takže je s Nitterem spojená určitá provozní údržba.
+
+### Distribuce
+
+- 🐘 **Mastodon** — Primární platforma přes zpravobot.news (~500 botích účtů)
+- 🦋 **BlueSky** — Od září 2025 přes Brid.gy federaci (kromě zdrojů přebíraných právě z Bluesky nebo tam separátně obsluhovaných)
+
 ## Technická architektura
 
 ```
@@ -103,7 +151,7 @@ ZBNW-NG vznikl, aby překonal omezení původního přístupu přes IFTTT:
 │  Kroky pipeline:                                                │
 │  1. Dedupe → 2. Detekce editací → 3. Filtrování obsahu →        │
 │  4. Formátování → 5. Zpracování obsahu →                        │
-│  6a. Čištění URL / 6b. Video dedup (pHash) / 6c. OGP fetch →   │
+│  6a. Čištění URL / 6b. Video dedup (pHash) / 6c. OGP fetch →    │
 │  7. Upload médií → 8. Publikace →                               │
 │  9a. Aktualizace stavu / 9b. Uložení media fingerprint          │
 └──────────────────────────┬──────────────────────────────────────┘
@@ -273,40 +321,6 @@ docs/                         # Dokumentace (9 souborů)
 | **SkokanDetector** | `lib/stats/skokan_detector.rb` | Detekce skokanu (relativní nárůst aktivity nebo followers) |
 | **SourceManager** | `lib/source_wizard/source_manager.rb` | Pause/resume/retire zdrojů přes CLI |
 | **Údržbot** | `lib/health/`, `lib/monitoring/` | Health monitoring + interaktivní příkazy přes Mastodon |
-
-## Podporované platformy
-
-### Zdroje obsahu
-
-| Platforma | Adapter | Zdroj dat | Funkce |
-|---|---|---|---|
-| ✅ **Twitter/X** | `TwitterAdapter` + `TwitterNitterAdapter` + `TwitterTweetProcessor` | IFTTT webhooky + Nitter scraping | Unifikovaná pipeline, 5-stupňový Tier fallback, threading, detekce editací |
-| ✅ **Bluesky** | `BlueskyAdapter` | AT Protocol API | Feedy + profily, podpora vláken přes AT URI |
-| ✅ **RSS** | `RssAdapter` | RSS 2.0 / Atom | Včetně Facebooku přes RSS.app |
-| ✅ **YouTube** | `YouTubeAdapter` | YouTube RSS feed | Filtrování Shorts, práce s miniaturami |
-
-### Hybridní architektura Twitter/X
-
-Integrace Twitteru používá pětistupňový systém s postupným fallbackem:
-
-| Tier | Zdroj dat | Média | Plný text | Kdy se použije |
-|------|-----------|-------|-----------|----------------|
-| **1** | IFTTT | ❌ | ✅ (krátký) | Krátký tweet bez médií a vláken |
-| **1.5** | IFTTT + Syndication API | ✅ | ⚠️ možná zkrácený | `nitter_processing: false` v konfiguraci |
-| **2** | IFTTT + Nitter | ✅ | ✅ | Média, dlouhý text, RT, vlákna |
-| **3.5** | Syndication fallback | ✅ | ⚠️ možná zkrácený | Nitter selhal → stále máme média |
-| **3** | IFTTT fallback | ❌ | ⚠️ zkrácený | Finální degradovaný režim |
-
-**Proč IFTTT?** Twitter nemá veřejné API pro sledování nových tweetů. Existují v zásadě dvě cesty — pollovat Nitter RSS feed, nebo nechat IFTTT poslat webhook v momentě, kdy se tweet objeví. IFTTT funguje jako **real-time push trigger** (okamžité notifikace přes oficiální Twitter API), zatímco Nitter slouží jako **obohacovač dat** (doplní plný text, média, vlákna). Bez IFTTT by bylo nutné pollovat Nitter RSS pro všechny sledované zdroje každé cca 2 minuty, což při desítkách účtů rychle naráží na rate limity.
-
-**Pro menší projekty** (nižší desítky zdrojů) je čistý Nitter RSS polling naprosto dostačující a IFTTT není potřeba — `TwitterAdapter.fetch_posts()` tenhle režim podporuje. IFTTT se vyplatí až při větším počtu sledovaných účtů.
-
-**Nitter a burner účty:** Nitter vyžaduje pro scraping Twitteru tzv. burner účty (jednorázové Twitter účty s cookies). Orientačně je potřeba zhruba 1 burner účet na 10 sledovaných zdrojů. Cookies občas expirují a vyžadují ruční obnovu, takže je s Nitterem spojená určitá provozní údržba.
-
-### Distribuce
-
-- 🐘 **Mastodon** — Primární platforma přes zpravobot.news (~500 botích účtů)
-- 🦋 **BlueSky** — Od září 2025 přes Brid.gy federaci (kromě zdrojů přebíraných právě z Bluesky nebo tam separátně obsluhovaných)
 
 ## Konfigurace
 
@@ -755,4 +769,4 @@ docs/         9 documentation files
 - Twitter/X: [@zpravobot](https://twitter.com/zpravobot)
 - GitHub: [github.com/danielsnor](https://github.com/danielsnor)
 
-*Last updated: February 17, 2026*
+*Last updated: April 4, 2026*

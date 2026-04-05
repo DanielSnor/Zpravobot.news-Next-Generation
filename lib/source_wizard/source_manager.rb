@@ -3,6 +3,7 @@
 require 'yaml'
 require 'fileutils'
 require 'time'
+require 'shellwords'
 
 begin
   require 'pg'
@@ -135,6 +136,135 @@ class SourceManager
     puts "  \u26A0\uFE0F  Nezapomeň disablovat Mastodon účet na instanci!"
     puts
     true
+  end
+
+  # Vypíše přehled všech aktuálně pauzovaných zdrojů.
+  # @return [void]
+  def print_paused_status
+    paused = list_sources.select { |s| !s[:yaml_enabled] || s[:disabled_at] }
+
+    if paused.empty?
+      puts '  ✅ Žádné pauzované zdroje.'
+      puts
+      return
+    end
+
+    puts "  ⏸  Pauzované zdroje (#{paused.length}):"
+    puts
+    puts "    #{'Zdroj'.ljust(32)} #{'Pauzováno'.ljust(17)} Důvod"
+    puts "    #{('─' * 31)} #{('─' * 16)} #{('─' * 25)}"
+
+    paused.each do |s|
+      paused_when = s[:paused_at] || (s[:disabled_at] ? s[:disabled_at].to_s[0, 16] : '?')
+      reason      = s[:paused_reason] || '(nezadán)'
+      puts "    ⏸ #{s[:source_id].ljust(32)} #{paused_when.ljust(17)} #{reason}"
+      puts "      └ last_error: #{s[:last_error]}" if s[:last_error] && !s[:last_error].to_s.empty?
+    end
+    puts
+  end
+
+  # Spustí probe pro všechny aktuálně pauzované zdroje.
+  # @return [Boolean]
+  def probe_all_paused
+    paused = list_sources.select { |s| !s[:yaml_enabled] || s[:disabled_at] }
+
+    if paused.empty?
+      puts '  ✅ Žádné pauzované zdroje k prověření.'
+      puts
+      return true
+    end
+
+    puts "  🔍 Prověřuji #{paused.length} pauzovaný(ch) zdrojů..."
+
+    paused.each_with_index do |s, i|
+      puts
+      puts "═ [#{i + 1}/#{paused.length}] #{s[:source_id]} #{'═' * [0, 54 - s[:source_id].length].max}"
+      probe(s[:source_id])
+    end
+
+    puts '═' * 60
+    puts '  Probe dokončen pro všechny pauzované zdroje.'
+    puts
+    true
+  end
+
+  # Ověří, zda je pauznutý zdroj zpět, bez jeho reaktivace.
+  # Spustí dry-run přes orchestrátor a ukáže kolik příspěvků se načetlo.
+  # Pokud zdroj vrací příspěvky, nabídne okamžitou reaktivaci.
+  # @return [Boolean]
+  def probe(source_id)
+    yaml_path = source_yaml_path(source_id)
+    return false unless validate_source_exists!(yaml_path, source_id)
+
+    # Zobraz aktuální stav
+    status = source_status(source_id)
+    puts
+    puts "  📋 Stav zdroje '#{source_id}':"
+    puts "     Pozastaveno:    #{status[:disabled_at]}"     if status[:disabled_at]
+    puts "     Paused at:      #{status[:paused_at]}"       if status[:paused_at]
+    puts "     Důvod:          #{status[:paused_reason]}"   if status[:paused_reason]
+    puts "     Poslední chyba: #{status[:last_error]}"      if status[:last_error]
+    puts "     error_count:    #{status[:error_count]}"
+    puts "     last_check:     #{status[:last_check]  || 'N/A'}"
+    puts "     last_success:   #{status[:last_success] || 'N/A'}"
+    puts
+
+    # Spusť dry-run přes run_zbnw.rb
+    project_dir = File.expand_path('../../../', __FILE__)
+    runner      = File.join(project_dir, 'bin', 'run_zbnw.rb')
+
+    unless File.exist?(runner)
+      puts "  ❌ run_zbnw.rb nenalezen: #{runner}"
+      return false
+    end
+
+    use_bundler = File.exist?(File.join(project_dir, 'Gemfile'))
+    ruby_cmd    = use_bundler ? 'bundle exec ruby' : RbConfig.ruby.shellescape
+    cmd = "cd #{project_dir.shellescape} && #{ruby_cmd} bin/run_zbnw.rb" \
+          " --source #{source_id.shellescape} --dry-run --schema #{@db_schema.shellescape} 2>&1"
+
+    puts "  🔍 Spouštím dry-run probe..."
+    puts '─' * 60
+
+    output = `#{cmd}`
+    cmd_success = $?.success?
+
+    puts output
+    puts '─' * 60
+    puts
+
+    unless cmd_success
+      puts "  ❌ Probe selhalo (exit #{$?.exitstatus})"
+      puts "     Tip: jiný cron běh může držet lockfile — zkuste za chvíli."
+      return false
+    end
+
+    # Parsuj počet načtených příspěvků ze stdout logu:
+    # "[HH:MM:SS] ℹ️  [source_id] Fetched N posts"
+    fetched = output.scan(/\[#{Regexp.escape(source_id)}\] Fetched (\d+)/).flatten.map(&:to_i).sum
+    has_error = output.match?(/\[#{Regexp.escape(source_id)}\] Error:/)
+
+    if has_error
+      puts "  ❌ Zdroj stále hlásí chyby — ještě není zpět."
+      return false
+    elsif fetched > 0
+      puts "  ✅ Zdroj je zpět — dry-run nalezl #{fetched} příspěvků."
+      puts
+      if ask_yes_no('  Reaktivovat zdroj nyní?', default: true)
+        puts
+        return resume(source_id)
+      end
+      return true
+    else
+      puts "  ⚠️  Probe proběhl bez chyb, ale zatím žádné nové příspěvky."
+      puts "     Pokud jsi přesvědčen, že je zdroj funkční, reaktivuj ručně."
+      puts
+      if ask_yes_no('  Přesto reaktivovat?', default: false)
+        puts
+        return resume(source_id)
+      end
+      return true
+    end
   end
 
   # Vrací hash se stavem zdroje nebo nil pokud YAML neexistuje.
