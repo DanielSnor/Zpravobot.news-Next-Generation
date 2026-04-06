@@ -524,7 +524,7 @@ Pokud vám Zprávobot.news přijde užitečný a chtěli byste podpořit jeho pr
 - ☕ **Ko-fi**: [ko-fi.com/zpravobot](https://ko-fi.com/zpravobot)
 - 🖥️ **Forendors**: [forendors.cz/zpravobot](https://forendors.cz/zpravobot)
 
-![QR kód pro bankovní převod](https://zpravobot.news/system/media_attachments/files/113/069/699/996/938/723/original/824504de17667be7.jpeg 'QR kód pro bankovní převod')
+![QR kód pro bankovní převod](https://zpravobot.news/system/media_attachments/files/116/277/172/347/084/632/original/4b7ccad1c5ee6c79.jpeg 'QR kód pro bankovní převod')
 
 ## Poděkování
 
