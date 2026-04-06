@@ -62,32 +62,48 @@ module HealthChecks
 
     def check_cpu_load
       load_avg = File.read('/proc/loadavg').split
-      load_1m = load_avg[0].to_f
-      load_5m = load_avg[1].to_f
+      load_1m  = load_avg[0].to_f
+      load_5m  = load_avg[1].to_f
       load_15m = load_avg[2].to_f
 
-      if load_1m >= 4.0
+      cpu_count = File.read('/proc/cpuinfo').scan(/^processor\s*:/).count
+      cpu_count = 1 if cpu_count < 1
+
+      # Load per core - meaningful threshold regardless of hardware
+      load_per_core_1m  = load_1m  / cpu_count
+      load_per_core_5m  = load_5m  / cpu_count
+      load_per_core_15m = load_15m / cpu_count
+
+      message = "Load #{load_1m}/#{load_5m}/#{load_15m} (#{cpu_count} cores)"
+      details = {
+        load_1m: load_1m, load_5m: load_5m, load_15m: load_15m,
+        cpu_count: cpu_count,
+        load_per_core_1m: load_per_core_1m.round(2)
+      }
+
+      if load_per_core_1m >= 4.0 || load_per_core_5m >= 3.0
         CheckResult.new(
           name: 'CPU',
           level: :critical,
-          message: "Load #{load_1m}/#{load_5m}/#{load_15m}",
-          details: { load_1m: load_1m, load_5m: load_5m, load_15m: load_15m },
-          remediation: "CPU kriticky vysok\u00e9!\nTop procesy: ps aux --sort=-%cpu | head -10"
+          message: message,
+          details: details,
+          remediation: "CPU kriticky vysoké (#{(load_per_core_1m * 100).round}% per core).\nTop procesy: ps aux --sort=-%cpu | head -10"
         )
-      elsif load_1m >= 2.0
+      elsif load_per_core_1m >= 2.0 && load_per_core_5m >= 1.5
+        # Both 1m AND 5m elevated = sustained load, not a spike
         CheckResult.new(
           name: 'CPU',
           level: :warning,
-          message: "Load #{load_1m}/#{load_5m}/#{load_15m}",
-          details: { load_1m: load_1m, load_5m: load_5m, load_15m: load_15m },
-          remediation: "CPU vysok\u00e9.\nTop procesy: ps aux --sort=-%cpu | head -5"
+          message: message,
+          details: details,
+          remediation: "CPU vysoké (#{(load_per_core_1m * 100).round}% per core).\nTop procesy: ps aux --sort=-%cpu | head -5"
         )
       else
         CheckResult.new(
           name: 'CPU',
           level: :ok,
-          message: "Load #{load_1m}",
-          details: { load_1m: load_1m, load_5m: load_5m, load_15m: load_15m }
+          message: "Load #{load_1m}/#{load_5m}/#{load_15m}",
+          details: details
         )
       end
     end
