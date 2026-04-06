@@ -4,14 +4,17 @@
 # ============================================================
 # ZBNW-NG Source Manager
 # ============================================================
-# Správa životního cyklu zdrojů: pause, resume, retire.
+# Správa životního cyklu zdrojů: pause, resume, retire, probe.
 #
 # Použití:
 #   ruby bin/manage_source.rb                              # interaktivní menu
+#   ruby bin/manage_source.rb status                       # přehled pauzovaných zdrojů
 #   ruby bin/manage_source.rb pause  ct24_twitter          # přímý příkaz
 #   ruby bin/manage_source.rb pause  ct24_twitter --reason "Nefunkční Nitter"
 #   ruby bin/manage_source.rb resume ct24_twitter
 #   ruby bin/manage_source.rb retire ct24_twitter
+#   ruby bin/manage_source.rb probe                        # ověří všechny pauzované
+#   ruby bin/manage_source.rb probe  ct24_twitter          # ověří konkrétní zdroj
 #
 # Přepínače:
 #   --test          Testovací prostředí (schema zpravobot_test)
@@ -47,9 +50,12 @@ def print_help
       ruby bin/manage_source.rb [AKCE] [SOURCE_ID] [PŘEPÍNAČE]
 
     Akce:
+      status                               Přehled všech pauzovaných zdrojů
       pause  SOURCE_ID [--reason "TEXT"]   Dočasně pozastaví zdroj
       resume SOURCE_ID                     Reaktivuje pozastavený zdroj
       retire SOURCE_ID                     Trvale vyřadí zdroj
+      probe                                Ověří všechny pauzované dry-runem
+      probe  SOURCE_ID                     Ověří konkrétní zdroj dry-runem
 
     Přepínače:
       --test          Testovací prostředí
@@ -57,11 +63,14 @@ def print_help
       --help          Tato nápověda
 
     Příklady:
+      ruby bin/manage_source.rb status
       ruby bin/manage_source.rb pause  ct24_twitter
-      ruby bin/manage_source.rb pause  ct24_twitter --reason "Nefunkční Nitter"
+      ruby bin/manage_source.rb pause  ct24_twitter --reason "Nezaplacená faktura"
       ruby bin/manage_source.rb resume ct24_twitter
       ruby bin/manage_source.rb retire ct24_twitter
-      ruby bin/manage_source.rb pause  ct24_twitter --test
+      ruby bin/manage_source.rb probe
+      ruby bin/manage_source.rb probe  ct24_twitter
+      ruby bin/manage_source.rb status --test
 
   HELP
 end
@@ -89,6 +98,7 @@ def interactive_menu(manager)
   include Support::UiHelpers
 
   sources = manager.list_sources
+  paused  = sources.select { |s| !s[:yaml_enabled] || s[:disabled_at] }
 
   puts '  Dostupné zdroje:'
   puts
@@ -100,31 +110,48 @@ def interactive_menu(manager)
 
   sources.each do |s|
     status_icon = s[:yaml_enabled] ? '▶' : '⏸'
-    db_note     = s[:disabled_at] ? " [DB disabled]" : ''
+    db_note     = s[:disabled_at] ? ' [DB disabled]' : ''
     puts "    #{status_icon} #{s[:source_id]}#{db_note}"
   end
 
   puts
 
+  # Globální akce (bez výběru zdroje) + akce pro konkrétní zdroj
+  global_actions  = ['status (pauzované zdroje)']
+  global_actions << 'probe (vše pauzované)' unless paused.empty?
+  source_actions  = %w[pause resume retire probe]
+  action = ask_choice('Akce', global_actions + source_actions)
+
+  puts
+
+  # Globální akce — nepotřebují výběr zdroje
+  case action
+  when 'status (pauzované zdroje)'
+    manager.print_paused_status
+    return
+  when 'probe (vše pauzované)'
+    manager.probe_all_paused
+    return
+  end
+
+  # Akce pro konkrétní zdroj
   source_ids = sources.map { |s| s[:source_id] }
   choice     = ask_choice('Vyber zdroj', source_ids)
 
   puts
-  action = ask_choice('Akce', ['pause', 'resume', 'retire'])
-  reason = nil
 
+  reason = nil
   if action == 'pause'
-    puts
     reason = ask('Důvod pauzy (volitelný)')
     reason = nil if reason.empty?
+    puts
   end
-
-  puts
 
   case action
   when 'pause'  then manager.pause(choice, reason: reason)
   when 'resume' then manager.resume(choice)
   when 'retire' then manager.retire(choice)
+  when 'probe'  then manager.probe(choice)
   end
 end
 
@@ -163,6 +190,12 @@ if action.nil?
   # Interaktivní režim — extend pro přístup k UiHelpers mimo třídu
   extend Support::UiHelpers
   interactive_menu(manager)
+elsif action == 'status'
+  manager.print_paused_status
+elsif action == 'probe' && source_id.nil?
+  # probe bez source_id = probe všech pauzovaných
+  success = manager.probe_all_paused
+  exit(success ? 0 : 1)
 elsif source_id.nil?
   puts "  ❌ Chybí SOURCE_ID pro akci '#{action}'"
   print_help
@@ -177,6 +210,9 @@ else
     exit(success ? 0 : 1)
   when 'retire'
     success = manager.retire(source_id)
+    exit(success ? 0 : 1)
+  when 'probe'
+    success = manager.probe(source_id)
     exit(success ? 0 : 1)
   else
     puts "  ❌ Neznámá akce: '#{action}'"
