@@ -19,7 +19,7 @@ is_running() {
 start_server() {
     log "Starting IFTTT webhook server..."
     cd "$ZBNW_DIR" || exit 1
-    nohup ruby bin/ifttt_webhook.rb >> "$LOG_FILE" 2>&1 &
+    setsid ruby bin/ifttt_webhook.rb >> "$LOG_FILE" 2>&1 < /dev/null &
     log "Server started with PID $!"
 }
 
