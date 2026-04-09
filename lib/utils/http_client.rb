@@ -62,12 +62,22 @@ module HttpClient
   DEFAULT_MAX_RETRIES  = 3
   DEFAULT_RETRY_DELAYS = [1, 2, 4].freeze
 
+  # Connection cache TTL — close idle connections after this many seconds
+  CONNECTION_TTL = 30
+
   # Network errors eligible for retry
   RETRIABLE_ERRORS = [
     Net::OpenTimeout, Net::ReadTimeout,
     Errno::ECONNREFUSED, Errno::ECONNRESET, Errno::EHOSTUNREACH,
     SocketError, Zpravobot::NetworkError
   ].freeze
+
+  # Errors indicating a cached connection went stale (server closed it)
+  STALE_CONNECTION_ERRORS = [Errno::EPIPE, IOError, Errno::ECONNRESET].freeze
+
+  # Per-host connection cache: "host:port" → { http: Net::HTTP, last_used: Time }
+  @connections = {}
+  @connections_mutex = Mutex.new
 
   module_function
 
@@ -178,8 +188,10 @@ module HttpClient
   # @return [Net::HTTPResponse]
   def head(url, open_timeout: DEFAULT_OPEN_TIMEOUT, read_timeout: DEFAULT_READ_TIMEOUT, user_agent: DEFAULT_UA)
     uri = url.is_a?(URI) ? url : URI(url)
-    http = build_http(uri, open_timeout: open_timeout, read_timeout: read_timeout)
-    http.head(uri.path.empty? ? '/' : uri.path)
+    request = Net::HTTP::Head.new(uri)
+    request['User-Agent'] = user_agent
+
+    execute(uri, request, open_timeout: open_timeout, read_timeout: read_timeout)
   end
 
   # Download binary data from URL with redirect following
@@ -315,6 +327,7 @@ module HttpClient
   end
 
   # Execute an arbitrary pre-built request (GET, POST, PATCH, etc.)
+  # Retries once on stale cached connection.
   #
   # @param uri [URI] Parsed URI
   # @param request [Net::HTTPRequest] Pre-built request object
@@ -323,20 +336,68 @@ module HttpClient
   # @return [Net::HTTPResponse]
   def execute(uri, request, open_timeout: DEFAULT_OPEN_TIMEOUT, read_timeout: DEFAULT_READ_TIMEOUT)
     http = build_http(uri, open_timeout: open_timeout, read_timeout: read_timeout)
+    http.start unless http.started?
+    http.request(request)
+  rescue *STALE_CONNECTION_ERRORS
+    # Cached connection went stale — drop it and retry with a fresh one
+    drop_cached_connection(uri)
+    http = build_http(uri, open_timeout: open_timeout, read_timeout: read_timeout)
+    http.start unless http.started?
     http.request(request)
   end
 
-  # Build a configured Net::HTTP instance
+  # Build or reuse a configured Net::HTTP instance.
+  # Caches connections per host:port with TTL-based expiry.
+  # Connection is started lazily in execute, not here (keeps unit tests offline).
   #
   # @param uri [URI] Parsed URI
   # @param open_timeout [Integer] Connection timeout
   # @param read_timeout [Integer] Read timeout
   # @return [Net::HTTP]
   def build_http(uri, open_timeout: DEFAULT_OPEN_TIMEOUT, read_timeout: DEFAULT_READ_TIMEOUT)
-    http = Net::HTTP.new(uri.host, uri.port)
-    http.use_ssl = (uri.scheme == 'https')
-    http.open_timeout = open_timeout
-    http.read_timeout = read_timeout
-    http
+    key = "#{uri.host}:#{uri.port}"
+
+    @connections_mutex.synchronize do
+      cached = @connections[key]
+      if cached && cached[:http].started? && (Time.now - cached[:last_used]) < CONNECTION_TTL
+        http = cached[:http]
+        http.open_timeout = open_timeout
+        http.read_timeout = read_timeout
+        cached[:last_used] = Time.now
+        return http
+      end
+
+      # Close stale/expired connection if present
+      if cached
+        cached[:http].finish rescue nil
+        @connections.delete(key)
+      end
+
+      http = Net::HTTP.new(uri.host, uri.port)
+      http.use_ssl = (uri.scheme == 'https')
+      http.open_timeout = open_timeout
+      http.read_timeout = read_timeout
+      http.keep_alive_timeout = CONNECTION_TTL
+
+      @connections[key] = { http: http, last_used: Time.now }
+      http
+    end
+  end
+
+  # Close all cached connections (call at end of run)
+  def close_all_connections
+    @connections_mutex.synchronize do
+      @connections.each_value { |c| c[:http].finish rescue nil }
+      @connections.clear
+    end
+  end
+
+  # Drop a single cached connection (used on stale connection retry)
+  def drop_cached_connection(uri)
+    key = "#{uri.host}:#{uri.port}"
+    @connections_mutex.synchronize do
+      cached = @connections.delete(key)
+      cached[:http].finish rescue nil if cached
+    end
   end
 end

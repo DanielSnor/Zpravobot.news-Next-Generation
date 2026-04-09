@@ -11,11 +11,13 @@ module State
     include Support::Loggable
 
     DEFAULT_SCHEMA = 'zpravobot'
+    PING_INTERVAL = 300 # 5 minutes — ping only after idle periods, not every query
 
     attr_reader :schema
 
     def initialize(url: nil, host: nil, port: 5432, dbname: nil, user: nil, password: nil, schema: nil)
       @schema = schema || ENV.fetch('ZPRAVOBOT_SCHEMA', DEFAULT_SCHEMA)
+      @last_ping = nil
       @connection_params = if url
         { conninfo: url }
       elsif host
@@ -47,6 +49,8 @@ module State
 
       DatabaseHelpers.validate_schema!(@schema)
       @conn.exec("SET search_path TO #{@schema}")
+      @conn.exec('SELECT 1') # Verify connection is alive
+      @last_ping = Time.now
       log_debug("Connected to database (schema: #{@schema})")
       @conn
     end
@@ -64,13 +68,29 @@ module State
     end
 
     def ensure_connection
-      connect unless connected?
+      if @conn && !@conn.finished?
+        # Periodically verify connection is still alive (catches server-side idle drops)
+        if @last_ping.nil? || (Time.now - @last_ping) > PING_INTERVAL
+          begin
+            @conn.exec('SELECT 1')
+            @last_ping = Time.now
+          rescue PG::Error
+            log_warn('DB connection stale, reconnecting...')
+            @conn = nil
+          end
+        end
+      end
+      connect unless @conn && !@conn.finished?
       @conn
     end
 
     # Expose raw connection for repositories
     def conn
       ensure_connection
+    rescue PG::Error => e
+      log_warn("DB connection failed, reconnecting: #{e.message}")
+      @conn = nil
+      connect
     end
   end
 end
