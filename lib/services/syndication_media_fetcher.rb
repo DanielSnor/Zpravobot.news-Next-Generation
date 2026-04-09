@@ -162,6 +162,7 @@ module Services
         display_name: data.dig('user', 'name'),
         username: data.dig('user', 'screen_name'),
         created_at: data['created_at'],
+        poll_data: extract_poll_data(data),
         error: nil
       }
     end
@@ -300,6 +301,48 @@ module Services
     #
     # @param error [String] Error message
     # @return [Hash]
+    # Extract poll data from Syndication API card object
+    # @param data [Hash] Parsed JSON response
+    # @return [Hash, nil] Poll data or nil if no poll found
+    #   { choices: [{ option: String, value: String, leader: Boolean }], votes: String }
+    def extract_poll_data(data)
+      card = data['card']
+      return nil unless card
+      return nil unless card['name']&.match?(/^poll\d+choice/)
+
+      bindings = card['binding_values']
+      return nil unless bindings
+
+      # Collect choices (choice1..choice4)
+      choices_raw = []
+      (1..4).each do |i|
+        label = bindings.dig("choice#{i}_label", 'string_value')
+        count = bindings.dig("choice#{i}_count", 'string_value')
+        break unless label
+        choices_raw << { option: label, count: count.to_i }
+      end
+
+      return nil if choices_raw.empty?
+
+      # Calculate total and percentages
+      total = choices_raw.sum { |c| c[:count] }
+      max_count = choices_raw.max_by { |c| c[:count] }[:count]
+
+      choices = choices_raw.map do |c|
+        pct = total > 0 ? (c[:count] * 100.0 / total).round : 0
+        {
+          option: c[:option],
+          value: "#{pct}%",
+          leader: c[:count] == max_count && max_count > 0
+        }
+      end
+
+      # Format total votes with thousands separator
+      votes_formatted = total.to_s.reverse.gsub(/(\d{3})(?=\d)/, '\\1,').reverse
+
+      { choices: choices, votes: "#{votes_formatted} votes" }
+    end
+
     def failure_result(error)
       {
         success: false,
@@ -313,6 +356,7 @@ module Services
         display_name: nil,
         username: nil,
         created_at: nil,
+        poll_data: nil,
         error: error
       }
     end

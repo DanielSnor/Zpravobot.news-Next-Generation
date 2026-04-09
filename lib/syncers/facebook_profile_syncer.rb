@@ -121,7 +121,15 @@ module Syncers
       log "  Fetching #{url} via Browserless..."
 
       html = fetch_page_via_browserless(url)
-      parse_facebook_profile(html)
+      profile = parse_facebook_profile(html)
+
+      # Detekce expirovaných cookies: při login wall FB vrátí stránku bez
+      # profilových dat — bio i avatar budou nil zároveň.
+      if profile[:avatar_url].nil? && profile[:description].nil?
+        log '  ⚠️ No avatar or bio extracted — Facebook cookies may have expired', level: :warn
+      end
+
+      profile
     end
 
     private

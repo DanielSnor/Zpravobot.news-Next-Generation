@@ -33,21 +33,24 @@
 # Source report — nové/vyřazené boty (1x denně)
 15 10 * * *  /app/data/zbnw-ng/cron_source_report.sh
 
-# TOP10 hitparáda (neděle 20:20)
-20 20 * * 0  /app/data/zbnw-ng/cron_stats.sh
+# Friendly Follow — denní #FF doporučení účtů (čas TBD)
+15 15 * * *  /app/data/zbnw-ng/cron_ff.sh
+
+# TOP10 hitparáda (neděle 20:15)
+15 20 * * 0  /app/data/zbnw-ng/cron_stats.sh
 
 # ==================================
 # Profile Sync (1x týdně, rotace po dnech)
 # ==================================
 
-0 2 * * 1    /app/data/zbnw-ng/cron_profile_sync.sh --platform bluesky       # Po — Bluesky
-0 2 * * 2    /app/data/zbnw-ng/cron_profile_sync.sh --platform facebook      # Út — Facebook
-0 3 * * 2    /app/data/zbnw-ng/cron_profile_sync.sh --platform instagram     #      Instagram
-0 2 * * 3    /app/data/zbnw-ng/cron_profile_sync.sh --platform twitter --group 0  # St — Twitter 1/3
-0 2 * * 4    /app/data/zbnw-ng/cron_profile_sync.sh --platform twitter --group 1  # Čt — Twitter 2/3
-0 2 * * 5    /app/data/zbnw-ng/cron_profile_sync.sh --platform twitter --group 2  # Pá — Twitter 3/3
-0 2 * * 6    /app/data/zbnw-ng/cron_profile_sync.sh --platform rss           # So — RSS
-0 2 * * 0    /app/data/zbnw-ng/cron_profile_sync.sh --platform youtube       # Ne — YouTube
+0 2 * * 1    /app/data/zbnw-ng/cron_profile_sync.sh --platform bluesky       		# Po — Bluesky
+0 2 * * 2    /app/data/zbnw-ng/cron_profile_sync.sh --platform facebook      		# Út — Facebook
+0 3 * * 2    /app/data/zbnw-ng/cron_profile_sync.sh --platform instagram     		#      Instagram
+0 2 * * 3    /app/data/zbnw-ng/cron_profile_sync.sh --platform twitter --group 0  	# St — Twitter 1/3
+0 2 * * 4    /app/data/zbnw-ng/cron_profile_sync.sh --platform twitter --group 1  	# Čt — Twitter 2/3
+0 2 * * 5    /app/data/zbnw-ng/cron_profile_sync.sh --platform twitter --group 2  	# Pá — Twitter 3/3
+0 2 * * 6    /app/data/zbnw-ng/cron_profile_sync.sh --platform rss           		# So — RSS
+0 2 * * 0    /app/data/zbnw-ng/cron_profile_sync.sh --platform youtube       		# Ne — YouTube
 
 # ==================================
 # Monitoring — Údržbot + Tlambot

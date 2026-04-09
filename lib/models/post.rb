@@ -29,6 +29,9 @@ class Post
   # Thread context is mutable (can be loaded lazily)
   attr_accessor :thread_context
 
+  # Poll support (Twitter polls via Nitter / Syndication API)
+  attr_accessor :poll_data
+
   def initialize(
     platform:,
     id:,
@@ -50,7 +53,9 @@ class Post
     reply_to_handle: nil,
     thread_context: nil,
     # Video support
-    has_video: false
+    has_video: false,
+    # Poll support
+    poll_data: nil
   )
     @platform = platform.to_s.downcase
     @id = id
@@ -73,6 +78,8 @@ class Post
     @thread_context = thread_context
     # Video support
     @has_video = has_video
+    # Poll support
+    @poll_data = poll_data
   end
 
   # Platform checks
@@ -108,6 +115,10 @@ class Post
 
   def has_video?
     @has_video == true
+  end
+
+  def has_poll?
+    !poll_data.nil? && poll_data[:choices]&.any?
   end
 
   def has_title?

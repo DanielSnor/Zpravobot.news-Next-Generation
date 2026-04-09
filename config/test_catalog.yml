@@ -484,6 +484,13 @@ tests:
     exit_code_reliable: true
     description: "MediaDedup: SHA-256 video fingerprinting, duplicate detection, lifecycle, cleanup (Video Dedup Task)"
 
+  test_poll_extraction:
+    file: test/test_poll_extraction.rb
+    category: unit
+    tags: [offline, twitter, poll, formatter]
+    exit_code_reliable: true
+    description: "Twitter poll extraction from Nitter HTML and Syndication API"
+
   test_ogp_fetcher:
     file: test/test_ogp_fetcher.rb
     category: unit
@@ -511,6 +518,13 @@ tests:
     tags: [offline, mastodon, trending]
     exit_code_reliable: true
     description: "TrendingChecker: empty trends, already announced, new trends, MAX cap, state rotation, corrupted state, quote denied (422), dry run"
+
+  test_friendly_follow:
+    file: test/test_friendly_follow.rb
+    category: unit
+    tags: [offline, mastodon, ff]
+    exit_code_reliable: true
+    description: "FriendlyFollow: rotace, výběr 3 účtů, inject nových, cycle reset, bio truncation, formátování, české dny/měsíce, state JSON, dry-run"
 
   # =====================================================
   # VISUAL / DIAGNOSTIC (no real assertions)

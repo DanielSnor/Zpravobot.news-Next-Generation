@@ -249,6 +249,15 @@ module Adapters
       # Tier 2: Tweet is truncated, need Nitter for full text
       return 2 if likely_truncated?(text)
 
+      # Poll heuristic: text ending with ? and no media → likely poll → Tier 2
+      # Nitter HTML will contain div.poll if it's a poll tweet.
+      # False positives (normal questions without media) get Nitter treatment —
+      # harmless, they just get full-text enrichment as a bonus.
+      if text&.strip&.end_with?('?') && first_link.to_s.empty?
+        log "Text ends with '?' and no media → Tier 2 (possible poll)"
+        return 2
+      end
+
       # Tier 1: Full text available from IFTTT
       1
     end
@@ -800,6 +809,7 @@ module Adapters
         reposted_by: post_type[:is_repost] ? username : nil,
         quoted_post: build_quoted_post(post_type[:quoted_url]),
         has_video: has_video,
+        poll_data: syndication[:poll_data],
         raw: raw_extra.merge(
           syndication_success: true,
           ifttt_trigger: true,

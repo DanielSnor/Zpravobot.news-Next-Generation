@@ -43,6 +43,7 @@ module Adapters
 
       published_at = extract_timestamp_from_html(html)
       media = extract_media_from_html(tweet_html)
+      poll_data = extract_poll_from_html(tweet_html)
 
       title_match = html.match(/<title>([^<]+)<\/title>/i)
       title = title_match ? title_match[1] : ''
@@ -92,7 +93,8 @@ module Adapters
         raw: { source: 'nitter_html', post_id: post_id },
         is_thread_post: reply_info[:is_thread_post],
         reply_to_handle: reply_info[:reply_to_handle],
-        has_video: detect_video_from_html(html)
+        has_video: detect_video_from_html(html),
+        poll_data: poll_data
       )
     end
 
@@ -328,6 +330,33 @@ module Adapters
     def detect_video_from_html(html)
       main = html.split('<div id="r"').first || html
       main.include?('>Video<') || main.include?('video_thumb') || main.include?('<video') || main.include?('video-container')
+    end
+
+    # Extract poll data from Nitter HTML
+    # @param html [String] HTML fragment (main tweet section)
+    # @return [Hash, nil] Poll data or nil if no poll found
+    #   { choices: [{ option: String, value: String, leader: Boolean }], votes: String }
+    def extract_poll_from_html(html)
+      return nil unless html&.include?('class="poll"')
+
+      choices = []
+
+      html.scan(/<div class="poll-meter(\s+leader)?">\s*<span class="poll-choice-bar"[^>]*><\/span>\s*<span class="poll-choice-value">([^<]+)<\/span>\s*<span class="poll-choice-option">([^<]+)<\/span>/m) do
+        leader = !$1.nil?
+        value = $2.strip
+        option = $3.strip
+        choices << { option: option, value: value, leader: leader }
+      end
+
+      return nil if choices.empty?
+
+      votes = nil
+      if html =~ /<span class="poll-info">([^<]+)<\/span>/
+        info = $1.strip
+        votes = info.split('•').first&.strip
+      end
+
+      { choices: choices, votes: votes }
     end
   end
 end
