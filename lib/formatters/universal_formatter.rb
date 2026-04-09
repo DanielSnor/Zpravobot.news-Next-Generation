@@ -179,26 +179,36 @@ module Formatters
       text = format_mentions(text, config, skip: post.author&.username)
       text = rewrite_urls(text, config)
       text = move_url_to_end(text) if config[:move_url_to_end]
-      
+
+      # Poll handling: append poll block to text before composing output
+      if post.respond_to?(:poll_data) && post.poll_data
+        text += format_poll(post.poll_data)
+      end
+
       # Video handling
       if post.respond_to?(:has_video) && post.has_video
         return format_video_post(post, text, text_prefix, config)
       end
-      
+
       parts << "#{text_prefix}#{text}" unless text.empty?
       
       # URL logic:
       # 1. Link card → vždy přidat
       # 2. Tier 3 (force_read_more) → přidat s read_more prefixem
-      # 3. include_post_url_for_regular: true → přidat post URL (Bluesky, RSS)
-      # 4. include_post_url_for_regular: false → žádná URL (Twitter Tier 1/2)
+      # 3. Poll post → přidat post URL (odkaz na původní anketu)
+      # 4. include_post_url_for_regular: true → přidat post URL (Bluesky, RSS)
+      # 5. include_post_url_for_regular: false → žádná URL (Twitter Tier 1/2)
       link_url = extract_link_card_url(post)
-      
+
       if link_url
         # S link card: přidat URL
         compose_output(parts, link_url, config, post: post)
       elsif force_read_more?(post)
         # Tier 3: truncated, přidat URL s read_more
+        url = rewrite_urls(post.url, config)
+        compose_output(parts, url, config, post: post)
+      elsif post.respond_to?(:has_poll?) && post.has_poll?
+        # Poll post: přidat post URL jako odkaz na původní anketu
         url = rewrite_urls(post.url, config)
         compose_output(parts, url, config, post: post)
       elsif config[:include_post_url_for_regular]
@@ -393,6 +403,27 @@ module Formatters
         # Tier 1.5/2: video je nahráno jako příloha → URL v textu nepotřebná.
         parts.join("\n")
       end
+    end
+
+    # ===========================================
+    # Poll Formatting
+    # ===========================================
+
+    # Format poll data as text block appended after tweet text
+    # @param poll_data [Hash] { choices: [...], votes: String }
+    # @return [String] Formatted poll text (starts with \n\n, empty string if no data)
+    def format_poll(poll_data)
+      return '' unless poll_data && poll_data[:choices]&.any?
+
+      lines = poll_data[:choices].map do |choice|
+        line = "📊 #{choice[:option]} — #{choice[:value]}"
+        line += " ✅" if choice[:leader]
+        line
+      end
+
+      result = "\n\n#{lines.join("\n")}"
+      result += "\n\n🗳️ #{poll_data[:votes]}" if poll_data[:votes]
+      result
     end
 
     # ===========================================

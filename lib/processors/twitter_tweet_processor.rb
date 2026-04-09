@@ -375,6 +375,7 @@ module Processors
         reposted_by: reposted_by,
         quoted_post: quoted_post,
         has_video: has_video,
+        poll_data: syndication[:poll_data],
         raw: {
           source: 'syndication_fallback',
           tier: 3.5,
