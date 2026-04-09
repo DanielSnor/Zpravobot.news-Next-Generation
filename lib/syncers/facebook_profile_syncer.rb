@@ -170,17 +170,8 @@ module Syncers
         gotoOptions: { waitUntil: 'networkidle2' }
       }
 
-      http = Net::HTTP.new(uri.host, uri.port)
-      http.use_ssl = true
-      http.read_timeout = 60
-      http.open_timeout = 30
-
-      request = Net::HTTP::Post.new(uri)
-      request['Content-Type'] = 'application/json'
-      request['User-Agent'] = USER_AGENT
-      request.body = body.to_json
-
-      response = http.request(request)
+      response = HttpClient.post_json(uri.to_s, body,
+                   open_timeout: 30, read_timeout: 60, user_agent: USER_AGENT)
 
       unless response.is_a?(Net::HTTPSuccess)
         raise "Browserless API error: #{response.code} #{response.message}"

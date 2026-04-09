@@ -204,7 +204,7 @@ end
 
 # Stubuje fetch metody na instanci procesoru (bez HTTP)
 def stub_fetches(processor, nitter_result:, syndication_result: nil)
-  processor.define_singleton_method(:fetch_from_nitter_with_retry) do |_post_id, _username, _config|
+  processor.define_singleton_method(:fetch_from_nitter_with_retry) do |_post_id, _username, _config, **_opts|
     nitter_result
   end
   processor.define_singleton_method(:fetch_from_syndication) do |_post_id, _username, _config, _fallback|
@@ -305,7 +305,7 @@ retry_post = make_post(id: '777', text: 'Retry success')
 pp7 = TrackingPostProcessor.new
 proc7 = make_processor(post_processor: pp7)
 mock_adapter = Object.new
-mock_adapter.define_singleton_method(:fetch_single_post) do |_id|
+mock_adapter.define_singleton_method(:fetch_single_post) do |_id, **_opts|
   retry_call_count += 1
   retry_call_count < 3 ? nil : retry_post
 end
@@ -321,7 +321,7 @@ test "retry: vrácen správný post", retry_post, pp7.last_post
 pp8 = TrackingPostProcessor.new
 proc8 = make_processor(post_processor: pp8)
 error_adapter = Object.new
-error_adapter.define_singleton_method(:fetch_single_post) { |_| raise StandardError, 'Nitter down' }
+error_adapter.define_singleton_method(:fetch_single_post) { |_, **_opts| raise StandardError, 'Nitter down' }
 proc8.define_singleton_method(:get_twitter_adapter) { |_u, _c| error_adapter }
 syndication_recovery = make_post(id: '888', text: 'Syndication recovery')
 proc8.define_singleton_method(:fetch_from_syndication) { |_id, _u, _c, _fb| syndication_recovery }

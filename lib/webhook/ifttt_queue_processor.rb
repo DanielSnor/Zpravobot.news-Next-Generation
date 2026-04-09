@@ -135,7 +135,7 @@ module Webhook
       log "Media fingerprint cleanup: #{fp_cleanup} old entries removed" if fp_cleanup && fp_cleanup > 0
 
       pending_dir = File.join(QUEUE_DIR, 'pending')
-      files = Dir.glob(File.join(pending_dir, '*.json')).sort
+      files = Dir.glob(File.join(pending_dir, '*.json')).sort.first(500)
 
       stats = { processed: 0, published: 0, skipped: 0, failed: 0, updated: 0 }
 

@@ -2,6 +2,8 @@
 
 require 'net/http'
 require 'uri'
+require 'ipaddr'
+require 'resolv'
 require_relative '../support/loggable'
 
 module Utils
@@ -26,6 +28,16 @@ module Utils
     RETRY_DELAY = 1        # sekunda před retry
     MAX_BODY_BYTES = 32_768 # číst prvních 32KB — moderní <head> bývá větší kvůli inline stylům
     MAX_REDIRECTS = 5       # více redirectů pro www↔non-www, http→https apod.
+
+    # SSRF protection — block requests to private/internal networks
+    PRIVATE_RANGES = [
+      IPAddr.new('127.0.0.0/8'),
+      IPAddr.new('10.0.0.0/8'),
+      IPAddr.new('172.16.0.0/12'),
+      IPAddr.new('192.168.0.0/16'),
+      IPAddr.new('169.254.0.0/16'),
+      IPAddr.new('fd00::/8'),
+    ].freeze
 
     # Fetch og:image URL from given article URL.
     # Returns absolute og:image URL or nil on any failure (silent degradation).
@@ -65,6 +77,7 @@ module Utils
     def fetch_html_partial(url, redirects_left: MAX_REDIRECTS)
       uri = URI(url)
       return nil unless uri.is_a?(URI::HTTP) || uri.is_a?(URI::HTTPS)
+      return nil if private_address?(uri.host)
 
       http = Net::HTTP.new(uri.host, uri.port)
       http.use_ssl = (uri.scheme == 'https')
@@ -90,6 +103,8 @@ module Utils
 
           # Make absolute URL if relative
           location = URI.join(url, location).to_s unless location.start_with?('http')
+          redirect_uri = URI(location)
+          return nil if private_address?(redirect_uri.host)
           return fetch_html_partial(location, redirects_left: redirects_left - 1)
 
         when Net::HTTPSuccess
@@ -106,6 +121,22 @@ module Utils
       end
 
       nil
+    end
+
+    # Check if hostname resolves to a private/internal IP address (SSRF protection).
+    def private_address?(host)
+      ips = Resolv.getaddresses(host)
+      ips.any? { |ip| private_ip?(ip) }
+    rescue Resolv::ResolvError
+      true # Unresolvable host = block
+    end
+
+    def private_ip?(ip_str)
+      return true if ip_str == '::1'
+      ip = IPAddr.new(ip_str)
+      PRIVATE_RANGES.any? { |range| range.include?(ip) }
+    rescue IPAddr::InvalidAddressError
+      true
     end
 
     # Extract og:image URL from HTML snippet.

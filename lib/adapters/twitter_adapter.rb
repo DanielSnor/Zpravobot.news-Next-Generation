@@ -105,16 +105,18 @@ module Adapters
     # @param post_id [String] Twitter status ID (numeric string)
     # @param username [String, nil] Override username (for RTs where author differs from handle)
     # @return [Post, nil] Post object or nil if not found/error
-    def fetch_single_post(post_id, username: nil)
+    def fetch_single_post(post_id, username: nil, html: nil)
       target_user = username || handle
       log "Fetching single post #{post_id} for @#{target_user}"
 
       # Build Nitter URL for the specific tweet
       nitter_url = "#{nitter_instance}/#{target_user}/status/#{post_id}"
-      log "Nitter URL: #{nitter_url}"
 
-      # Fetch HTML page
-      html = fetch_html_page(nitter_url)
+      # Use pre-fetched HTML if available (avoids double fetch when called after thread detection)
+      html ||= begin
+        log "Nitter URL: #{nitter_url}"
+        fetch_html_page(nitter_url)
+      end
       return nil unless html
 
       # Parse the main tweet from HTML (delegated to TwitterHtmlParser)
