@@ -41,6 +41,7 @@ BIND_ADDRESS = ENV['IFTTT_BIND'] || '0.0.0.0'
 BROADCAST_QUEUE_DIR = ENV['BROADCAST_QUEUE_DIR'] || (ENV['ZBNW_DIR'] ? "#{ENV['ZBNW_DIR']}/queue/broadcast" : 'queue/broadcast')
 BROADCAST_WEBHOOK_SECRET = ENV['TLAMBOT_WEBHOOK_SECRET']
 BROADCAST_TRIGGER_ACCOUNT = 'tlambot'
+MAX_PAYLOAD_SIZE = 1_048_576 # 1 MB — defence against OOM via crafted Content-Length
 
 # Queue directories per environment
 QUEUE_DIRS = {
@@ -201,17 +202,20 @@ class LightweightWebhookServer
       return [401, 'application/json', { error: 'Unauthorized' }.to_json]
     end
     
-    # Read body
+    # Read body (with size limit)
     content_length = headers['content-length']&.to_i || 0
+    if content_length > MAX_PAYLOAD_SIZE
+      return [413, 'application/json', { error: 'Payload too large' }.to_json]
+    end
     body = content_length > 0 ? client.read(content_length) : ''
-    
+
     # Parse JSON
     begin
       payload = JSON.parse(body)
     rescue JSON::ParserError
       return [400, 'application/json', { error: 'Invalid JSON' }.to_json]
     end
-    
+
     # Validate
     unless valid_payload?(payload)
       return [400, 'application/json', { error: 'Missing required fields' }.to_json]
@@ -241,8 +245,11 @@ class LightweightWebhookServer
   end
   
   def handle_broadcast_webhook(headers, client)
-    # Read body
+    # Read body (with size limit)
     content_length = headers['content-length']&.to_i || 0
+    if content_length > MAX_PAYLOAD_SIZE
+      return [413, 'application/json', { error: 'Payload too large' }.to_json]
+    end
     body = content_length > 0 ? client.read(content_length) : ''
 
     # Verify HMAC signature
@@ -279,7 +286,7 @@ class LightweightWebhookServer
     # Queue the raw payload
     status_id = payload.dig('object', 'id') || 'unknown'
     timestamp = Time.now.strftime('%Y%m%d%H%M%S%L')
-    filename = "#{timestamp}_tlambot_#{status_id}.json"
+    filename = "#{timestamp}_tlambot_#{sanitize_filename_part(status_id, 30)}.json"
     pending_dir = File.join(BROADCAST_QUEUE_DIR, 'pending')
     FileUtils.mkdir_p(pending_dir)
     filepath = File.join(pending_dir, filename)
@@ -383,7 +390,7 @@ class LightweightWebhookServer
     
     post_id = extract_post_id(normalized['link_to_tweet'])
     timestamp = Time.now.strftime('%Y%m%d%H%M%S%L')
-    filename = "#{timestamp}_#{normalized['username']}_#{post_id}.json"
+    filename = "#{timestamp}_#{sanitize_filename_part(normalized['username'])}_#{sanitize_filename_part(post_id, 30)}.json"
     filepath = File.join(queue_dir, 'pending', filename)
     
     # Ensure directory exists (in case it was deleted)
@@ -397,6 +404,10 @@ class LightweightWebhookServer
     return nil unless url
     match = url.match(%r{(?:twitter\.com|x\.com)/\w+/status/(\d+)})
     match ? match[1] : nil
+  end
+
+  def sanitize_filename_part(str, max_len = 100)
+    str.to_s.gsub(/[^a-zA-Z0-9_.-]/, '_')[0...max_len]
   end
   
   def ensure_queue_dirs

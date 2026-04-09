@@ -48,6 +48,7 @@ module Orchestrator
 	  @stats = { processed: 0, published: 0, skipped: 0, errors: 0 }
 	  @publishers_cache = {}
 	  @thread_cache = {} # Pro ThreadingSupport modul
+	  @last_fingerprint_cleanup = nil
 
 	  # Initialize PostProcessor + TwitterTweetProcessor (lazy - created when needed with dry_run flag)
 	  @post_processor = nil
@@ -94,12 +95,16 @@ module Orchestrator
 	  log_info("Excluding platform: #{exclude_platform}") if exclude_platform
 
 	  @state_manager.connect
-	  # Cleanup media fingerprints once per run (retain 96h = 4 days)
-	  begin
-	    fp_cleanup = @state_manager.cleanup_media_fingerprints(retention_hours: 96)
-	    log_info("Media fingerprint cleanup: #{fp_cleanup} old entries removed") if fp_cleanup && fp_cleanup > 0
-	  rescue StandardError => e
-	    log_warn("Media fingerprint cleanup failed: #{e.message}")
+	  # Cleanup media fingerprints at most once per hour (retain 96h = 4 days)
+	  now = Time.now
+	  if @last_fingerprint_cleanup.nil? || (now - @last_fingerprint_cleanup) > 3600
+	    begin
+	      fp_cleanup = @state_manager.cleanup_media_fingerprints(retention_hours: 96)
+	      log_info("Media fingerprint cleanup: #{fp_cleanup} old entries removed") if fp_cleanup && fp_cleanup > 0
+	      @last_fingerprint_cleanup = now
+	    rescue StandardError => e
+	      log_warn("Media fingerprint cleanup failed: #{e.message}")
+	    end
 	  end
 	  sources = @config_loader.load_all_sources
 	  sources = sources.select { |s| s.dig(:scheduling, :priority) == priority } if priority

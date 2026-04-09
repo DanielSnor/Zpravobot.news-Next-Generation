@@ -137,7 +137,9 @@ restore_output
 original_head = HttpClient.method(:head)
 fetched_urls = []
 mock_redirect = Class.new(Net::HTTPRedirection) do
-  def [](key) = key == 'location' ? 'https://example.com/article' : nil
+  def [](key)
+    key == 'location' ? 'https://example.com/article' : nil
+  end
 end.new('1.1', '301', 'Moved')
 
 HttpClient.define_singleton_method(:head) do |url, **_kwargs|

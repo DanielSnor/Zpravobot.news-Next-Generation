@@ -19,11 +19,20 @@ module Webhook
     # @param payload [Hash] Raw webhook data (string keys from JSON.parse)
     # @param config_finder [#call] Callable(bot_id, username) → bot_config hash
     # @return [ParsedPayload]
+    MAX_BOT_ID_LENGTH = 100
+    MAX_USERNAME_LENGTH = 100
+    MAX_TEXT_LENGTH = 50_000
+
     def parse(payload, config_finder)
       bot_id = payload['bot_id']
       post_id = extract_post_id(payload['link_to_tweet'])
       username = payload['username']
       text = payload['text'] || ''
+
+      # Field length validation (defence against crafted payloads)
+      return nil if bot_id.to_s.length > MAX_BOT_ID_LENGTH
+      return nil if username.to_s.length > MAX_USERNAME_LENGTH
+      return nil if text.length > MAX_TEXT_LENGTH
 
       # IFTTT sends text URL-encoded (+ for spaces, %xx for special chars)
       # and may contain HTML entities (&gt;, &amp;, etc.)
