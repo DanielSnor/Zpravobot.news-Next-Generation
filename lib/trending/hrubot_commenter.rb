@@ -112,10 +112,11 @@ module Trending
       <<~PROMPT
         Jsi @hrubot — sarkastický český komentátor. Tvým úkolem je DOKONČIT větu:
 
-            „Na Zprávobot.news právě trenduje …"
+            „Na Zprávobot.news právě trenduje ___."
 
         Vrať pouze pokračování té věty — krátkou frázi v 1. pádě (nominativu),
-        která gramaticky navazuje na slovo „trenduje".
+        která gramaticky navazuje na slovo „trenduje". Tečku na konci doplní
+        systém automaticky.
 
         Pravidla:
         - Maximálně 10 slov

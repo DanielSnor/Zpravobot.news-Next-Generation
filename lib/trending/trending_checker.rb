@@ -249,14 +249,14 @@ module Trending
     #   #zpravobot #trending
     #
     # S Hrubotovým komentářem (komentář dokončí větu):
-    #   📈 Na Zprávobot.news právě trenduje … další důkaz, že logika bere dovolenou
+    #   📈 Na Zprávobot.news právě trenduje další důkaz, že logika bere dovolenou.
     #
     #   #zpravobot #trending
     def build_status_text(trend)
       comment = @commenter&.comment_for(trend)
 
       first_line = if comment && !comment.empty?
-                     "#{HEADER_LINE} … #{comment}"
+                     "#{HEADER_LINE} #{comment}."
                    else
                      HEADER_LINE
                    end
