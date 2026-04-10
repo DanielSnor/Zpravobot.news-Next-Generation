@@ -241,18 +241,27 @@ module Trending
       posted
     end
 
-    # Sestaví text trending postu. Pokud je k dispozici commenter a vrátí
-    # komentář, vloží ho mezi header a hashtagy.
+    # Sestaví text trending postu.
+    #
+    # Bez komentáře:
+    #   📈 Na Zprávobot.news právě trenduje
+    #
+    #   #zpravobot #trending
+    #
+    # S Hrubotovým komentářem (komentář dokončí větu):
+    #   📈 Na Zprávobot.news právě trenduje … další důkaz, že logika bere dovolenou
+    #
+    #   #zpravobot #trending
     def build_status_text(trend)
       comment = @commenter&.comment_for(trend)
 
-      lines = [HEADER_LINE, '']
-      if comment && !comment.empty?
-        lines << "💬 „#{comment}“"
-        lines << ''
-      end
-      lines << HASHTAGS_LINE
-      lines.join("\n")
+      first_line = if comment && !comment.empty?
+                     "#{HEADER_LINE} … #{comment}"
+                   else
+                     HEADER_LINE
+                   end
+
+      [first_line, '', HASHTAGS_LINE].join("\n")
     end
 
     # ----------------------------------------------------------------
