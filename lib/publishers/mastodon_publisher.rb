@@ -33,7 +33,19 @@ module Publishers
     def initialize(instance_url:, access_token:)
       @instance_url = instance_url.chomp('/')
       @access_token = access_token
+      @rate_limited_until = nil
       validate_credentials!
+    end
+
+    # Is this account currently rate-limited?
+    def rate_limited?
+      @rate_limited_until && Time.now < @rate_limited_until
+    end
+
+    # Seconds remaining on rate limit (0 if not limited)
+    def rate_limit_remaining
+      return 0 unless rate_limited?
+      (@rate_limited_until - Time.now).ceil
     end
 
     # Publish a status to Mastodon
@@ -43,6 +55,8 @@ module Publishers
     # @param in_reply_to_id [String, nil] Mastodon status ID to reply to (for threading)
     # @return [Hash] Response with 'url' and 'id' of created status
     def publish(text, media_ids: [], visibility: 'public', in_reply_to_id: nil)
+      raise_if_rate_limited!
+
       if (text.nil? || text.strip.empty?) && media_ids.empty?
         raise ArgumentError, "Text cannot be empty without media"
       end
@@ -58,8 +72,11 @@ module Publishers
       params[:in_reply_to_id] = in_reply_to_id if in_reply_to_id
 
       response = api_post('/api/v1/statuses', params)
+      code = response.code.to_i
 
-      if (200..299).include?(response.code.to_i)
+      if code == 429
+        mark_rate_limited!(response)
+      elsif (200..299).include?(code)
         data = JSON.parse(response.body)
         log "Published: #{data['url']}", level: :success
         data
@@ -79,6 +96,7 @@ module Publishers
     # @param spoiler_text [String] Content warning text
     # @return [Hash] Updated status data
     def update_status(status_id, text, media_ids: nil, sensitive: nil, spoiler_text: nil)
+      raise_if_rate_limited!
       raise ArgumentError, "Status ID required" if status_id.nil? || status_id.to_s.empty?
       raise ArgumentError, "Text cannot be empty" if text.nil? || text.strip.empty?
       raise ArgumentError, "Text too long (#{text.length}/#{MAX_STATUS_LENGTH})" if text.length > MAX_STATUS_LENGTH
@@ -97,6 +115,8 @@ module Publishers
         data = JSON.parse(response.body)
         log "Updated: #{data['url']}", level: :success
         data
+      when 429
+        mark_rate_limited!(response)
       when 404
         log "Status not found: #{status_id}", level: :error
         raise Zpravobot::StatusNotFoundError, "Status #{status_id} not found"
@@ -299,6 +319,7 @@ module Publishers
     # @param description [String] Alt text
     # @return [String, nil] Media ID or nil on failure
     def upload_media(data, filename:, content_type:, description: nil)
+      raise_if_rate_limited!
       raise ArgumentError, "No data provided" if data.nil? || data.empty?
       raise ArgumentError, "File too large (#{data.bytesize} > #{MAX_MEDIA_SIZE})" if data.bytesize > MAX_MEDIA_SIZE
 
@@ -368,6 +389,7 @@ module Publishers
     # @return [Array<String>] media IDs in original order, failed uploads excluded
     def upload_media_parallel(media_items, max_size: MAX_MEDIA_SIZE)
       return [] if media_items.nil? || media_items.empty?
+      raise_if_rate_limited!
 
       items = media_items.first(MAX_MEDIA_COUNT)
       if media_items.size > MAX_MEDIA_COUNT
@@ -381,6 +403,9 @@ module Publishers
           Thread.current[:index] = i
           begin
             upload_media_from_url(it[:url], description: it[:description], url_variants: it[:url_variants], max_size: max_size)
+          rescue Zpravobot::AccountRateLimitedError => e
+            Thread.current[:rate_limited] = e
+            nil
           rescue StandardError => e
             log "Media upload failed (#{i + 1}/#{items.size}): #{e.message}", level: :warn
             nil
@@ -389,6 +414,12 @@ module Publishers
       end
 
       results = threads.map(&:value)
+
+      # If any thread hit a rate limit, re-raise it — the publisher's @rate_limited_until
+      # was already set inside upload_media, so subsequent calls will skip via pre-flight.
+      rl_thread = threads.find { |t| t[:rate_limited] }
+      raise rl_thread[:rate_limited] if rl_thread
+
       media_ids = results.compact
 
       log "Parallel upload complete: #{media_ids.size}/#{items.size} succeeded"
@@ -470,6 +501,31 @@ module Publishers
       raise Zpravobot::ConfigError, "Access token required" if access_token.nil? || access_token.empty?
     end
 
+    # Raise AccountRateLimitedError if this publisher is currently rate-limited.
+    # Used as pre-flight check before publish/upload/update.
+    def raise_if_rate_limited!
+      return unless rate_limited?
+      raise Zpravobot::AccountRateLimitedError.new(
+        "Account rate limited for #{rate_limit_remaining}s (until #{@rate_limited_until.strftime('%H:%M:%S')})",
+        retry_after: rate_limit_remaining,
+        account_id: @instance_url
+      )
+    end
+
+    # Record rate limit state from a 429 HTTP response and raise AccountRateLimitedError.
+    # Called when a live request hits 429 (in publish/update_status); execute_with_retry
+    # handles its own 429 path via RateLimitError → AccountRateLimitedError.
+    def mark_rate_limited!(response)
+      retry_after = (response['Retry-After'] || '5').to_i
+      @rate_limited_until = Time.now + retry_after + rand(1..3)
+      log "Rate limited (429), marked until #{@rate_limited_until.strftime('%H:%M:%S')} — deferring", level: :warn
+      raise Zpravobot::AccountRateLimitedError.new(
+        "Rate limited (429), retry after #{retry_after}s",
+        retry_after: retry_after,
+        account_id: @instance_url
+      )
+    end
+
     # ============================================
     # API helpers — delegate to HttpClient
     # ============================================
@@ -517,16 +573,14 @@ module Publishers
         response
 
       rescue Zpravobot::RateLimitError => e
-        retries += 1
-        if retries > MAX_RETRIES_RATE_LIMIT
-          log "Rate limit exceeded after #{MAX_RETRIES_RATE_LIMIT} retries", level: :error
-          return Net::HTTPTooManyRequests.new('1.1', '429', 'Rate Limited')
-        end
-
-        wait_time = e.retry_after + rand(1..3)
-        log "Rate limited (429), waiting #{wait_time}s (attempt #{retries}/#{MAX_RETRIES_RATE_LIMIT})...", level: :warn
-        sleep wait_time
-        retry
+        # Non-blocking: record rate limit state and propagate — don't sleep
+        @rate_limited_until = Time.now + e.retry_after + rand(1..3)
+        log "Rate limited (429), marked until #{@rate_limited_until.strftime('%H:%M:%S')} — deferring to next run", level: :warn
+        raise Zpravobot::AccountRateLimitedError.new(
+          "Rate limited (429), retry after #{e.retry_after}s",
+          retry_after: e.retry_after,
+          account_id: @instance_url
+        )
 
       rescue Zpravobot::ServerError => e
         retries += 1

@@ -125,9 +125,10 @@ class PostResultMock
     @mastodon_id = mastodon_id
   end
 
-  def published?; @status == :published; end
-  def skipped?;   @status == :skipped;   end
-  def failed?;    @status == :failed;    end
+  def published?;    @status == :published;    end
+  def skipped?;      @status == :skipped;      end
+  def failed?;       @status == :failed;       end
+  def rate_limited?; @status == :rate_limited; end
 end
 
 class TrackingPostProcessor

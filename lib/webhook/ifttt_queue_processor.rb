@@ -137,7 +137,10 @@ module Webhook
       pending_dir = File.join(QUEUE_DIR, 'pending')
       files = Dir.glob(File.join(pending_dir, '*.json')).sort.first(500)
 
-      stats = { processed: 0, published: 0, skipped: 0, failed: 0, updated: 0 }
+      stats = { processed: 0, published: 0, skipped: 0, failed: 0, updated: 0, rate_limited: 0 }
+
+      # Track which usernames have been rate-limited in this run → skip remaining files for same user
+      rate_limited_accounts = Set.new
 
       return stats if files.empty?
 
@@ -150,9 +153,16 @@ module Webhook
 
       # 1. HIGH = okamžitě, bez batch logiky
       high.each do |filepath|
+        username = extract_username_from_filename(filepath)
+        if username && rate_limited_accounts.include?(username)
+          log "Skipping #{File.basename(filepath)} — account #{username} rate-limited in this run"
+          stats[:rate_limited] += 1
+          next
+        end
         result = process_webhook_file(filepath, force_tier2: false)
         stats[result] = (stats[result] || 0) + 1
         stats[:processed] += 1
+        rate_limited_accounts.add(username) if result == :rate_limited && username
       end
 
       # 2. NORMAL + LOW = batch s delay, thread-aware
@@ -161,7 +171,7 @@ module Webhook
 
       if ready.any?
         log "Processing batch of #{ready.count} webhooks (#{batch_candidates.count - ready.count} still waiting)"
-        batch_results = process_batch(ready)
+        batch_results = process_batch(ready, rate_limited_accounts: rate_limited_accounts)
         batch_results.each do |result|
           stats[result] = (stats[result] || 0) + 1
           stats[:processed] += 1
@@ -286,7 +296,7 @@ module Webhook
     # Process batch of files with thread detection
     # @param files [Array<String>] File paths (already sorted: normal first, then low)
     # @return [Array<Symbol>] Results for each file
-    def process_batch(files)
+    def process_batch(files, rate_limited_accounts: Set.new)
       results = []
 
       # Pre-scan: identify authors with multiple tweets in batch
@@ -302,6 +312,13 @@ module Webhook
       files.each do |filepath|
         username = extract_username_from_filename(filepath)
 
+        # Skip file if its author already hit rate limit in this run — leave in pending
+        if username && rate_limited_accounts.include?(username)
+          log "Skipping #{File.basename(filepath)} — account #{username} rate-limited in this run"
+          results << :rate_limited
+          next
+        end
+
         # Force Tier 2 if:
         # - Author has multiple tweets in batch AND
         # - This is NOT their first tweet in this batch
@@ -315,6 +332,9 @@ module Webhook
 
         result = process_webhook_file(filepath, force_tier2: force_tier2)
         results << result
+
+        # On rate limit: mark account → remaining files for same author will be skipped
+        rate_limited_accounts.add(username) if result == :rate_limited && username
 
         # Mark author as seen AFTER processing (first tweet goes through normal tier detection)
         authors_seen.add(username) if username
@@ -356,6 +376,10 @@ module Webhook
         when :published, :skipped, :updated
           move_to_processed(filepath)
           result
+        when :rate_limited
+          # Leave file in pending/ → will be retried by next cron run
+          log "Rate limited — leaving #{filename} in pending/ for retry"
+          :rate_limited
         when :failed
           move_to_failed(filepath, 'Processing failed')
           :failed
@@ -363,6 +387,10 @@ module Webhook
           move_to_processed(filepath)
           :processed
         end
+      rescue Zpravobot::AccountRateLimitedError => e
+        # Rate limit escaped from process_webhook — leave in pending
+        log "Rate limited (#{e.retry_after}s) — leaving #{filename} in pending/ for retry", level: :warn
+        :rate_limited
       rescue JSON::ParserError => e
         log "Invalid JSON in #{filename}: #{e.message}", level: :error
         move_to_failed(filepath, "Invalid JSON: #{e.message}")

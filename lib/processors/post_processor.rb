@@ -111,6 +111,10 @@ module Processors
       def failed?
         status == :failed
       end
+
+      def rate_limited?
+        status == :rate_limited
+      end
     end
 
     # Dependencies
@@ -309,6 +313,10 @@ module Processors
       log_info("[#{source_id}] Published: #{mastodon_id}")
       Result.new(status: :published, mastodon_id: mastodon_id)
 
+    rescue Zpravobot::AccountRateLimitedError => e
+      account = source_config.dig(:target, :mastodon_account) || 'unknown'
+      log_warn("[#{source_id}] Rate limited (account: #{account}, #{e.retry_after}s) — deferring post #{post_id}")
+      Result.new(status: :rate_limited, error: e.message)
     rescue StandardError => e
       log_error("[#{source_id}] Error processing post: #{e.message}")
       log_error(e.backtrace.first(5).join("\n")) if @verbose
@@ -769,6 +777,8 @@ module Processors
 
       { success: true, mastodon_id: result['id'] }
 
+    rescue Zpravobot::AccountRateLimitedError
+      raise
     rescue StandardError => e
       { success: false, error: e.message }
     end

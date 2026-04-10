@@ -228,6 +228,10 @@ module Orchestrator
 		  process_post(source, post)
 		end
 		published_count += 1 if result == :published
+		if result == :rate_limited
+		  log_warn("[#{source.id}] Rate limited — deferring remaining #{posts.length - posts.index(post) - 1} posts")
+		  break
+		end
 	  end
 
 	  @state_manager.mark_check_success(source.id, posts_published: published_count)
@@ -275,11 +279,17 @@ module Orchestrator
 		update_thread_cache(source.id, post, result.mastodon_id) if result.mastodon_id
 	  when :skipped
 		@stats[:skipped] += 1
+	  when :rate_limited
+		@stats[:rate_limited] = (@stats[:rate_limited] || 0) + 1
 	  when :failed
 		@stats[:errors] += 1
 	  end
 
 	  result.status
+	rescue Zpravobot::AccountRateLimitedError => e
+	  log_warn("[#{source.id}] Rate limited (#{e.retry_after}s) — deferring")
+	  @stats[:rate_limited] = (@stats[:rate_limited] || 0) + 1
+	  :rate_limited
 	end
 
 	# Process a single Twitter post via unified TwitterTweetProcessor
@@ -310,10 +320,15 @@ module Orchestrator
 	  case result
 	  when :published then @stats[:published] += 1
 	  when :skipped   then @stats[:skipped] += 1
+	  when :rate_limited then @stats[:rate_limited] = (@stats[:rate_limited] || 0) + 1
 	  when :failed    then @stats[:errors] += 1
 	  end
 
 	  result
+	rescue Zpravobot::AccountRateLimitedError => e
+	  log_warn("[#{source.id}] Rate limited (#{e.retry_after}s) — deferring")
+	  @stats[:rate_limited] = (@stats[:rate_limited] || 0) + 1
+	  :rate_limited
 	end
 
 	# Extract tweet ID from URL — handles all known formats:

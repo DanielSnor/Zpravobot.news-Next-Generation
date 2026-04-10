@@ -125,11 +125,16 @@ module Processors
       if result.published?
         update_thread_cache(source_id, post, result.mastodon_id)
         :published
+      elsif result.rate_limited?
+        :rate_limited
       elsif result.skipped?
         :skipped
       else
         :failed
       end
+    rescue Zpravobot::AccountRateLimitedError => e
+      log_warn("[#{source_config[:id]}] Rate limited (#{e.retry_after}s) — deferring")
+      :rate_limited
     rescue StandardError => e
       log_error("[#{source_config[:id]}] TwitterTweetProcessor error: #{e.message}")
       :failed
