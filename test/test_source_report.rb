@@ -237,6 +237,7 @@ test('run: detekuje nový účet (sportcz není v snapshotu)') do
   end
 
   reporter, dir, = make_reporter(publisher: fake_publisher, dry_run: false)
+  reporter.define_singleton_method(:fetch_account_profile) { |id, _| { display_name: id, bio: nil } }
   begin
     reporter.run
     published_posts.any? { |p| p.include?('sportcz') }
@@ -308,6 +309,7 @@ section('Formátování postů — nové účty')
 
 test('format_new_posts: obsahuje mention nového účtu') do
   reporter, dir, = make_reporter
+  reporter.define_singleton_method(:fetch_account_profile) { |id, _| { display_name: id, bio: nil } }
   begin
     accounts = reporter.load_accounts
     posts = reporter.format_new_posts(['sportcz'], accounts)
@@ -317,12 +319,14 @@ test('format_new_posts: obsahuje mention nového účtu') do
   end
 end
 
-test('format_new_posts: obsahuje kategorii') do
+test('format_new_posts: FF formát — název — @handle') do
   reporter, dir, = make_reporter
+  reporter.define_singleton_method(:fetch_account_profile) { |id, _| { display_name: 'Sport CZ', bio: 'Sportovní zprávy' } }
   begin
     accounts = reporter.load_accounts
     posts = reporter.format_new_posts(['sportcz'], accounts)
-    posts.any? { |p| p.include?('sport:') }
+    text = posts.join("\n")
+    text.include?('Sport CZ') && text.include?("\u2014 @sportcz@zpravobot.news") && text.include?('Sportovní zprávy')
   ensure
     FileUtils.rm_rf(dir)
   end
@@ -330,6 +334,7 @@ end
 
 test('format_new_posts: obsahuje #newbots hashtag') do
   reporter, dir, = make_reporter
+  reporter.define_singleton_method(:fetch_account_profile) { |id, _| { display_name: id, bio: nil } }
   begin
     accounts = reporter.load_accounts
     posts = reporter.format_new_posts(['sportcz'], accounts)
@@ -341,6 +346,7 @@ end
 
 test('format_new_posts: singular intro pro 1 účet') do
   reporter, dir, = make_reporter
+  reporter.define_singleton_method(:fetch_account_profile) { |id, _| { display_name: id, bio: nil } }
   begin
     accounts = reporter.load_accounts
     posts = reporter.format_new_posts(['sportcz'], accounts)
@@ -353,6 +359,7 @@ end
 
 test('format_new_posts: plural intro pro více účtů') do
   reporter, dir, = make_reporter
+  reporter.define_singleton_method(:fetch_account_profile) { |id, _| { display_name: id, bio: nil } }
   begin
     accounts = reporter.load_accounts
     posts = reporter.format_new_posts(%w[sportcz aktualnecz], accounts)
@@ -363,26 +370,27 @@ test('format_new_posts: plural intro pro více účtů') do
   end
 end
 
-test('format_new_posts: seskupuje podle první kategorie') do
-  # sportcz → sport, aktualnecz → news
+test('format_new_posts: obsahuje oba nové účty') do
   reporter, dir, = make_reporter
+  reporter.define_singleton_method(:fetch_account_profile) { |id, _| { display_name: id, bio: nil } }
   begin
     accounts = reporter.load_accounts
     posts = reporter.format_new_posts(%w[sportcz aktualnecz], accounts)
     text = posts.join("\n")
-    text.include?('news:') && text.include?('sport:')
+    text.include?('@sportcz@zpravobot.news') && text.include?('@aktualnecz@zpravobot.news')
   ensure
     FileUtils.rm_rf(dir)
   end
 end
 
-test('format_new_posts: účet bez kategorií → ostatní') do
+test('format_new_posts: účet bez bio → jen název — @handle') do
   content = "nocat:\n  token: \"x\"\n  categories: []\n"
   reporter, dir, = make_reporter(accounts_content: content)
+  reporter.define_singleton_method(:fetch_account_profile) { |id, _| { display_name: id, bio: nil } }
   begin
     accounts = reporter.load_accounts
     posts = reporter.format_new_posts(['nocat'], accounts)
-    posts.any? { |p| p.include?('ostatní:') }
+    posts.any? { |p| p.include?('@nocat@zpravobot.news') }
   ensure
     FileUtils.rm_rf(dir)
   end
@@ -519,6 +527,7 @@ test('run: snapshot se aktualizuje po úspěšném postu') do
     publisher:        fake_publisher,
     dry_run:          false
   )
+  reporter.define_singleton_method(:fetch_account_profile) { |id, _| { display_name: id, bio: nil } }
   begin
     reporter.run
     new_snap = YAML.safe_load(File.read(snapshot_path, encoding: 'UTF-8'))

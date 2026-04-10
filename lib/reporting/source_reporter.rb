@@ -3,6 +3,10 @@
 require 'yaml'
 require 'time'
 require 'set'
+require 'net/http'
+require 'json'
+
+require_relative '../utils/html_cleaner'
 
 # Detekuje změny v mastodon_accounts.yml oproti uloženému snapshotu
 # a publikuje post na @zpravobot@zpravobot.news.
@@ -15,6 +19,9 @@ require 'set'
 module Reporting
   class SourceReporter
     MASTODON_CHAR_LIMIT = 490  # bezpečnostní rezerva pod 500
+    BIO_MAX_CHARS       = 500
+    OPEN_TIMEOUT        = 5
+    READ_TIMEOUT        = 10
 
     # Speciální účty vyloučené z reportu
     EXCLUDED_ACCOUNTS = %w[betabot].freeze
@@ -157,7 +164,7 @@ module Reporting
 
     # ── Parsování mastodon_accounts.yml ───────────────────────
 
-    # Vrátí hash: { account_id => { categories: [...], instance: nil|"..." } }
+    # Vrátí hash: { account_id => { categories: [...], instance: nil|"...", token: nil|"..." } }
     def load_accounts
       content = File.read(@accounts_file, encoding: 'UTF-8')
       accounts = {}
@@ -168,7 +175,7 @@ module Reporting
 
         if (m = line.match(/^([A-Za-z0-9_]+):\s*$/))
           current_id = m[1]
-          accounts[current_id] = { categories: [], instance: nil }
+          accounts[current_id] = { categories: [], instance: nil, token: nil }
         elsif current_id
           if (m = line.match(/^\s+categories:\s*\[(.+)\]/))
             accounts[current_id][:categories] = m[1].split(',').map(&:strip)
@@ -177,6 +184,8 @@ module Reporting
             # Extrahuj jen hostname
             raw = raw.sub(%r{\Ahttps?://}, '').chomp('/')
             accounts[current_id][:instance] = raw
+          elsif (m = line.match(/^\s+token:\s*(.+)/))
+            accounts[current_id][:token] = m[1].strip.gsub(/\A["']|["']\z/, '')
           end
         end
       end
@@ -193,23 +202,73 @@ module Reporting
       "@#{account_id}@#{instance}"
     end
 
-    # Sestaví řádky pro nové účty seskupené dle kategorií.
+    # Sestaví bloky pro nové účty ve FF stylu: "Název — @handle\nBio".
     def build_new_lines(new_ids, accounts)
-      by_category = {}
-      new_ids.each do |id|
-        cat = (accounts.dig(id, :categories) || []).first || 'ostatní'
-        (by_category[cat] ||= []) << id
+      blocks = []
+      new_ids.each_with_index do |id, idx|
+        blocks << '' if idx > 0
+        info     = accounts[id] || {}
+        profile  = fetch_account_profile(id, info)
+        instance = info[:instance] || @default_instance
+        header   = "#{profile[:display_name]} \u2014 @#{id}@#{instance}"
+        blocks << (profile[:bio] ? "#{header}\n#{profile[:bio]}" : header)
+      end
+      blocks
+    end
+
+    # Fetchne display_name a bio z Mastodon API.
+    def fetch_account_profile(account_id, info)
+      token    = info[:token]
+      instance = instance_url_for(info)
+
+      return { display_name: account_id, bio: nil } unless token
+
+      uri  = URI("#{instance}/api/v1/accounts/verify_credentials")
+      http = Net::HTTP.new(uri.host, uri.port)
+      http.use_ssl      = uri.scheme == 'https'
+      http.open_timeout = OPEN_TIMEOUT
+      http.read_timeout = READ_TIMEOUT
+
+      req = Net::HTTP::Get.new(uri)
+      req['Authorization'] = "Bearer #{token}"
+
+      response = http.request(req)
+      unless (200..299).include?(response.code.to_i)
+        warn "[source_report] #{account_id}: HTTP #{response.code}"
+        return { display_name: account_id, bio: nil }
       end
 
-      lines = []
-      by_category.keys.sort.each_with_index do |cat, idx|
-        lines << '' if idx > 0
-        lines << "#{cat}:"
-        by_category[cat].sort.each do |id|
-          lines << "• #{mention_for(id, accounts)}"
-        end
-      end
-      lines
+      data         = JSON.parse(response.body)
+      display_name = data['display_name'].to_s
+      display_name = account_id if display_name.strip.empty?
+      bio          = parse_bio(data['note'])
+
+      { display_name: display_name, bio: bio }
+    rescue StandardError => e
+      warn "[source_report] #{account_id}: #{e.class} #{e.message}"
+      { display_name: account_id, bio: nil }
+    end
+
+    def instance_url_for(info)
+      inst = info[:instance].to_s.strip
+      return "https://#{@default_instance}" if inst.empty?
+
+      inst.start_with?('http') ? inst.chomp('/') : "https://#{inst.chomp('/')}"
+    end
+
+    def parse_bio(note)
+      return nil if note.nil? || note.to_s.strip.empty?
+
+      bio = HtmlCleaner.sanitize_html(note.to_s)
+      bio = bio.gsub(/\s+/, ' ').strip
+      return nil if bio.empty?
+
+      return bio if bio.length <= BIO_MAX_CHARS
+
+      truncated  = bio[0, BIO_MAX_CHARS - 1]
+      last_space = truncated.rindex(' ')
+      truncated  = truncated[0, last_space] if last_space
+      "#{truncated.rstrip}\u2026"
     end
 
     # Sestaví thread: rozdělí intro + seznam řádků do postů ≤ MASTODON_CHAR_LIMIT.
