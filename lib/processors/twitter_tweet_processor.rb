@@ -497,7 +497,10 @@ module Processors
     def expand_tco_links(text)
       return text unless text
 
-      text.gsub(%r{https?://t\.co/\S+}) do |tco_url|
+      # Path charset is [A-Za-z0-9] only — \S+ would swallow trailing emoji/punctuation
+      # that IFTTT sometimes emits with no separating space (e.g. https://t.co/abc👈),
+      # breaking URI.parse in HttpClient.head and dropping the emoji from the output.
+      text.gsub(%r{https?://t\.co/[A-Za-z0-9]+}) do |tco_url|
         expand_tco(tco_url) || tco_url
       end
     end

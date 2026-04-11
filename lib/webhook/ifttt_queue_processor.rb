@@ -641,7 +641,12 @@ module Webhook
     def safe_load_source(source_id)
       config_loader.load_source(source_id)
     rescue StandardError => e
-      log "safe_load_source(#{source_id}): #{e.message}", level: :warn
+      # "Source not found" is an expected probe miss (e.g., retweet author not in our sources,
+      # bot_id fallback when handle matched first). Callers decide whether to warn based on
+      # whether all lookup paths failed. Only surface unexpected errors (YAML parse, IO, etc).
+      unless e.message.to_s.start_with?('Source not found:')
+        log "safe_load_source(#{source_id}): #{e.message}", level: :warn
+      end
       nil
     end
 
