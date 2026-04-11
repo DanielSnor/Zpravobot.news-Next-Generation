@@ -485,6 +485,10 @@ module Webhook
       # Apply URL processing (domain fixes, URL cleanup) — same as PostProcessor Step 6
       text = @url_step.call(text, bot_config)
 
+      # Safety net: re-trim if URL processing grew the text past the hard instance limit
+      # (same as PostProcessor Step 6.5).
+      text = @post_processor.enforce_hard_limit(text, bot_config)
+
       text
     end
 
