@@ -83,24 +83,28 @@ Dir.mktmpdir('atomic_file_test_') do |tmpdir|
   end
 
   test('leaves original file intact if tmp write fails') do
-    path = File.join(tmpdir, 'preserve.json')
-    File.write(path, 'ORIGINAL')
-
-    # Make parent dir read-only to force tmp write failure
-    parent = File.join(tmpdir, 'readonly_parent')
-    FileUtils.mkdir_p(parent)
-    target = File.join(parent, 'target.json')
+    # Stub File.open to raise when called on the target's .tmp.<pid> path.
+    # This is portable across UIDs (root ignores chmod 0o555, so the read-only
+    # parent directory trick does not work inside Cloudron containers).
+    target = File.join(tmpdir, 'preserve.json')
     File.write(target, 'ORIGINAL')
-    File.chmod(0o555, parent)
+
+    original_open = File.method(:open)
+    File.define_singleton_method(:open) do |*args, **kwargs, &blk|
+      if args.first.is_a?(String) && args.first.start_with?("#{target}.tmp.")
+        raise Errno::EACCES, 'simulated permission denied'
+      end
+      original_open.call(*args, **kwargs, &blk)
+    end
 
     original_preserved = false
     begin
       Utils::AtomicFile.write(target, 'NEW')
     rescue StandardError
-      # Expected — readonly dir prevents tmp creation
       original_preserved = File.read(target) == 'ORIGINAL'
     ensure
-      File.chmod(0o755, parent)
+      File.singleton_class.send(:remove_method, :open)
+      File.define_singleton_method(:open, original_open)
     end
     original_preserved
   end

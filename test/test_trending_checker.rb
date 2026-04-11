@@ -102,7 +102,9 @@ def build_checker(trends:, post_results: {}, dry_run: false)
   checker.define_singleton_method(:fetch_trends) { trends }
 
   # Stub post_quote to return from post_results hash (no HTTP)
-  checker.define_singleton_method(:post_quote) do |status_id|
+  # post_quote(trend) — extract id from the trend hash
+  checker.define_singleton_method(:post_quote) do |trend|
+    status_id = trend.is_a?(Hash) ? trend['id'] : trend
     post_results.fetch(status_id, true)
   end
 
@@ -352,8 +354,9 @@ section('Constants')
 test('MAX_POSTS_PER_RUN = 5',  5,   Trending::TrendingChecker::MAX_POSTS_PER_RUN)
 test('MAX_ANNOUNCED_IDS = 200', 200, Trending::TrendingChecker::MAX_ANNOUNCED_IDS)
 test('THROTTLE_SECONDS = 2',   2,   Trending::TrendingChecker::THROTTLE_SECONDS)
-test('QUOTE_TEXT contains 📈', true, Trending::TrendingChecker::QUOTE_TEXT.include?('📈'))
-test('QUOTE_TEXT non-empty', true, !Trending::TrendingChecker::QUOTE_TEXT.empty?)
+test('HEADER_LINE contains 📈', true, Trending::TrendingChecker::HEADER_LINE.include?('📈'))
+test('HEADER_LINE non-empty',   true, !Trending::TrendingChecker::HEADER_LINE.empty?)
+test('HASHTAGS_LINE non-empty', true, !Trending::TrendingChecker::HASHTAGS_LINE.empty?)
 
 # ----------------------------------------------------------------
 # Summary
