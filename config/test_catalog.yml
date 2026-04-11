@@ -512,6 +512,20 @@ tests:
     exit_code_reliable: true
     description: "MediaDedup: SHA-256 video fingerprinting, duplicate detection, lifecycle, cleanup (Video Dedup Task)"
 
+  test_thumbnail_phash:
+    file: test/test_thumbnail_phash.rb
+    category: unit
+    tags: [offline, processor, twitter]
+    exit_code_reliable: true
+    description: "ThumbnailPhash: parse_pixels, Hamming distance, similar? threshold, compute() s mockovaným Open3 (video dedup pHash)"
+
+  test_retry_failed_queue:
+    file: test/test_retry_failed_queue.rb
+    category: unit
+    tags: [offline, ifttt]
+    exit_code_reliable: true
+    description: "bin/retry_failed_queue.rb: permanent/too_old/max_retries klasifikace, DEAD_ rename, retry_count increment, dry-run"
+
   test_poll_extraction:
     file: test/test_poll_extraction.rb
     category: unit
@@ -695,13 +709,6 @@ tests:
     tags: [twitter, syndication]
     exit_code_reliable: false
     description: "Tier 1.5 syndication media fetcher"
-
-  quick_thread_test:
-    file: test/quick_thread_test.rb
-    category: network
-    tags: [bluesky, api]
-    exit_code_reliable: false
-    description: "Quick Bluesky thread detection test"
 
   # =====================================================
   # DATABASE TESTS (need PostgreSQL)
