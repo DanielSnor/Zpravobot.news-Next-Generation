@@ -449,6 +449,20 @@ tests:
     exit_code_reliable: true
     description: "BaseProfileSyncer: build_managed_by_value, platform labels, multi-platform, localization, build_fields output (TASK-2)"
 
+  test_image_cache_manager:
+    file: test/test_image_cache_manager.rb
+    category: unit
+    tags: [offline, syncer, cache]
+    exit_code_reliable: true
+    description: "Syncers::ImageCacheManager: TTL, invalidation, content-type, clear_cache, cache_stats (TEST-1)"
+
+  test_atomic_file:
+    file: test/test_atomic_file.rb
+    category: unit
+    tags: [offline, utils]
+    exit_code_reliable: true
+    description: "Utils::AtomicFile: tmp + fsync + rename, rollback, encoding support (RELIABILITY-1)"
+
   test_rss_profile_sync:
     file: test/test_rss_profile_sync.rb
     category: unit
@@ -555,12 +569,12 @@ tests:
     exit_code_reliable: false
     description: "Bluesky adapter against live profiles"
 
-  test_bluesky_adapter_v2:
-    file: test/test_bluesky_adapter_v2.rb
+  test_bluesky_adapter:
+    file: test/test_bluesky_adapter.rb
     category: network
     tags: [bluesky, api]
     exit_code_reliable: true
-    description: "BlueskyAdapter v2: profile and custom feed modes"
+    description: "BlueskyAdapter: profile and custom feed modes"
 
   test_bluesky_feed:
     file: test/test_bluesky_feed.rb

@@ -2,12 +2,12 @@
 # frozen_string_literal: true
 
 # ============================================================
-# Test pro aktualizovaný BlueskyAdapter
+# Test pro BlueskyAdapter
 # ============================================================
 # Testuje oba módy: profile a custom feed
 #
 # Použití:
-#   ruby test_bluesky_adapter_v2.rb
+#   ruby test/test_bluesky_adapter.rb
 #
 # ============================================================
 

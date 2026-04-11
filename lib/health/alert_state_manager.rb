@@ -2,6 +2,7 @@
 
 require 'json'
 require 'fileutils'
+require_relative '../utils/atomic_file'
 
 class AlertStateManager
   DEFAULT_STATE = {
@@ -225,7 +226,6 @@ class AlertStateManager
   end
 
   def save_state
-    FileUtils.mkdir_p(File.dirname(@state_file))
-    File.write(@state_file, JSON.pretty_generate(@state))
+    Utils::AtomicFile.write(@state_file, JSON.pretty_generate(@state))
   end
 end

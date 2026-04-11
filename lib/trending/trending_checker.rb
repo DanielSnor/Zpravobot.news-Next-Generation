@@ -6,6 +6,7 @@ require 'set'
 require 'fileutils'
 require 'net/http'
 require 'uri'
+require_relative '../utils/atomic_file'
 
 # Core logic for detecting and quote-posting new trending statuses.
 #
@@ -172,8 +173,7 @@ module Trending
       state['announced_ids'] = state['announced_ids'].last(MAX_ANNOUNCED_IDS)
       state['last_check_at'] = Time.now.iso8601
 
-      FileUtils.mkdir_p(File.dirname(@state_path))
-      File.write(@state_path, JSON.pretty_generate(state))
+      Utils::AtomicFile.write(@state_path, JSON.pretty_generate(state))
     end
 
     def update_check_time(state)
