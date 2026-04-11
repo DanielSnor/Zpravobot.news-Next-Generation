@@ -163,17 +163,8 @@ module Syncers
         gotoOptions: { waitUntil: 'networkidle2' }
       }
 
-      http = Net::HTTP.new(uri.host, uri.port)
-      http.use_ssl = true
-      http.read_timeout = 60
-      http.open_timeout = 30
-
-      request = Net::HTTP::Post.new(uri)
-      request['Content-Type'] = 'application/json'
-      request['User-Agent'] = USER_AGENT
-      request.body = body.to_json
-
-      response = http.request(request)
+      response = HttpClient.post_json(uri.to_s, body,
+                   open_timeout: 30, read_timeout: 60, user_agent: USER_AGENT)
 
       unless response.is_a?(Net::HTTPSuccess)
         raise "Browserless API error: #{response.code} #{response.message}"
@@ -233,9 +224,11 @@ module Syncers
       end
 
       # Strategie 2: og:image
+      # NOTE: Žádné `\b` za `"og:image"` — mezi `"` (non-word) a mezerou (non-word)
+      # by word boundary nikdy nematchovala standardní HTML (viz BUG-1 v tech debt).
       if profile[:avatar_url].nil?
-        og_url = html[/<meta\b[^>]*\bproperty="og:image"\b[^>]*\bcontent="([^"]+)"/i, 1] ||
-                 html[/<meta\b[^>]*\bcontent="([^"]+)"[^>]*\bproperty="og:image"/i, 1]
+        og_url = html[/<meta\b[^>]*property="og:image"[^>]*content="([^"]+)"/i, 1] ||
+                 html[/<meta\b[^>]*content="([^"]+)"[^>]*property="og:image"/i, 1]
         profile[:avatar_url] = HtmlCleaner.decode_html_entities(og_url) if og_url
       end
 

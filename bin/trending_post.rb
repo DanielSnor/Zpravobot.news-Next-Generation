@@ -26,6 +26,7 @@ $LOAD_PATH.unshift File.expand_path('../lib', __dir__)
 require 'optparse'
 require 'config/config_loader'
 require 'trending/trending_checker'
+require 'trending/hrubot_commenter'
 
 # ============================================================
 # CLI arguments
@@ -87,16 +88,28 @@ end
 state_path = ENV['ZBNW_TRENDING_STATE'] ||
              File.join(ENV['ZBNW_DIR'] || Dir.pwd, 'data/trending_state.json')
 
+ai_comments_enabled = ENV['TRENDING_AI_COMMENTS_ENABLED'].to_s.downcase == 'true'
+commenter = nil
+if ai_comments_enabled
+  commenter = Trending::HrubotCommenter.new
+  unless commenter.enabled?
+    warn "[#{Time.now.iso8601}] ⚠️  TRENDING_AI_COMMENTS_ENABLED=true, ale ANTHROPIC_API_KEY chybí — komentáře budou přeskočeny"
+    commenter = nil
+  end
+end
+
 puts "[#{Time.now.iso8601}] 📈 Trending check start#{options[:dry_run] ? ' (dry run)' : ''}"
-puts "[#{Time.now.iso8601}]    instance:   #{instance_url}"
-puts "[#{Time.now.iso8601}]    state file: #{state_path}"
+puts "[#{Time.now.iso8601}]    instance:    #{instance_url}"
+puts "[#{Time.now.iso8601}]    state file:  #{state_path}"
+puts "[#{Time.now.iso8601}]    AI comments: #{commenter ? 'enabled' : 'disabled'}"
 
 begin
   checker = Trending::TrendingChecker.new(
     instance_url: instance_url,
     access_token:  token,
     state_path:    state_path,
-    dry_run:       options[:dry_run]
+    dry_run:       options[:dry_run],
+    commenter:     commenter
   )
 
   result = checker.run

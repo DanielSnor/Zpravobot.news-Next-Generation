@@ -40,6 +40,17 @@ module Zpravobot
     end
   end
 
+  # Account-level rate limit — signals callers to skip (not sleep) and retry later
+  class AccountRateLimitedError < NetworkError
+    attr_reader :retry_after, :account_id
+
+    def initialize(message = "Account rate limited", retry_after: 5, account_id: nil)
+      @retry_after = retry_after
+      @account_id = account_id
+      super(message)
+    end
+  end
+
   # HTTP 5xx server errors
   class ServerError < NetworkError
     attr_reader :status_code

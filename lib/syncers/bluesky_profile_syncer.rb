@@ -120,7 +120,8 @@ module Syncers
         end
 
         nil
-      rescue StandardError
+      rescue StandardError => e
+        warn "[BlueskyProfileSyncer] fetch_display_name(#{handle}): #{e.message}"
         nil
       end
     end

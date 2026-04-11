@@ -125,11 +125,16 @@ module Processors
       if result.published?
         update_thread_cache(source_id, post, result.mastodon_id)
         :published
+      elsif result.rate_limited?
+        :rate_limited
       elsif result.skipped?
         :skipped
       else
         :failed
       end
+    rescue Zpravobot::AccountRateLimitedError => e
+      log_warn("[#{source_config[:id]}] Rate limited (#{e.retry_after}s) — deferring")
+      :rate_limited
     rescue StandardError => e
       log_error("[#{source_config[:id]}] TwitterTweetProcessor error: #{e.message}")
       :failed
@@ -187,9 +192,8 @@ module Processors
     #   2. Detects + reconstructs thread chain (publishuje chybějící tweety)
     #   3. Vrací { in_reply_to_id:, html:, is_thread: }
     #
-    # Hlavní tweet fetchujeme zvlášť (fetch_from_nitter_with_retry).
-    # TODO: Optimalizace — předat thread_result[:html] do parseru a vyhnout se
-    #       druhému Nitter fetchi (TwitterThreadProcessor fetch + fetch_single_post = 2x stejná URL)
+    # thread_result[:html] se předává do fetch_from_nitter_with_retry, aby se vyhnulo
+    # druhému Nitter fetchi (ThreadProcessor už HTML stáhl).
     #
     # @return [Array<Post|nil, String|nil>]  [post, in_reply_to_id]
     def fetch_with_advanced_threading(post_id, username, source_config, fallback_post)
@@ -205,7 +209,9 @@ module Processors
       end
 
       # Fetch main tweet (Nitter → Syndication → fallback_post)
-      post = fetch_from_nitter_with_retry(post_id, username, source_config)
+      # Reuse HTML from thread detection to avoid double Nitter fetch
+      post = fetch_from_nitter_with_retry(post_id, username, source_config,
+               prefetched_html: thread_result[:html])
       if post
         correct_repost_from_fallback(post, fallback_post, source_id)
         correct_quote_from_fallback(post, fallback_post, source_id)
@@ -246,13 +252,15 @@ module Processors
     # Fetch z Nitteru s exponential backoff retry
     #
     # @return [Post, nil]
-    def fetch_from_nitter_with_retry(post_id, username, source_config)
+    def fetch_from_nitter_with_retry(post_id, username, source_config, prefetched_html: nil)
       source_id = source_config[:id]
       adapter   = get_twitter_adapter(username, source_config)
 
       RETRY_ATTEMPTS.times do |attempt|
         begin
-          post = adapter.fetch_single_post(post_id)
+          # Use pre-fetched HTML on first attempt (from thread detection); retry fetches fresh
+          html_arg = (attempt == 0 && prefetched_html) ? prefetched_html : nil
+          post = adapter.fetch_single_post(post_id, html: html_arg)
 
           if post
             log_info("[#{source_id}] Nitter fetch OK#{attempt > 0 ? " (attempt #{attempt + 1})" : ""}")
@@ -489,7 +497,10 @@ module Processors
     def expand_tco_links(text)
       return text unless text
 
-      text.gsub(%r{https?://t\.co/\S+}) do |tco_url|
+      # Path charset is [A-Za-z0-9] only — \S+ would swallow trailing emoji/punctuation
+      # that IFTTT sometimes emits with no separating space (e.g. https://t.co/abc👈),
+      # breaking URI.parse in HttpClient.head and dropping the emoji from the output.
+      text.gsub(%r{https?://t\.co/[A-Za-z0-9]+}) do |tco_url|
         expand_tco(tco_url) || tco_url
       end
     end

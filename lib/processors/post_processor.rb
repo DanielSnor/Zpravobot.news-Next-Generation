@@ -111,6 +111,10 @@ module Processors
       def failed?
         status == :failed
       end
+
+      def rate_limited?
+        status == :rate_limited
+      end
     end
 
     # Dependencies
@@ -206,10 +210,18 @@ module Processors
       formatted_text = apply_content_replacements(formatted_text, source_config)
 
       # Step 5: Process content (trim, normalize)
-      processed_text = process_content(formatted_text, source_config, fallback_url: build_trim_fallback_url(post, source_config))
+      fallback_url_for_trim = build_trim_fallback_url(post, source_config)
+      processed_text = process_content(formatted_text, source_config, fallback_url: fallback_url_for_trim)
 
       # Step 6: Process URLs
       processed_text = @url_step.call(processed_text, source_config)
+
+      # Step 6.5: Re-trim if URL processing grew the text past the hard instance limit.
+      # url_step applies apply_domain_fixes (prepends https:// to bare domains listed in
+      # processing.url_domain_fixes), which can push the final text past truncation.max_length.
+      # Re-running process_content is idempotent: already-trimmed text stays put, and any
+      # trailing URL is preserved via the existing suffix-extraction regex.
+      processed_text = enforce_hard_limit(processed_text, source_config, fallback_url: fallback_url_for_trim)
 
       # Callback for verbose logging
       options[:on_final]&.call(processed_text)
@@ -309,6 +321,10 @@ module Processors
       log_info("[#{source_id}] Published: #{mastodon_id}")
       Result.new(status: :published, mastodon_id: mastodon_id)
 
+    rescue Zpravobot::AccountRateLimitedError => e
+      account = source_config.dig(:target, :mastodon_account) || 'unknown'
+      log_warn("[#{source_id}] Rate limited (account: #{account}, #{e.retry_after}s) — deferring post #{post_id}")
+      Result.new(status: :rate_limited, error: e.message)
     rescue StandardError => e
       log_error("[#{source_id}] Error processing post: #{e.message}")
       log_error(e.backtrace.first(5).join("\n")) if @verbose
@@ -318,6 +334,19 @@ module Processors
     # Public wrapper around process_content for use in edit paths that need
     # identical trimming behaviour as the normal publish pipeline (Step 5).
     def trim_text(text, source_config, fallback_url: nil)
+      process_content(text, source_config, fallback_url: fallback_url)
+    end
+
+    # Safety net: re-run process_content if post-Step-6 URL processing grew the text
+    # past the hard instance limit (truncation.max_length). Applies only when a hard
+    # per-bot limit is configured AND the text actually exceeds it. Idempotent.
+    def enforce_hard_limit(text, source_config, fallback_url: nil)
+      truncation = source_config[:truncation] || {}
+      hard_limit = truncation[:max_length]
+      return text unless hard_limit && text.is_a?(String) && text.length > hard_limit
+
+      source_id = source_config[:id]
+      log_warn("[#{source_id}] Text grew past hard limit after URL processing (#{text.length}/#{hard_limit}) — re-trimming")
       process_content(text, source_config, fallback_url: fallback_url)
     end
 
@@ -406,8 +435,10 @@ module Processors
       options[:on_format]&.call(formatted_text)
 
       formatted_text = apply_content_replacements(formatted_text, source_config)
-      processed_text = process_content(formatted_text, source_config, fallback_url: build_trim_fallback_url(post, source_config))
+      fallback_url_for_trim = build_trim_fallback_url(post, source_config)
+      processed_text = process_content(formatted_text, source_config, fallback_url: fallback_url_for_trim)
       processed_text = @url_step.call(processed_text, source_config)
+      processed_text = enforce_hard_limit(processed_text, source_config, fallback_url: fallback_url_for_trim)
       options[:on_final]&.call(processed_text)
 
       if @dry_run
@@ -769,6 +800,8 @@ module Processors
 
       { success: true, mastodon_id: result['id'] }
 
+    rescue Zpravobot::AccountRateLimitedError
+      raise
     rescue StandardError => e
       { success: false, error: e.message }
     end

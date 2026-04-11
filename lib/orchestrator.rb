@@ -48,6 +48,7 @@ module Orchestrator
 	  @stats = { processed: 0, published: 0, skipped: 0, errors: 0 }
 	  @publishers_cache = {}
 	  @thread_cache = {} # Pro ThreadingSupport modul
+	  @last_fingerprint_cleanup = nil
 
 	  # Initialize PostProcessor + TwitterTweetProcessor (lazy - created when needed with dry_run flag)
 	  @post_processor = nil
@@ -94,12 +95,16 @@ module Orchestrator
 	  log_info("Excluding platform: #{exclude_platform}") if exclude_platform
 
 	  @state_manager.connect
-	  # Cleanup media fingerprints once per run (retain 96h = 4 days)
-	  begin
-	    fp_cleanup = @state_manager.cleanup_media_fingerprints(retention_hours: 96)
-	    log_info("Media fingerprint cleanup: #{fp_cleanup} old entries removed") if fp_cleanup && fp_cleanup > 0
-	  rescue StandardError => e
-	    log_warn("Media fingerprint cleanup failed: #{e.message}")
+	  # Cleanup media fingerprints at most once per hour (retain 96h = 4 days)
+	  now = Time.now
+	  if @last_fingerprint_cleanup.nil? || (now - @last_fingerprint_cleanup) > 3600
+	    begin
+	      fp_cleanup = @state_manager.cleanup_media_fingerprints(retention_hours: 96)
+	      log_info("Media fingerprint cleanup: #{fp_cleanup} old entries removed") if fp_cleanup && fp_cleanup > 0
+	      @last_fingerprint_cleanup = now
+	    rescue StandardError => e
+	      log_warn("Media fingerprint cleanup failed: #{e.message}")
+	    end
 	  end
 	  sources = @config_loader.load_all_sources
 	  sources = sources.select { |s| s.dig(:scheduling, :priority) == priority } if priority
@@ -223,6 +228,10 @@ module Orchestrator
 		  process_post(source, post)
 		end
 		published_count += 1 if result == :published
+		if result == :rate_limited
+		  log_warn("[#{source.id}] Rate limited — deferring remaining #{posts.length - posts.index(post) - 1} posts")
+		  break
+		end
 	  end
 
 	  @state_manager.mark_check_success(source.id, posts_published: published_count)
@@ -270,11 +279,17 @@ module Orchestrator
 		update_thread_cache(source.id, post, result.mastodon_id) if result.mastodon_id
 	  when :skipped
 		@stats[:skipped] += 1
+	  when :rate_limited
+		@stats[:rate_limited] = (@stats[:rate_limited] || 0) + 1
 	  when :failed
 		@stats[:errors] += 1
 	  end
 
 	  result.status
+	rescue Zpravobot::AccountRateLimitedError => e
+	  log_warn("[#{source.id}] Rate limited (#{e.retry_after}s) — deferring")
+	  @stats[:rate_limited] = (@stats[:rate_limited] || 0) + 1
+	  :rate_limited
 	end
 
 	# Process a single Twitter post via unified TwitterTweetProcessor
@@ -305,10 +320,15 @@ module Orchestrator
 	  case result
 	  when :published then @stats[:published] += 1
 	  when :skipped   then @stats[:skipped] += 1
+	  when :rate_limited then @stats[:rate_limited] = (@stats[:rate_limited] || 0) + 1
 	  when :failed    then @stats[:errors] += 1
 	  end
 
 	  result
+	rescue Zpravobot::AccountRateLimitedError => e
+	  log_warn("[#{source.id}] Rate limited (#{e.retry_after}s) — deferring")
+	  @stats[:rate_limited] = (@stats[:rate_limited] || 0) + 1
+	  :rate_limited
 	end
 
 	# Extract tweet ID from URL — handles all known formats:

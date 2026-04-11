@@ -7,6 +7,7 @@ require 'yaml'
 require 'fileutils'
 
 require_relative '../utils/html_cleaner'
+require_relative '../utils/atomic_file'
 require_relative '../publishers/mastodon_publisher'
 require_relative '../support/loggable'
 
@@ -170,16 +171,12 @@ module FF
     end
 
     def save_state(state)
-      FileUtils.mkdir_p(File.dirname(@state_path))
-      File.write(
-        @state_path,
-        JSON.pretty_generate(
-          'cycle'     => state[:cycle],
-          'promoted'  => state[:promoted],
-          'remaining' => state[:remaining]
-        ),
-        encoding: 'UTF-8'
+      content = JSON.pretty_generate(
+        'cycle'     => state[:cycle],
+        'promoted'  => state[:promoted],
+        'remaining' => state[:remaining]
       )
+      Utils::AtomicFile.write(@state_path, content, encoding: 'UTF-8')
     end
 
     # ---------- Profile fetching ----------

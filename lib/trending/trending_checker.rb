@@ -6,6 +6,7 @@ require 'set'
 require 'fileutils'
 require 'net/http'
 require 'uri'
+require_relative '../utils/atomic_file'
 
 # Core logic for detecting and quote-posting new trending statuses.
 #
@@ -24,7 +25,8 @@ module Trending
     THROTTLE_SECONDS   = 2
     MAX_ANNOUNCED_IDS  = 200
     DEFAULT_STATE_FILE = 'data/trending_state.json'
-    QUOTE_TEXT         = "📈 Na Zprávobot.news právě trenduje\n\n#zpravobot #trending"
+    HEADER_LINE        = '📈 Na Zprávobot.news právě trenduje'
+    HASHTAGS_LINE      = '#zpravobot #trending'
 
     # Bot accounts whose posts are always excluded from trending quotes
     BOT_ACCOUNTS = %w[betabot udrzbot tlambot].freeze
@@ -33,11 +35,13 @@ module Trending
     # @param access_token  [String]  Bearer token for @zpravobot
     # @param state_path    [String]  Override for the state JSON file path
     # @param dry_run       [Boolean] When true, prints actions without HTTP POSTs
-    def initialize(instance_url:, access_token:, state_path: nil, dry_run: false)
+    # @param commenter     [#comment_for, nil] Optional AI commenter for Hrubot comments
+    def initialize(instance_url:, access_token:, state_path: nil, dry_run: false, commenter: nil)
       @instance_url = instance_url.chomp('/')
       @access_token = access_token
       @state_path   = state_path || resolve_state_path
       @dry_run      = dry_run
+      @commenter    = commenter
     end
 
     # Run one trending check cycle.
@@ -100,11 +104,12 @@ module Trending
 
     # POST /api/v1/statuses — publish a quote post.
     # Returns true on success, nil on HTTP 422 (quote denied) or other 4xx/5xx.
-    def post_quote(status_id)
+    def post_quote(trend)
+      status_id = trend['id']
       url  = "#{@instance_url}/api/v1/statuses"
       uri  = URI(url)
       body = JSON.generate(
-        status:           QUOTE_TEXT,
+        status:           build_status_text(trend),
         quoted_status_id: status_id,
         visibility:       'public'
       )
@@ -168,8 +173,7 @@ module Trending
       state['announced_ids'] = state['announced_ids'].last(MAX_ANNOUNCED_IDS)
       state['last_check_at'] = Time.now.iso8601
 
-      FileUtils.mkdir_p(File.dirname(@state_path))
-      File.write(@state_path, JSON.pretty_generate(state))
+      Utils::AtomicFile.write(@state_path, JSON.pretty_generate(state))
     end
 
     def update_check_time(state)
@@ -218,13 +222,15 @@ module Trending
         url = trend['url'] || trend['id']
 
         if @dry_run
+          status_text = build_status_text(trend)
           puts "  [DRY RUN] Would quote #{trend['id']}: #{url}"
+          puts "  [DRY RUN] Status text:\n#{status_text.gsub(/^/, '    ')}"
           state['announced_ids'] << trend['id']
           posted += 1
           next
         end
 
-        result = post_quote(trend['id'])
+        result = post_quote(trend)
         if result
           state['announced_ids'] << trend['id']
           state['last_post_at'] = Time.now.iso8601
@@ -233,6 +239,29 @@ module Trending
       end
 
       posted
+    end
+
+    # Sestaví text trending postu.
+    #
+    # Bez komentáře:
+    #   📈 Na Zprávobot.news právě trenduje
+    #
+    #   #zpravobot #trending
+    #
+    # S Hrubotovým komentářem (komentář dokončí větu):
+    #   📈 Na Zprávobot.news právě trenduje další důkaz, že logika bere dovolenou.
+    #
+    #   #zpravobot #trending
+    def build_status_text(trend)
+      comment = @commenter&.comment_for(trend)
+
+      first_line = if comment && !comment.empty?
+                     "#{HEADER_LINE} #{comment}."
+                   else
+                     HEADER_LINE
+                   end
+
+      [first_line, '', HASHTAGS_LINE].join("\n")
     end
 
     # ----------------------------------------------------------------
