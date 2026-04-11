@@ -224,9 +224,11 @@ module Syncers
       end
 
       # Strategie 2: og:image
+      # NOTE: Žádné `\b` za `"og:image"` — mezi `"` (non-word) a mezerou (non-word)
+      # by word boundary nikdy nematchovala standardní HTML (viz BUG-1 v tech debt).
       if profile[:avatar_url].nil?
-        og_url = html[/<meta\b[^>]*\bproperty="og:image"\b[^>]*\bcontent="([^"]+)"/i, 1] ||
-                 html[/<meta\b[^>]*\bcontent="([^"]+)"[^>]*\bproperty="og:image"/i, 1]
+        og_url = html[/<meta\b[^>]*property="og:image"[^>]*content="([^"]+)"/i, 1] ||
+                 html[/<meta\b[^>]*content="([^"]+)"[^>]*property="og:image"/i, 1]
         profile[:avatar_url] = HtmlCleaner.decode_html_entities(og_url) if og_url
       end
 

@@ -463,6 +463,20 @@ tests:
     exit_code_reliable: true
     description: "Utils::AtomicFile: tmp + fsync + rename, rollback, encoding support (RELIABILITY-1)"
 
+  test_mastodon_profile_updater:
+    file: test/test_mastodon_profile_updater.rb
+    category: unit
+    tags: [offline, syncer, mastodon]
+    exit_code_reliable: true
+    description: "Syncers::MastodonProfileUpdater: fetch_fields, update urlencoded/multipart, error parsing (TEST-1)"
+
+  test_profile_syncer_subclasses:
+    file: test/test_profile_syncer_subclasses.rb
+    category: unit
+    tags: [offline, syncer]
+    exit_code_reliable: true
+    description: "Bluesky/Facebook/Instagram/YouTube ProfileSyncer: template methods, parse_*_profile, fetch_platform_profile (TEST-1 Krok 3)"
+
   test_rss_profile_sync:
     file: test/test_rss_profile_sync.rb
     category: unit
