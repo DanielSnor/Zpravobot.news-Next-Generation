@@ -1,7 +1,11 @@
 # RSS platforma v ZBNW-NG
 
-> **Poslední aktualizace:** 2026-03-30
+> **Poslední aktualizace:** 2026-04-11
 > **Stav:** Produkční
+
+> **Recent changes:**
+> - **2026-04-09 (SEC-2 + OGP):** OGP image fetcher obsahuje SSRF blocklist — privátní IP ranges (RFC1918, 127/8, 169.254/16) jsou odmítnuty před fetch i na redirectu
+> - **2026-02-15 (BUG-12):** RSS adapter sleduje HTTP 301/302/307/308 redirecty (max 5 hopů) s detekcí smyček
 
 ---
 

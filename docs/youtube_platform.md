@@ -1,7 +1,11 @@
 # YouTube platforma v ZBNW-NG
 
-> **Poslední aktualizace:** 2026-02-13
+> **Poslední aktualizace:** 2026-04-11
 > **Stav:** Produkční
+
+> **Recent changes:**
+> - **2026-04-11 (TEST-1):** `test_profile_syncer_subclasses.rb` — 15 unit testů pro `YoutubeProfileSyncer` (parse ytInitialData, meta tag fallback, channel_url, fetch error paths)
+> - **2026-03-01:** Přidán `YoutubeProfileSyncer` — plain HTTP scraping `ytInitialData` (bez API klíče, bez Browserless). **Opt-in**: jen zdroje s `source.handle` v YAML se synchronizují. Cron: neděle 02:00.
 
 ---
 

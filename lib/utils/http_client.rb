@@ -355,7 +355,7 @@ module HttpClient
   # @param read_timeout [Integer] Read timeout
   # @return [Net::HTTP]
   def build_http(uri, open_timeout: DEFAULT_OPEN_TIMEOUT, read_timeout: DEFAULT_READ_TIMEOUT)
-    key = "#{uri.host}:#{uri.port}"
+    key = "#{uri.host}:#{uri.port}:#{Thread.current.object_id}"
 
     @connections_mutex.synchronize do
       cached = @connections[key]
@@ -394,7 +394,7 @@ module HttpClient
 
   # Drop a single cached connection (used on stale connection retry)
   def drop_cached_connection(uri)
-    key = "#{uri.host}:#{uri.port}"
+    key = "#{uri.host}:#{uri.port}:#{Thread.current.object_id}"
     @connections_mutex.synchronize do
       cached = @connections.delete(key)
       cached[:http].finish rescue nil if cached

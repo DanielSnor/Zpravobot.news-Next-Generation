@@ -1,8 +1,12 @@
 # Nitter Platform - ZBNW-NG
 
-> **Poslední aktualizace:** 2026-02-02
+> **Poslední aktualizace:** 2026-04-11
 > **Stav:** Produkční
 > **Instance:** xn.zpravobot.news
+
+> **Recent changes:**
+> - **2026-04-09 (PERF-1):** `TwitterTweetProcessor` nyní prefetchuje Nitter HTML pro threadované tweety — eliminuje dvojí fetch téhož statusu při vláknové resoluci.
+> - **2026-02-25 (TASK-10):** Unifikace Twitter pipeline — `TwitterTweetProcessor` nahradil `TwitterThreadFetcher`; `IftttTwitterAdapter` přejmenován na `TwitterNitterAdapter`.
 
 ---
 

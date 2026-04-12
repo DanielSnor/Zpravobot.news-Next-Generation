@@ -2,7 +2,13 @@
 
 > **Verze exportu:** 2026-02-04  
 > **Status:** Produkční  
-> **Poslední aktualizace:** 2026-03-13
+> **Poslední aktualizace:** 2026-04-11
+
+> **Recent changes:**
+> - **2026-04-10 (PERF-3):** Non-blocking rate limit handling. 429 na Mastodonu už neblokuje pipeline sleepem — `AccountRateLimitedError` se propaguje, Orchestrator/IFTTT queue přeskočí dotčený účet a pokračuje.
+> - **2026-04-09 (PERF-1):** Prefetch Nitter HTML pro threadované tweety — eliminuje dvojí Nitter fetch.
+> - **2026-04-09 (SEC-2):** OGP fetcher nyní odmítá private IP ranges (SSRF ochrana).
+> - **2026-03-16:** Profile card blocker `white_strip_1280x1.png` (místo transparent — Elk render fix).
 
 ---
 

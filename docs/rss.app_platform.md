@@ -1,6 +1,6 @@
 # RSS.app platformy v ZBNW-NG
 
-> **Poslední aktualizace:** 2026-03-30
+> **Poslední aktualizace:** 2026-04-11
 > **Stav:** Produkční
 
 ---

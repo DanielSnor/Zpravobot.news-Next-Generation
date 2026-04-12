@@ -2,8 +2,8 @@
 
 Dokumentace helper aplikací a monitoring systému pro ZBNW-NG.
 
-> **Poslední aktualizace:** 2026-03-30
-> **Změny:** Přidány zpravobot_stats.rb (týdenní hitparáda #ZpravobotTOP10) a trending_post.rb (trending quote posting)
+> **Poslední aktualizace:** 2026-04-11
+> **Změny (2026-04):** Test katalog rozšířen na 103 registrovaných testů (77 unit + 18 network + 2 db + 6 e2e) po dokončení TEST-1 (profile syncer unit testy). `run_tests.rb` workflow beze změny. Všechny helper tooly (`manage_source`, `retry_failed_queue`, `zpravobot_stats`, `trending_post`, `friendly_follow`, `sync_profiles`) aktivní v produkci.
 
 ---
 
@@ -203,16 +203,21 @@ Generuje Markdown do `tmp/test_report_YYYYMMDD_HHMMSS.md`:
   Report: tmp/test_report_20260208_143000.md
 ```
 
-### Aktuální stav testů (2026-02-13)
+### Aktuální stav testů (2026-04-11)
 
-| Kategorie | Stav |
-|-----------|------|
-| unit | 56/56 PASS (1552 assertions) |
-| network | Závisí na dostupnosti externích služeb |
-| db | Vyžaduje PostgreSQL |
-| e2e | Interaktivní, vyžaduje Mastodon credentials |
+| Kategorie | Počet | Stav |
+|-----------|-------|------|
+| unit | 77 | PASS (nezávisí na síti/DB) |
+| network | 18 | Závisí na dostupnosti externích služeb (Nitter, Twitter, Bluesky, RSS…) |
+| db | 2 | Vyžaduje PostgreSQL (`zpravobot_test` schema) |
+| e2e | 6 | Interaktivní, vyžaduje Mastodon credentials |
 
-**Žádné known failures.** Všechny unit testy procházejí.
+Celkem 103 registrovaných testů v `config/test_catalog.yml`, 103 test souborů v `test/`.
+
+**Recent additions (2026-04-11, TEST-1):**
+- `test_image_cache_manager.rb` — 23 testů (TTL, cache hit/miss, content-type validation, key stability)
+- `test_mastodon_profile_updater.rb` — 20 testů (fetch_fields, update urlencoded/multipart, error parsing)
+- `test_profile_syncer_subclasses.rb` — 51 testů (Bluesky 9, FB 13, IG 13, YT 15)
 
 ---
 
@@ -547,6 +552,42 @@ end
 | Komentáře, magazíny | `low` | Není časově kritické |
 | Vlákna/threads | `normal` nebo `low` | Batch delay pomáhá správnému řazení |
 
+#### Non-blocking rate limit handling (PERF-3, 2026-04-10)
+
+Při zpracování fronty (~3 500–4 000 JSONů/den, ~470 účtů) jeden rate-limitovaný Mastodon účet **neblokuje zpracování ostatních zdrojů**. Dříve pipeline při HTTP 429 spala (`sleep retry_after`) — nyní se rate limit propaguje jako `AccountRateLimitedError` a soubory se zpracovávají paralelně pro různé účty:
+
+```
+Fronta:      account_a_111.json → account_b_222.json → account_c_333.json
+                                       ↑ 429!
+
+Staré chování:  A=publish → B=429 → sleep 60s → C čeká…
+Nové chování:   A=publish → B=429 → B odložen → C=publish (okamžitě)
+```
+
+**Mechanismus:**
+
+1. **`MastodonPublisher`** při 429 nastaví `@rate_limited_until` a vyhodí `AccountRateLimitedError` (žádný `sleep`)
+2. **Pre-flight check** `raise_if_rate_limited!` — před každým publish/upload zkontroluje stav; pokud je účet limitovaný, ani nepošle HTTP požadavek
+3. **`IftttQueueProcessor`** udržuje `rate_limited_accounts` (Set) — další JSONy pro stejný účet se v daném runu přeskočí (`next`)
+4. **Deferral** — soubor zůstane v `pending/` (nepřesunut do `processed/` ani `failed/`), zpracuje se příštím cron runem
+5. **Parallel media upload** — `upload_media_parallel` používá `Thread.new` per médium; pokud jeden thread dostane 429, ostatní doběhnou a rate limit se re-raise na konci
+
+```ruby
+# V IftttQueueProcessor — tracking per-run
+rate_limited_accounts = Set.new
+
+high.each do |filepath|
+  username = extract_username_from_filename(filepath)
+  if username && rate_limited_accounts.include?(username)
+    next  # skip — účet je rate-limited, JSON zůstane v pending/
+  end
+  result = process_webhook_file(filepath, force_tier2: false)
+  rate_limited_accounts.add(username) if result == :rate_limited
+end
+```
+
+**Dopad:** Jeden rate-limitovaný účet nezpomalí ostatních ~469 účtů. Odložené soubory se zpracují v dalším cron runu (*/2 min).
+
 ### RSS Source Types
 
 Pro RSS.app feedy z Facebooku/Instagramu:
@@ -604,6 +645,13 @@ ruby bin/manage_source.rb pause  ct24_twitter --reason "Nefunkční Nitter"
 ruby bin/manage_source.rb resume ct24_twitter
 ruby bin/manage_source.rb retire ct24_twitter
 
+# Přehled pauzovaných zdrojů
+ruby bin/manage_source.rb status
+
+# Dry-run probe pauzovaného zdroje (ověří, zda vrací příspěvky)
+ruby bin/manage_source.rb probe ct24_twitter
+ruby bin/manage_source.rb probe   # probe VŠECH pauzovaných zdrojů
+
 # Testovací prostředí
 ruby bin/manage_source.rb pause  ct24_twitter --test
 
@@ -648,6 +696,23 @@ Trvale vyřadí zdroj. **Vždy vyžaduje interaktivní potvrzení** (i při př�
 - **YAML**: přesunut do `config/sources/retired/`
 - **DB**: smazán `source_state` + `published_posts`; `activity_log` zůstane zachován (historická data)
 
+#### status
+
+Zobrazí přehled **všech aktuálně pauzovaných** zdrojů v tabulkové formě.
+
+- Sloupce: zdroj, datum pozastavení, důvod, poslední chyba (je-li)
+- Kombinuje YAML stav (`enabled: false`) i DB stav (`disabled_at`)
+- Žádné argumenty navíc — prostě `ruby bin/manage_source.rb status`
+
+#### probe
+
+Dry-run ověření pauzovaného zdroje — **spustí orchestrátor v dry-run režimu** a ukáže, zda zdroj vrací příspěvky. Pokud ano, nabídne okamžitou reaktivaci (resume).
+
+- **S argumentem**: `probe SOURCE_ID` — prověří jeden konkrétní zdroj, zobrazí jeho `disabled_at`, `last_error`, `error_count`, `last_check` a `last_success`
+- **Bez argumentu**: `probe` — prověří **všechny pauzované** zdroje postupně
+- Volá `bin/run_zbnw.rb --source SOURCE_ID --dry-run --once` v subprocesu
+- Pokud dry-run najde příspěvky, nabídne interaktivní resume
+
 ### DB migrace
 
 Před prvním použitím spustit migraci v obou schématech:
@@ -664,7 +729,7 @@ Migrace je idempotentní (`ADD COLUMN IF NOT EXISTS`). Pokud nebyla aplikována,
 | Soubor | Účel |
 |--------|------|
 | `bin/manage_source.rb` | CLI entry point, parsování argumentů, interaktivní menu |
-| `lib/source_wizard/source_manager.rb` | Logika pause/resume/retire |
+| `lib/source_wizard/source_manager.rb` | Logika pause/resume/retire/status/probe |
 | `lib/source_wizard/init_time_helpers.rb` | Sdílený init time wizard (i s `create_source.rb`) |
 | `db/patch_add_disabled_at.sql` | DB migrace — `disabled_at` sloupec v `source_state` |
 
@@ -2043,7 +2108,7 @@ data/trending_state.json           # Persistentní state (announced_ids, last_ch
 |---------|------|-----------|
 | `run_tests.rb` | Centrální test runner + Markdown report | Manuálně |
 | `create_source.rb` | Interaktivní vytvoření nového zdroje + DB init | Manuálně |
-| `manage_source.rb` | Pause/resume/retire zdrojů (lifecycle) | Manuálně |
+| `manage_source.rb` | Pause/resume/retire/status/probe zdrojů (lifecycle) | Manuálně |
 | `force_update_source.rb` | Reset source pro okamžité zpracování | Manuálně |
 | `retry_failed_queue.rb` | Opakování selhavších IFTTT webhooků | Cron (0 * * * *) |
 | `health_monitor.rb` | Monitoring a alerting (11 checků) | Cron + manuálně |
@@ -2053,6 +2118,11 @@ data/trending_state.json           # Persistentní state (announced_ids, last_ch
 | `analyze_domain_fixes.rb` | Analýza a aktualizace `url_domain_fixes` u Twitter/Bluesky zdrojů | Manuálně |
 | `zpravobot_stats.rb` | Týdenní hitparáda #ZpravobotTOP10 (CZ+SK thread) | Cron (0 20 * * 0) |
 | `trending_post.rb` | Quote posty pro trendující statusy na zpravobot.news | Cron (45 * * * *) |
+| `friendly_follow.rb` | Denní #FF post doporučující 3 účty z zpravobot.news | Cron (15 15/16 * * *) |
+| `source_report.rb` | Auto-detekce změn v mastodon_accounts.yml, post na @zpravobot | Cron (denně) |
+| `sync_profiles.rb` | Sync avataru/banneru/bio ze zdrojových platforem do Mastodonu | Cron (weekly rotace) |
+| `cleanup_orphaned_accounts.rb` | Detekce osiřelých účtů bez aktivního zdroje | Manuálně |
+| `cleanup_duplicate_posts.rb` | Odstranění duplicitních postů (schema migrace) | Manuálně (jednorázově) |
 
 ### Health Check Přehled
 
@@ -2078,12 +2148,17 @@ data/trending_state.json           # Persistentní state (announced_ids, last_ch
 - **health_monitor.rb** kontroluje **Server resources**, **Logy**, **Webhook Server** (`ifttt_webhook.rb`), **Nitter**, **Queue**, **Processing** a **Mastodon API**
 - **command_listener.rb** využívá **HealthMonitor** a **HealthChecks** z `health_monitor.rb`, **MastodonPublisher** pro DM odpovědi, a **HtmlCleaner** pro parsování mention textu
 - **broadcast.rb** využívá **ConfigLoader** pro mastodon accounts, **MastodonPublisher** pro publish/media upload, **UiHelpers** pro interaktivní režim
-- **manage_source.rb** manipuluje `enabled` v YAML a `disabled_at` v **source_state** tabulce přes **SourceManager**; spouští init_time wizard při resume
+- **manage_source.rb** manipuluje `enabled` v YAML a `disabled_at` v **source_state** tabulce přes **SourceManager**; `status` zobrazuje pauzované zdroje, `probe` spouští dry-run orchestrátor a při úspěchu nabídne resume; init_time wizard při resume
 - **retry_failed_queue.rb** čte soubory z `queue/ifttt/failed/`, spolupracuje s **IftttQueueProcessor** (`retry_count` v JSON) a **QueueCheck** (DEAD_ soubory)
 - **process_broadcast_queue.rb** využívá **TlambotWebhookHandler** pro parsing webhook payloadů, **Broadcaster** pro account resolution, **MastodonPublisher** pro publish a favourite
 - **analyze_domain_fixes.rb** čte `config/sources/*_twitter.yml` a `*_bluesky*.yml`, volá Mastodon API (`/api/v1/accounts/lookup`), spolupracuje s `config/global.yml` (no_trim_domains) a zapisuje do `output/domain_fixes_recommendations.yml`
 - **zpravobot_stats.rb** čte všechny source configs přes **ConfigLoader** (jazykové skupiny), fetchuje Mastodon API stats přes **MastodonStats**, čte DB přes **PublishingStats** + **SnapshotStore**, detekuje skoky přes **SkokanDetector**, formátuje přes **StatsPostFormatter** a publikuje přes **MastodonPublisher**
 - **trending_post.rb** fetchuje `/api/v1/trends/statuses` z zpravobot.news, udržuje state v `data/trending_state.json`, publikuje quote posty přes **TrendingChecker** z účtu `@zpravobot`
+- **friendly_follow.rb** vybírá 3 účty z mastodon_accounts.yml, fetchuje jejich display name + bio přes Mastodon API, udržuje state v `data/ff_state.json`, publikuje #FF post přes **FriendlyFollow** z `@zpravobot`
+- **source_report.rb** porovnává aktuální `mastodon_accounts.yml` se snapshotem v `data/source_report_snapshot.yml`, detekuje přidané/odebrané zdroje, publikuje přes **SourceReporter** + **MastodonPublisher** z `@zpravobot`
+- **sync_profiles.rb** iteruje enabled zdroje, deleguje na platformově specifické syncery (**BlueskyProfileSyncer**, **FacebookProfileSyncer**, **InstagramProfileSyncer**, **YoutubeProfileSyncer**, **TwitterProfileSyncer**); weekly rotace skupin pro Twitter (hash-based split do 3 skupin)
+- **cleanup_orphaned_accounts.rb** prochází `mastodon_accounts.yml` a ověřuje existenci aktivního zdroje v `config/sources/`; `--fix` nabídne interaktivní smazání
+- **cleanup_duplicate_posts.rb** jednorázový cleanup po schema migraci `zpravobot_test → zpravobot` (2026-03-27); `--delete` skutečně maže, `--since` filtruje rozsah
 
 ---
 
