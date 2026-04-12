@@ -1,8 +1,15 @@
 # Cloudron Infrastructure - ZBNW-NG
 
-> **Poslední aktualizace:** 2026-02-13
+> **Poslední aktualizace:** 2026-04-11
 > **Stav:** Produkční  
 > **Platforma:** Cloudron na zpravobot.news
+
+> **Recent changes:**
+> - **2026-04-09..11:** Security hardening webhook serveru (SEC-1..4), performance tuning (PERF-1..7), atomic file writes (RELIABILITY-1)
+> - **2026-03-26:** Nový cron `cron_stats.sh` (neděle 20:15) pro týdeník #ZpravobotTOP10
+> - **2026-03-01:** Profile sync přepnut na **weekly rotation** (každá platforma má svůj den)
+> - **2026-03-01:** Přidány cron joby pro Instagram a YouTube profile sync
+> - **2026-02-26:** Přidán `cron_retry_failed.sh` (IFTTT failed queue retry)
 
 ---
 
@@ -191,10 +198,29 @@ export ZPRAVOBOT_SCHEMA="zpravobot"
 
 # IFTTT webhook
 export IFTTT_QUEUE_DIR="${ZBNW_DIR}/queue/ifttt"
+export IFTTT_QUEUE_DIR_TEST="${ZBNW_DIR}/queue/ifttt-test"
 export IFTTT_PORT="8089"
 
 # Nitter instance
 export NITTER_INSTANCE="http://xn.zpravobot.news:8080"
+
+# Profile sync — Browserless.io (sdílený pro FB + IG)
+export BROWSERLESS_TOKEN="..."
+
+# Profile sync — Facebook cookies (Graph API scraping)
+export FB_COOKIE_C_USER="..."
+export FB_COOKIE_XS="..."
+export FB_COOKIE_DATR="..."
+export FB_COOKIE_FR="..."
+
+# Profile sync — Instagram cookies (vlastní, oddělené od FB)
+export IG_COOKIE_SESSIONID="..."
+export IG_COOKIE_DS_USER_ID="..."
+export IG_COOKIE_CSRFTOKEN="..."
+export IG_COOKIE_MID="..."
+
+# Zpravobot Týdeník / Stats
+export ZPRAVOBOT_STATS_ACCOUNT="betabot"   # publisher account (default: betabot)
 
 # Cloudron poskytuje automaticky:
 # CLOUDRON_POSTGRESQL_URL - connection string pro PostgreSQL
@@ -224,6 +250,10 @@ export NITTER_INSTANCE="http://xn.zpravobot.news:8080"
 | `IFTTT_PORT` | `8089` | Port webhook serveru |
 | `NITTER_INSTANCE` | `http://xn.zpravobot.news:8080` | Nitter URL |
 | `ZPRAVOBOT_MONITOR_TOKEN` | - | Mastodon token pro Údržbot alerting |
+| `BROWSERLESS_TOKEN` | - | Sdílený token pro FB+IG profile sync přes Browserless.io |
+| `FB_COOKIE_*` | - | 4 Facebook cookies (C_USER, XS, DATR, FR) pro profile scraping |
+| `IG_COOKIE_*` | - | 4 Instagram cookies (SESSIONID, DS_USER_ID, CSRFTOKEN, MID) |
+| `ZPRAVOBOT_STATS_ACCOUNT` | `betabot` | Publisher account pro `zpravobot_stats.rb` weekly digest |
 | `DEBUG` | - | Zapne verbose logging (jakákoli hodnota) |
 
 ### Priorita DB připojení (StateManager)
@@ -368,108 +398,91 @@ state_manager = State::StateManager.new(url: ENV['CLOUDRON_POSTGRESQL_URL'])
 
 ## Cron Jobs
 
-### Aktuální konfigurace (2026-02-27)
+### Aktuální konfigurace (2026-04-11)
 
-Cron jobs se konfigurují přes **Cloudron Dashboard → Cron**, ne přes `crontab -e`.
+Cron jobs se konfigurují přes **Cloudron Dashboard → Cron**, ne přes `crontab -e`. Autoritativní zdroj: `docs/cloudron_cron.txt`.
 
 ```cron
 # ==================================
-# IFTTT Webhook Server (watchdog) - prod & test
+# Core Pipeline — Twitter (IFTTT)
 # ==================================
-# Kontroluje každou minutu, zda webhook server běží
-* * * * * /app/data/zbnw-ng/cron_webhook.sh
-
-# ==================================
-# IFTTT Queue Processor (Twitter) - prod & test
-# ==================================
-# Zpracovává příchozí prod webhooky každé 2 minuty
-*/2 * * * * /app/data/zbnw-ng/cron_ifttt.sh
-
-# Zpracovává failed webhooky každou hodinu (v :00)
-0 * * * * /app/data/zbnw-ng/cron_retry_failed.sh
+* * * * *    /app/data/zbnw-ng/cron_webhook.sh           # Webhook watchdog (auto-restart)
+*/2 * * * *  /app/data/zbnw-ng/cron_ifttt.sh             # IFTTT queue processor
+0 * * * *    /app/data/zbnw-ng/cron_retry_failed.sh      # Retry failed (early-exit pokud nic)
 
 # ==================================
-# Content Sync (Bluesky, RSS, YouTube) - prod & test
+# Core Pipeline — Bluesky, RSS, YouTube
 # ==================================
-# Twitter se zpracovává přes IFTTT pipeline výše
-*/10 * * * * /app/data/zbnw-ng/cron_zbnw.sh --verbose --exclude-platform twitter
-
-# Test: Twitter RSS polling (TwitterTweetProcessor)
-*/5 * * * * /app/data/zbnw-ng-test/cron_zbnw.sh --verbose --platform twitter
-
-# Test: ostatní platformy
-0 * * * * /app/data/zbnw-ng-test/cron_zbnw.sh --verbose --exclude-platform twitter
+*/10 * * * * /app/data/zbnw-ng/cron_zbnw.sh --exclude-platform twitter
 
 # ==================================
-# Profile Sync - prod
+# Reporting & Stats
 # ==================================
-# Bluesky profily - 1x denně v 1:00 (má nativní API)
-0 1 * * * /app/data/zbnw-ng/cron_profile_sync.sh --platform bluesky
-
-# Facebook profily - 1x za 3 dny ve 2:00 (Facebook scraping, šetříme)
-0 2 */3 * * /app/data/zbnw-ng/cron_profile_sync.sh --platform facebook
-
-# Twitter profily - 3 skupiny rotující po dnech týdne, ve 3:00 (Nitter scraping, šetříme)
-# Po,Čt = skupina 0 | Út,Pá = skupina 1 | St,So = skupina 2 | Ne = volno
-0 3 * * 1,4  /app/data/zbnw-ng/cron_profile_sync.sh --platform twitter --group 0
-0 3 * * 2,5  /app/data/zbnw-ng/cron_profile_sync.sh --platform twitter --group 1
-0 3 * * 3,6  /app/data/zbnw-ng/cron_profile_sync.sh --platform twitter --group 2
-
-# RSS profily - 1x týdně v neděli ve 3:00 (deleguje na BS/FB/TW syncery)
-0 3 * * 0    /app/data/zbnw-ng/cron_profile_sync.sh --platform rss
+45 * * * *   /app/data/zbnw-ng/cron_trending.sh          # Trending quote posty
+15 10 * * *  /app/data/zbnw-ng/cron_source_report.sh     # Source report (denně)
+15 15 * * *  /app/data/zbnw-ng/cron_ff.sh                # Friendly Follow (#FF)
+15 20 * * 0  /app/data/zbnw-ng/cron_stats.sh             # Týdeník #ZpravobotTOP10 (neděle 20:15)
 
 # ==================================
-# Údržbot + Tlambot - prod
+# Profile Sync — weekly rotation (1× týdně)
 # ==================================
-# Naslouchač každých 5 minut: udrzbot (Mastodon mentions) + tlambot (broadcast queue)
-*/5 * * * * /app/data/zbnw-ng/cron_command_listener.sh
-
-# Health check každých 10 minut - alert jen při problému
-*/10 * * * * /app/data/zbnw-ng/cron_health.sh --alert --save
-
-# Heartbeat jednou denně v 8:00 - pošle se jen když je vše OK
-0 8 * * * /app/data/zbnw-ng/cron_health.sh --heartbeat
+0 2 * * 1    cron_profile_sync.sh --platform bluesky        # Po — Bluesky
+0 2 * * 2    cron_profile_sync.sh --platform facebook       # Út — Facebook
+0 3 * * 2    cron_profile_sync.sh --platform instagram      #      Instagram (+1h offset)
+0 2 * * 3    cron_profile_sync.sh --platform twitter --group 0  # St — Twitter 1/3
+0 2 * * 4    cron_profile_sync.sh --platform twitter --group 1  # Čt — Twitter 2/3
+0 2 * * 5    cron_profile_sync.sh --platform twitter --group 2  # Pá — Twitter 3/3
+0 2 * * 6    cron_profile_sync.sh --platform rss             # So — RSS (deleguje)
+0 2 * * 0    cron_profile_sync.sh --platform youtube         # Ne — YouTube (opt-in)
 
 # ==================================
-# Maintenance - prod & test
+# Monitoring
 # ==================================
-# Log rotation - denně v 04:00 (mazat *.log starší než 7 dní)
-0 4 * * * find /app/data/zbnw-ng/logs -name "*.log" -mtime +7 -delete 2>/dev/null
-0 4 * * * find /app/data/zbnw-ng-test/logs -name "*.log" -mtime +7 -delete 2>/dev/null
+*/5 * * * *  /app/data/zbnw-ng/cron_command_listener.sh  # Údržbot + Tlambot
+*/5 * * * *  /app/data/zbnw-ng/cron_health.sh --alert --save
+0 8 * * *    /app/data/zbnw-ng/cron_health.sh --heartbeat
 
-# Processed Queue clean-up - denně v 04:00 (mazat *.json starší než 7 dní)
-0 4 * * * find /app/data/zbnw-ng/queue/ifttt/processed -name "*.json" -mtime +7 -delete 2>/dev/null
-0 4 * * * find /app/data/zbnw-ng-test/queue/ifttt/processed -name "*.json" -mtime +7 -delete 2>/dev/null
+# ==================================
+# Maintenance
+# ==================================
+0 4 * * *    find /app/data/zbnw-ng/logs -name "*.log" -mtime +7 -delete 2>/dev/null
+0 4 * * *    find /app/data/zbnw-ng-test/logs -name "*.log" -mtime +7 -delete 2>/dev/null
+0 4 * * *    find /app/data/zbnw-ng/queue/ifttt/processed -name "*.json" -mtime +3 -delete 2>/dev/null
+0 4 * * *    find /app/data/zbnw-ng-test/queue/ifttt/processed -name "*.json" -mtime +3 -delete 2>/dev/null
 ```
 
 ### Přehled intervalů
 
-| Job | Interval | Prostředí | Účel |
-|-----|----------|-----------|------|
-| Webhook watchdog | `* * * * *` | prod | Auto-restart serveru (1 server pro prod+test) |
-| IFTTT Queue (prod) | `*/2 * * * *` | prod | Zpracování Twitter webhooků |
-| IFTTT Failed Retry | `0 * * * *` | prod | Opakování failed webhooků (mimo DEAD_) |
-| Content sync (prod) | `*/10 * * * *` | prod | Bluesky, RSS, YouTube |
-| Content sync Twitter (test) | `*/5 * * * *` | test | Twitter via TwitterTweetProcessor |
-| Content sync ostatní (test) | `0 * * * *` | test | Bluesky, RSS, YouTube |
-| Profile sync (Bluesky) | `0 1 * * *` | prod | Denně v 1:00 |
-| Profile sync (Facebook) | `0 2 */3 * *` | prod | Každé 3 dny ve 2:00 |
-| Profile sync (Twitter gr. 0) | `0 3 * * 1,4` | prod | Po a Čt ve 3:00 |
-| Profile sync (Twitter gr. 1) | `0 3 * * 2,5` | prod | Út a Pá ve 3:00 |
-| Profile sync (Twitter gr. 2) | `0 3 * * 3,6` | prod | St a So ve 3:00 |
-| Profile sync (RSS) | `0 3 * * 0` | prod | Neděle ve 3:00 |
-| Command listener + broadcast | `*/5 * * * *` | prod | Polling mentions + broadcast queue |
-| Údržbot health | `*/10 * * * *` | prod | Smart alerting |
-| Údržbot heartbeat | `0 8 * * *` | prod | Denní "vše OK" |
-| Log + queue rotation | `0 4 * * *` | oba | Čištění starých logů a processed queue |
+| Job | Interval | Účel |
+|-----|----------|------|
+| Webhook watchdog | `* * * * *` | Auto-restart IFTTT webhook serveru (obsluhuje prod+test) |
+| IFTTT Queue | `*/2 * * * *` | Zpracování Twitter webhooků z fronty |
+| IFTTT Failed Retry | `0 * * * *` | Opakování failed webhooků (DEAD_ archiv přeskočen) |
+| Content sync | `*/10 * * * *` | Bluesky, RSS, YouTube (Twitter jde přes IFTTT) |
+| Trending quote | `45 * * * *` | `trending_post.rb` — quote posty pro trendy z `@zpravobot` |
+| Source report | `15 10 * * *` | Denní report nových/vyřazených botů |
+| Friendly Follow | `15 15 * * *` | Denní #FF doporučení |
+| Týdeník Stats | `15 20 * * 0` | Neděle 20:15 — `zpravobot_stats.rb` weekly digest |
+| Profile sync Bluesky | `0 2 * * 1` | Po 02:00 |
+| Profile sync Facebook | `0 2 * * 2` | Út 02:00 |
+| Profile sync Instagram | `0 3 * * 2` | Út 03:00 (offset vůči FB) |
+| Profile sync Twitter gr. 0/1/2 | `0 2 * * 3..5` | St/Čt/Pá 02:00 — 3 rotující skupiny |
+| Profile sync RSS | `0 2 * * 6` | So 02:00 — deleguje na BS/FB/TW syncery |
+| Profile sync YouTube | `0 2 * * 0` | Ne 02:00 — opt-in (jen source s `handle:`) |
+| Command listener | `*/5 * * * *` | Údržbot mentions + Tlambot broadcast queue |
+| Health alert | `*/5 * * * *` | Údržbot smart alerting |
+| Health heartbeat | `0 8 * * *` | Denní „vše OK" |
+| Log + queue cleanup | `0 4 * * *` | `*.log` 7 dní, `processed/*.json` 3 dny |
 
 ### Poznámky
 
-- **Webhook server** běží v `/app/data/zbnw-ng/` ale obsluhuje **obě prostředí** (prod na `/api/ifttt/twitter`, test na `/api/ifttt/twitter?env=test`)
-- **IFTTT Queue** pouze prod; test environment zpracovává Twitter přes RSS polling (`cron_zbnw.sh --platform twitter`)
-- **IFTTT Failed Retry** (`cron_retry_failed.sh`) běží jen když existují kandidáti (skrip exituje hned bez souborů); DEAD_ soubory se přeskakují
-- **Profile sync Twitter** používá skupiny zdrojů rotující po dnech týdne — šetří Nitter kapacitu; RSS platforma deleguje na BS/FB/TW syncery podle source type
-- **Broadcast queue** (`process_broadcast_queue.rb`) je spouštěn jako součást `cron_command_listener.sh`, ne jako samostatný cron
+- **Weekly profile sync rotation** (2026-03-01): každá platforma má svůj den v týdnu místo dřívější denní frekvence — šetří rate limity na Nitteru, FB, IG a BS.
+- **Webhook server** běží v `/app/data/zbnw-ng/` ale obsluhuje **obě prostředí** (prod na `/api/ifttt/twitter`, test na `/api/ifttt/twitter?env=test`).
+- **IFTTT Queue** pouze prod; test environment zpracovává Twitter přes RSS polling (`cron_zbnw.sh --platform twitter`).
+- **IFTTT Failed Retry** (`cron_retry_failed.sh`) exituje hned, pokud ve `failed/` nejsou retryovatelní kandidáti (DEAD_ soubory se ignorují).
+- **YouTube profile sync** je **opt-in** — jen zdroje s vyplněným `source.handle` v YAML se synchronizují; ostatní jsou doplňkové.
+- **Instagram profile sync** sdílí Browserless.io token s Facebookem, ale má vlastní IG cookies (viz [Environment Variables](#environment-variables)).
+- **Broadcast queue** (`process_broadcast_queue.rb`) se spouští v `cron_command_listener.sh`, ne jako samostatný cron.
 
 ---
 

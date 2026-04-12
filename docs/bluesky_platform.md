@@ -1,7 +1,12 @@
 # Bluesky platforma v ZBNW-NG
 
-> **Poslední aktualizace:** 2026-02-13
-> **Stav:** Produkční (test environment)
+> **Poslední aktualizace:** 2026-04-11
+> **Stav:** Produkční
+
+> **Recent changes:**
+> - **2026-04-11 (TEST-1):** Přidán `test/test_profile_syncer_subclasses.rb` — 9 unit testů pro `BlueskyProfileSyncer` (template methods, parse, fetch happy-path + errors)
+> - **2026-04-09 (PERF-7):** `BlueskyProfileSyncer.fetch_display_name` měl tichý rescue — přidán `warn` log
+> - **2026-03-13:** Profile card blocker — při mention v textu bez jiných médií se nahraje `white_strip_1280x1.png` (dříve transparent), aby Mastodon nezobrazoval profile card místo link card
 
 ---
 

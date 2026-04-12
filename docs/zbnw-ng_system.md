@@ -1,8 +1,10 @@
 # ZBNW-NG (Zpravobot Next Generation) – Systémová dokumentace
 
-> **Poslední aktualizace:** 2026-03-30
+> **Poslední aktualizace:** 2026-04-11
 > **Stav:** Produkční
 > **Umístění:** `/app/data/zbnw-ng/` (produkce), `/app/data/zbnw-ng-test/` (test)
+
+> **Recent highlights (2026-04):** Security hardening (SEC-1..4), performance (PERF-1..7: prefetch, DB/HTTP pooling, non-blocking rate-limit handling), atomic file writes (RELIABILITY-1), profile syncer test suite (TEST-1). Detail v sekcích [Security & Hardening](#security--hardening) a [Performance & Reliability](#performance--reliability).
 
 ---
 
@@ -30,7 +32,10 @@
 20. [Environment Variables](#environment-variables)
 21. [CLI nástroje](#cli-nástroje)
 22. [Testování](#testování)
-23. [Checklist pro změny](#checklist-pro-změny)
+23. [Security & Hardening](#security--hardening)
+24. [Performance & Reliability](#performance--reliability)
+25. [Checklist pro změny](#checklist-pro-změny)
+26. [Changelog](#changelog)
 
 ---
 
@@ -875,9 +880,20 @@ Upload používá `POST /api/v2/media`, který je asynchronní — vrací `202 A
 
 | HTTP kód | Akce |
 |----------|------|
-| 429 (Rate Limited) | Čekat `Retry-After` + 1-3s, max 3 pokusy |
+| 429 (Rate Limited) | **Non-blocking** — raise `AccountRateLimitedError`, pipeline přeskočí účet (nebliká `sleep`). Stav `@rate_limited_until` přetrvává per publisher až do `Retry-After` expiry. Viz [PERF-3](#performance--reliability). |
 | 5xx (Server Error) | Čekat 1-3s, max 2 pokusy |
 | Timeout | Retry s backoff |
+
+**Rate-limit skip semantika (2026-04-10, PERF-3):**
+
+Při 429 se pipeline **nezablokuje** sleepem. Místo toho:
+1. `MastodonPublisher` pozná stav z `Retry-After` a uloží `@rate_limited_until`; `raise AccountRateLimitedError`.
+2. `PostProcessor` a `TwitterTweetProcessor` vrací `:rate_limited`.
+3. `Orchestrator` provede `break` ze source loopu a pokračuje dalšími zdroji.
+4. `IftttQueueProcessor` udržuje `rate_limited_accounts` Set — soubory pro dotčené účty zůstávají v `pending/` a zkusí se v dalším cron runu.
+5. Pre-flight check (`raise_if_rate_limited!`) v `publish`/`upload_media`/`update_status` ušetří zbytečné round-tripy.
+
+Dopad: při 3 500–4 000 postech/den a ~470 účtech už jeden rate-limited účet nezdržuje ostatní.
 
 **Thread fallback:**
 
@@ -2211,10 +2227,161 @@ tests:
 
 | Metrika | Hodnota |
 |---------|---------|
-| Unit testy | 57/57 PASS |
-| Assertions | 1579 |
-| Test souborů | 85 |
-| Katalog testů | 83 (57 unit, 18 network, 2 db, 6 e2e) |
+| Test souborů (test/) | 103 |
+| Katalog testů | 103 (77 unit, 18 network, 2 db, 6 e2e) |
+| Pokrytí profile syncerů | ImageCacheManager (23), MastodonProfileUpdater (20), ProfileFieldsBuilder, Bluesky/FB/IG/YT subclasses (51) — všechny 2026-04-11 |
+
+---
+
+## Security & Hardening
+
+Všechna opatření implementována v dubnu 2026 (audit + fixy). Primární vstupní vektory: webhook server, OGP fetcher, profile syncery.
+
+### SEC-1: Content-Length limit pro webhook (2026-04-09)
+
+**Problém:** `bin/ifttt_webhook.rb` nečetl `Content-Length` — útočník mohl poslat neomezený body a způsobit OOM.
+
+**Řešení:** `MAX_PAYLOAD_SIZE = 1_048_576` (1 MB) guard v `handle_webhook` i `handle_broadcast_webhook`. Překročení → HTTP 413.
+
+**Soubory:** `bin/ifttt_webhook.rb`
+
+### SEC-2: OGP SSRF blocklist (2026-04-09)
+
+**Problém:** `OgpFetcher` resolvoval libovolnou URL bez ověření cílové IP — útočník mohl přes `og:image` namířit na interní služby (169.254.169.254 metadata, 127.0.0.1, RFC1918).
+
+**Řešení:** `PRIVATE_RANGES` konstanta + `private_address?`/`private_ip?` v `lib/utils/ogp_fetcher.rb`. Kontrola **před** fetch i na každém redirectu. Private IP → tichý skip s warningem.
+
+**Pokryté rozsahy:** 10/8, 172.16/12, 192.168/16, 127/8, 169.254/16, ::1, fc00::/7, fe80::/10.
+
+### SEC-3: Webhook payload — length validation (2026-04-09)
+
+**Problém:** `WebhookPayloadParser` nevalidoval délku polí — útočník mohl poslat GB-velký `text` nebo `bot_id`.
+
+**Řešení:** `MAX_BOT_ID_LENGTH`, `MAX_USERNAME_LENGTH`, `MAX_TEXT_LENGTH` konstanty. Parser vrací `nil` při překročení → webhook zahozen.
+
+**Soubory:** `lib/webhook/webhook_payload_parser.rb`
+
+### SEC-4: Filename sanitization (2026-04-09)
+
+**Problém:** Webhook queue filename byl konstruován z `bot_id + post_id` bez sanitizace — hrozila path traversal (`../../../etc/passwd`).
+
+**Řešení:** `sanitize_filename_part` helper v `bin/ifttt_webhook.rb` — povoleny jen `[a-zA-Z0-9._-]`, ostatní → `_`. Aplikováno na IFTTT i broadcast filename.
+
+### Profile card blocker (2026-03-16)
+
+**Účel:** Mastodon při publikaci postu obsahujícího `@mention` bez médií automaticky zobrazuje profile card prvního zmíněného účtu místo link card článku. Řešení: upload 1×1280 bílého proužku (`assets/white_strip_1280x1.png`, 76 bytes) jako dummy prvního média → Mastodon upřednostní link card nad profile card.
+
+**Implementace:** `PostProcessor#upload_profile_card_blocker` (`lib/processors/post_processor.rb`). Guard: trigger pouze když `post.media.empty? && contains_mention?(text)`.
+
+**Historie:** Původní `transparent_1x1.png` (70 bytes) byl v Elk klientu renderován jako **zelený čtverec** — nahrazen bílým proužkem 2026-03-16.
+
+---
+
+## Performance & Reliability
+
+### PERF-1: Prefetch Nitter HTML pro threadované tweety (2026-04-09)
+
+**Problém:** `TwitterTweetProcessor` fetchoval Nitter HTML 2× u threadovaných tweetů — jednou v thread resolveru, podruhé v hlavním processing path.
+
+**Řešení:** `fetch_from_nitter_with_retry(prefetched_html:)` + `fetch_single_post(html:)` — thread result HTML se předává jako keyword argument, druhý fetch eliminován.
+
+**Soubory:** `lib/processors/twitter_tweet_processor.rb`, `lib/adapters/twitter_adapter.rb`
+
+### PERF-2: Connection pooling (DB + HTTP) (2026-04-09)
+
+**DB:** `lib/state/database_connection.rb`
+- Periodický ping v `ensure_connection` (max 1× za 5 min) — detekuje stale konekce.
+- `connect()` ověřuje `SELECT 1`.
+- `conn` accessor má rescue → auto-reconnect při `PG::ConnectionBad`.
+
+**HTTP:** `lib/utils/http_client.rb`
+- Per-host connection cache (`@connections` hash) s 30s TTL.
+- `execute()` startuje konekci lazy + retry na `Errno::EPIPE`/`IOError`.
+- `close_all_connections` pro cleanup.
+
+### PERF-3: Non-blocking rate limit handling (2026-04-10)
+
+Viz [Publishers > Rate-limit skip semantika](#publishers).
+
+### PERF-4: Fingerprint cleanup throttling (2026-04-09)
+
+**Problém:** Orchestrator volal `cleanup_old_fingerprints` při každém 15min cron runu.
+
+**Řešení:** `@last_fingerprint_cleanup` timestamp — cleanup max 1× za hodinu.
+
+**Soubory:** `lib/orchestrator.rb`
+
+### PERF-5: Queue batch limit (2026-04-09)
+
+**Problém:** `IftttQueueProcessor` načítal celou frontu přes `Dir.glob()` — při tisících souborech problém.
+
+**Řešení:** `.first(500)` batch limit po sort. Zbytek se zpracuje v dalším cron runu.
+
+### PERF-6: HttpClient v profile syncerech (2026-04-09)
+
+FB a IG syncery přepsány z ručního `Net::HTTP` na `HttpClient.post_json()` — sjednocené timeouty, retry, connection pooling.
+
+### PERF-7: Tichá rescue v profile syncerech (2026-04-09)
+
+`BlueskyProfileSyncer.fetch_display_name` měl tichý `rescue`. Přidán `warn` log.
+
+### RELIABILITY-1: Atomic file writes (2026-04-11)
+
+**Problém:** `File.write()` není atomický — při crash během zápisu zůstával prázdný/korupt soubor. Postiženy: alert state, trending stats, friendly_follow state.
+
+**Řešení:** `Utils::AtomicFile.write(path, content)` helper — zápis do `path.tmp.PID`, fsync, `File.rename` (atomic na stejném FS). 3 call-site fixy.
+
+**Soubory:** `lib/utils/atomic_file.rb` (nový), alert_state, trending, friendly_follow
+
+### RELIABILITY-2: IFTTT queue lockfile (2026-04-11, non-issue)
+
+**Audit:** Ověřeno že `cron_ifttt.sh` už používá `flock -n` a webhook server běží **bez** `--process-queue` flagu. Jediný konzument fronty = žádná race condition. Žádný fix nutný.
+
+---
+
+## Changelog
+
+### 2026-04-11
+- **RELIABILITY-1** Utils::AtomicFile helper + 3 call-site fixy
+- **TEST-1** dokončen — profile syncer unit testy (23+20+51 PASS)
+- **BUG-1** Instagram og:image regex fix (zbytečný `\b`)
+- **HOUSEKEEPING-1** `test_bluesky_adapter_v2` → `test_bluesky_adapter`
+
+### 2026-04-10
+- **PERF-3** Non-blocking rate limit handling (`AccountRateLimitedError`, skip místo sleep)
+
+### 2026-04-09
+- **SEC-1..4** Webhook hardening + OGP SSRF blocklist
+- **PERF-1/2/4/5/6/7** Prefetch, connection pooling, queue limits, HttpClient unification
+
+### 2026-03-26
+- **Zpravobot Týdeník** — `bin/zpravobot_stats.rb`, týdenní snapshot + publikace statistik (neděle 20:00 cron)
+
+### 2026-03-16
+- **Profile card blocker** — `white_strip_1280x1.png` nahrazuje transparentní (Elk render fix)
+
+### 2026-03-13..15
+- **OGP image fetcher** — `og:image` jako nativní příloha obchází Mastodon scraper blocker
+- **pHash/aHash video dedup** — ImageMagick 8×8 grayscale, Hamming ≤ 10
+
+### 2026-03-13
+- **Mentions improvements** — `local_or_domain_suffix` typ (lokální handle → holý mention, cizí → `@handle@twitter.com`)
+
+### 2026-03-02
+- **Video mp4 přes Syndication** — Tier 1.5/2 použije přímou mp4 URL z Syndication API
+- **Text cleanup** — strip video/status URL z Nitter bare linků
+
+### 2026-03-01
+- **Instagram + YouTube profile sync** — `InstagramProfileSyncer` (Browserless), `YoutubeProfileSyncer` (plain HTTP, opt-in handle)
+- **Weekly cron rotation** — Po=BS, Út=FB+IG, St/Čt/Pá=X, So=RSS, Ne=YT
+
+### 2026-02-26
+- **IFTTT Failed Queue Retry** — `bin/retry_failed_queue.rb` + DEAD archiv + queue health check
+- **RSS since fix** — ověřen `extract_since_time` preference `last_success || last_check`
+
+### 2026-02-25
+- **TASK-10** Unifikace Twitter pipeline — `TwitterTweetProcessor`, `IftttTwitterAdapter` → `TwitterNitterAdapter`
+- **TASK-4** `bin/manage_source.rb` — pause/resume/retire, `disabled_at` sloupec
 
 ---
 
