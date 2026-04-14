@@ -249,12 +249,16 @@ module Syncers
         end
       end
 
-      # Detekce IG placeholder avataru (šedý prázdný obrázek)
-      # ID 573323465 = známý IG grey placeholder, vrácený při expirovaných cookies
-      # nebo když has_profile_pic:false. Nastavíme nil → avatar sync se přeskočí
-      # a log upozorní na pravděpodobně expirované cookies.
-      if profile[:avatar_url]&.include?('573323465')
-        log '  ⚠️ Placeholder avatar detected (cookies may have expired), skipping avatar sync', level: :warn
+      # Detekce IG placeholder / logged-out avataru.
+      # Reálné profilovky jdou ze scontent-*.cdninstagram.com / *.fbcdn.net (t51.2885-19 path).
+      # Jakákoli URL ze static.cdninstagram.com/rsrc.php/ = statická asset (logo, ikona)
+      # vrácená při expirovaných cookies. ID 573323465 = starší grey placeholder.
+      if profile[:avatar_url] && (
+           profile[:avatar_url].include?('573323465') ||
+           profile[:avatar_url].include?('static.cdninstagram.com/rsrc.php/') ||
+           profile[:avatar_url].include?('/rsrc.php/')
+         )
+        log '  ⚠️ Placeholder/logo avatar detected (IG cookies likely expired), skipping avatar sync', level: :warn
         profile[:avatar_url] = nil
       end
 
