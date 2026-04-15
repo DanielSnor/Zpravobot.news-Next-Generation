@@ -40,6 +40,7 @@ class SourceGenerator
       lines << "  handle: #{yaml_quote(data[:handle])}  # Facebook page handle pro profile sync" if data[:handle] && data[:rss_source_type] == 'facebook'
     when 'youtube'
       lines << "  channel_id: #{yaml_quote(data[:channel_id])}"
+      lines << "  playlist_id: #{yaml_quote(data[:playlist_id])}" if data[:playlist_id]
       lines << "  no_shorts: #{data[:no_shorts] ? true : false}" if data.key?(:no_shorts)
       lines << "  handle: #{yaml_quote(data[:handle])}" if data[:handle]
     end

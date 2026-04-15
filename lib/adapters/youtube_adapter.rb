@@ -21,6 +21,7 @@ module Adapters
   # Config options:
   #   channel_id:   YouTube channel ID (UC...)
   #   handle:       YouTube handle (@channel) - will be resolved to channel_id
+  #   playlist_id:  Custom playlist ID (PL...) - optional, overrides channel feed
   #   source_name:  Display name for the channel
   #   no_shorts:    If true, use UULF playlist to exclude Shorts (default: false)
   #
@@ -45,7 +46,8 @@ module Adapters
 
       @source_name = config[:source_name]
       @no_shorts = config[:no_shorts] || false
-      
+      @playlist_id = config[:playlist_id]
+
       # Resolve handle to channel_id if needed
       @channel_id = config[:channel_id] || resolve_handle(config[:handle])
       
@@ -81,7 +83,10 @@ module Adapters
 
     # Get the feed URL for this channel
     def feed_url
-      if @no_shorts
+      if @playlist_id
+        # Explicit playlist — use directly
+        "https://www.youtube.com/feeds/videos.xml?playlist_id=#{@playlist_id}"
+      elsif @no_shorts
         # UULF playlist = long-form videos only (no Shorts, no livestreams)
         playlist_id = @channel_id.sub(/^UC/, 'UULF')
         "https://www.youtube.com/feeds/videos.xml?playlist_id=#{playlist_id}"
