@@ -709,6 +709,41 @@ test("feed_url: no_shorts uses UULF playlist",
      'https://www.youtube.com/feeds/videos.xml?playlist_id=UULFabc123',
      yt_shorts.feed_url)
 
+section("YouTubeAdapter: playlist_id support")
+
+suppress_output
+yt_playlist = Adapters::YouTubeAdapter.new(
+  channel_id: 'UCabc123',
+  playlist_id: 'PLJlTDcBkLoOFuC7Fe6NTfvoV-4boZCyBL',
+  source_name: 'Test'
+)
+restore_output
+test("feed_url: explicit playlist_id",
+     'https://www.youtube.com/feeds/videos.xml?playlist_id=PLJlTDcBkLoOFuC7Fe6NTfvoV-4boZCyBL',
+     yt_playlist.feed_url)
+
+suppress_output
+yt_playlist_shorts = Adapters::YouTubeAdapter.new(
+  channel_id: 'UCabc123',
+  playlist_id: 'PLxxxxxx',
+  source_name: 'Test',
+  no_shorts: true
+)
+restore_output
+test("feed_url: playlist_id overrides no_shorts",
+     'https://www.youtube.com/feeds/videos.xml?playlist_id=PLxxxxxx',
+     yt_playlist_shorts.feed_url)
+
+suppress_output
+yt_no_playlist = Adapters::YouTubeAdapter.new(
+  channel_id: 'UCabc123',
+  source_name: 'Test'
+)
+restore_output
+test("feed_url: nil playlist_id = channel feed (backward compat)",
+     'https://www.youtube.com/feeds/videos.xml?channel_id=UCabc123',
+     yt_no_playlist.feed_url)
+
 section("YouTubeAdapter: sanitize_username")
 
 test("sanitize_username: basic", 'dvtv', yt.send(:sanitize_username, 'DVTV'))

@@ -126,6 +126,20 @@ class SourceGenerator
       end
 
       data[:channel_id] = channel_id
+
+      puts
+      puts '  Playlist ID (volitelné — pro sledování konkrétního playlistu místo celého kanálu)'
+      puts '  ℹ️  Začíná PL..., najdete v URL playlistu jako ?list=PLxxxxx'
+      puts '  ℹ️  Nechte prázdné pro sledování celého kanálu.'
+      playlist_id = ask('Playlist ID (volitelné)', required: false)&.strip
+      if playlist_id && !playlist_id.empty?
+        unless playlist_id.start_with?('PL')
+          puts '  ⚠️  Playlist ID musí začínat "PL" (např. PLJlTDcBkLoOFuC7Fe6NTfvoV-4boZCyBL)'
+          puts '  ⚠️  Pokračuji bez playlist filtru — bude se sledovat celý kanál.'
+          playlist_id = nil
+        end
+        data[:playlist_id] = playlist_id if playlist_id
+      end
     end
   end
 

@@ -20,7 +20,7 @@ module Trending
   class HrubotCommenter
     API_URL     = 'https://api.anthropic.com/v1/messages'
     API_VERSION = '2023-06-01'
-    MODEL       = 'claude-sonnet-4-20250514'
+    MODEL       = 'claude-sonnet-4-6'
     MAX_TOKENS  = 200
     TEMPERATURE = 0.9
 

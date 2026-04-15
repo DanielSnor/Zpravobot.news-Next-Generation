@@ -254,6 +254,9 @@ module Config
     def source_channel_id
       @data.dig(:source, :channel_id)
     end
+    def source_playlist_id
+      @data.dig(:source, :playlist_id)
+    end
     def nitter_instance
       @data.dig(:source, :nitter_instance) || ENV['NITTER_INSTANCE']
     end

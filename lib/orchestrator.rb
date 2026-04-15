@@ -566,6 +566,7 @@ module Orchestrator
 		Adapters::YouTubeAdapter.new(
 		  channel_id: source.source_channel_id,
 		  handle: source.source_handle,
+		  playlist_id: source.source_playlist_id,
 		  source_name: source.source_name,
 		  no_shorts: source.data.dig(:content, :no_shorts) || false
 		)
