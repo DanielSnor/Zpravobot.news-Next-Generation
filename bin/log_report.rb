@@ -225,10 +225,37 @@ end
 platform_published['twitter'] += ifttt_published_total
 platform_errors['twitter']    += ifttt_errors_total  # deleted_original jsou v ifttt_skips, ne zde
 
-# ── Profile sync — nejbližší log k window_to ─────────────────
+# ── Profile sync ─────────────────────────────────────────────
 
-profile_sync = { synced: nil, skipped: nil, errors: nil, log_date: nil }
+# Daily log (profile_sync_YYYYMMDD.log): full timestamps, datum z názvu souboru.
+# Platform logy (profile_sync_twitter.log atd.): emoji formát [HH:MM:SS] ℹ️,
+# datum z posledního řádku "=== Profile sync finished ===".
+# Platform logy jsou appendované — hledáme stats posledního běhu.
 
+def parse_profile_sync_platform(path)
+  last_run = nil
+  last = { synced: nil, skipped: nil, errors: nil }
+  cur  = { synced: nil, skipped: nil, errors: nil }
+  foreach_line(path) do |line|
+    case line
+    when /Synced:\s+(\d+)/   then cur[:synced]  = $1.to_i
+    when /Skipped:\s+(\d+)/  then cur[:skipped] = $1.to_i
+    when /Errors:\s+(\d+)/   then cur[:errors]  = $1.to_i
+    when /^\[(\d{4}-\d{2}-\d{2}) \d{2}:\d{2}:\d{2}\] === Profile sync finished/
+      last_run = $1
+      last = cur.dup
+      cur  = { synced: nil, skipped: nil, errors: nil }
+    end
+  end
+  # Pokud běh ještě neskončil (chybí "finished"), vezmi aktuální hodnoty
+  last_run ||= nil
+  result = last[:synced] ? last : cur
+  { last_run: last_run, **result }
+end
+
+profile_sync = []
+
+# 1. Denní log — nejbližší k window_to (hledá 14 dní zpátky)
 search_date = Date.new(window_to.year, window_to.month, window_to.day)
 14.times do
   path = File.join(LOG_DIR, "profile_sync_#{search_date.strftime('%Y%m%d')}.log")
@@ -242,12 +269,22 @@ search_date = Date.new(window_to.year, window_to.month, window_to.day)
       end
     end
     if synced
-      profile_sync = { synced: synced, skipped: skipped, errors: errors,
-                       log_date: search_date.to_s }
+      profile_sync << { type: 'daily', last_run: search_date.to_s,
+                        synced: synced, skipped: skipped, errors: errors }
       break
     end
   end
   search_date -= 1
+end
+
+# 2. Platform logy (stálé soubory, appendované)
+%w[twitter facebook instagram youtube bluesky rss].each do |plat|
+  path = File.join(LOG_DIR, "profile_sync_#{plat}.log")
+  next unless File.exist?(path)
+  stats = parse_profile_sync_platform(path)
+  next unless stats[:synced]
+  profile_sync << { type: plat, last_run: stats[:last_run],
+                    synced: stats[:synced], skipped: stats[:skipped], errors: stats[:errors] }
 end
 
 # ── Platform stats ────────────────────────────────────────────
