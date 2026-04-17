@@ -2,8 +2,8 @@
 
 Dokumentace helper aplikací a monitoring systému pro ZBNW-NG.
 
-> **Poslední aktualizace:** 2026-04-11
-> **Změny (2026-04):** Test katalog rozšířen na 103 registrovaných testů (77 unit + 18 network + 2 db + 6 e2e) po dokončení TEST-1 (profile syncer unit testy). `run_tests.rb` workflow beze změny. Všechny helper tooly (`manage_source`, `retry_failed_queue`, `zpravobot_stats`, `trending_post`, `friendly_follow`, `sync_profiles`) aktivní v produkci.
+> **Poslední aktualizace:** 2026-04-17
+> **Změny (2026-04):** Test katalog rozšířen na 103 registrovaných testů (77 unit + 18 network + 2 db + 6 e2e) po dokončení TEST-1 (profile syncer unit testy). Přidán `log_report.rb` — strukturovaný JSON report z logů prod serveru pro on-demand analýzu.
 
 ---
 
@@ -21,6 +21,7 @@ Dokumentace helper aplikací a monitoring systému pro ZBNW-NG.
 - [analyze_domain_fixes.rb](#analyze_domain_fixesrb) - Analýza a aktualizace url_domain_fixes u Twitter/Bluesky zdrojů
 - [zpravobot_stats.rb](#zpravobot_statsrb) - Týdenní hitparáda #ZpravobotTOP10 (CZ+SK thread)
 - [trending_post.rb](#trending_postrb) - Automatické quote posty pro trendující statusy
+- [log_report.rb](#log_reportrb) - Strukturovaný JSON report z logů prod serveru
 
 ---
 
@@ -2102,6 +2103,58 @@ data/trending_state.json           # Persistentní state (announced_ids, last_ch
 
 ---
 
+## log_report.rb
+
+### Umístění
+`bin/log_report.rb`
+
+### Účel
+
+Parsuje logy zbnw-ng a vrací strukturovaný JSON na stdout. Určen ke spuštění na prod serveru — klient si výstup stáhne a provede analýzu (žádné závislosti na DB ani lib/).
+
+### Použití
+
+```sh
+ruby bin/log_report.rb                                          # včera 07:00 → dnes 07:00
+ruby bin/log_report.rb --date 2026-04-16                        # konkrétní den (07:00 → +1 07:00)
+ruby bin/log_report.rb --hours 12                               # posledních 12 hodin
+ruby bin/log_report.rb --from "2026-04-16 08:00" --to "2026-04-16 20:00"
+ruby bin/log_report.rb --pretty                                 # odsazený JSON
+```
+
+### Výstupní struktura JSON
+
+| Klíč | Popis |
+|------|-------|
+| `window.from/to` | Parsované časové okno |
+| `summary.runner_published` | Součet `published:` z `[Runner] Run complete` řádků |
+| `summary.ifttt_published` | Součet `published:` z `Queue processing complete` řádků |
+| `summary.total` | runner + ifttt published celkem |
+| `summary.runner_errors` | Součet `errors:` z `[Runner] Run complete` řádků |
+| `summary.runner_warnings` | Počet `WARN:` řádků v runner logu |
+| `summary.ifttt_errors` | Skutečné chyby IFTTT (bez `deleted_original`) |
+| `summary.ifttt_queue_skipped_total` | Catch-all `skipped:` z Queue processing complete — zahrnuje video_dedup, content filter (reposts/replies), already_published, no_config, older_version |
+| `summary.ifttt_failed` | Počet webhooků přesunutých do `failed/` |
+| `platforms.<platform>` | `published`, `errors`, `error_rate` pro každou platformu (twitter = IFTTT, ostatní = runner) |
+| `ifttt_events` | `video_dedup_skipped`, `video_fallback_thumb`, `repost_corrections`, `edit_skipped`, `media_size_skipped` |
+| `ifttt_skips` | `deleted_original` (HTTP 404 + Status not found), `duplicate_post` (pouze při `DEBUG=1`) |
+| `top_runner_errors` | Top 10 chybových zpráv z runner logu s počtem výskytů |
+| `top_ifttt_errors` | Top 5 chybových zpráv z IFTTT logu s počtem výskytů |
+| `profile_sync` | Pole per platformu: `type`, `last_run`, `synced`, `skipped`, `errors` |
+
+### Logy
+
+Čte z `logs/` (fallback: `log/`), jen soubory s `.log` příponou:
+
+| Soubor | Obsah |
+|--------|-------|
+| `runner_YYYYMMDD.log` | Runner (RSS/FB/IG/YT/Bluesky) |
+| `ifttt_processor_YYYYMMDD.log` | Twitter webhook zpracování |
+| `profile_sync_YYYYMMDD.log` | Denní profile sync (všechny platformy) |
+| `profile_sync_<platform>.log` | Platform-specific sync (appendovaný, více běhů) |
+
+---
+
 ## Shrnutí
 
 | Nástroj | Účel | Spouštění |
@@ -2123,6 +2176,7 @@ data/trending_state.json           # Persistentní state (announced_ids, last_ch
 | `sync_profiles.rb` | Sync avataru/banneru/bio ze zdrojových platforem do Mastodonu | Cron (weekly rotace) |
 | `cleanup_orphaned_accounts.rb` | Detekce osiřelých účtů bez aktivního zdroje | Manuálně |
 | `cleanup_duplicate_posts.rb` | Odstranění duplicitních postů (schema migrace) | Manuálně (jednorázově) |
+| `log_report.rb` | Strukturovaný JSON report z logů prod serveru | Manuálně (on-demand) |
 
 ### Health Check Přehled
 
@@ -2159,6 +2213,7 @@ data/trending_state.json           # Persistentní state (announced_ids, last_ch
 - **sync_profiles.rb** iteruje enabled zdroje, deleguje na platformově specifické syncery (**BlueskyProfileSyncer**, **FacebookProfileSyncer**, **InstagramProfileSyncer**, **YoutubeProfileSyncer**, **TwitterProfileSyncer**); weekly rotace skupin pro Twitter (hash-based split do 3 skupin)
 - **cleanup_orphaned_accounts.rb** prochází `mastodon_accounts.yml` a ověřuje existenci aktivního zdroje v `config/sources/`; `--fix` nabídne interaktivní smazání
 - **cleanup_duplicate_posts.rb** jednorázový cleanup po schema migraci `zpravobot_test → zpravobot` (2026-03-27); `--delete` skutečně maže, `--since` filtruje rozsah
+- **log_report.rb** parsuje `logs/runner_YYYYMMDD.log`, `logs/ifttt_processor_YYYYMMDD.log` a `logs/profile_sync_*.log`; výstup jde čistě na stdout jako JSON; žádné závislosti na DB ani lib/
 
 ---
 
