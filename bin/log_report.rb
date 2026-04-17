@@ -17,7 +17,8 @@
 # ============================================================
 
 BASE_DIR = File.expand_path('..', __dir__)
-LOG_DIR  = [File.join(BASE_DIR, 'logs'), File.join(BASE_DIR, 'log')].find { |d| Dir.exist?(d) }
+LOG_DIR  = [File.join(BASE_DIR, 'logs'), File.join(BASE_DIR, 'log')]
+           .find { |d| Dir.exist?(d) && Dir.glob(File.join(d, '*.log')).any? }
 
 require 'json'
 require 'date'
@@ -126,11 +127,11 @@ platform_published      = Hash.new(0)
 platform_errors         = Hash.new(0)
 runner_error_messages   = Hash.new(0)
 
-ifttt_published_total   = 0
-ifttt_errors_total      = 0
-ifttt_skipped_total     = 0
-ifttt_failed_total      = 0
-ifttt_error_messages    = Hash.new(0)
+ifttt_published_total        = 0
+ifttt_errors_total           = 0
+ifttt_queue_skipped_total    = 0  # catch-all z Queue processing complete: zahrnuje already_published, video_dedup, content filter (reposts/replies), no_config, older_version
+ifttt_failed_total           = 0
+ifttt_error_messages         = Hash.new(0)
 
 ifttt_events = {
   video_dedup_skipped:  0,
@@ -138,6 +139,11 @@ ifttt_events = {
   repost_corrections:   0,
   edit_skipped:         0,
   media_size_skipped:   0,
+}
+
+ifttt_skips = {
+  deleted_original: 0,  # tweet smazán: HTTP 404 fetching HTML nebo Status not found
+  duplicate_post:   0,  # already_published — logováno jen při DEBUG=1; na prod bez DEBUG bude 0
 }
 
 # ── Runner logy ───────────────────────────────────────────────
@@ -175,14 +181,27 @@ log_files_for('ifttt_processor', window_from, window_to).each do |path|
 
     case line
     when /Queue processing complete:.*\bpublished: (\d+).*\bskipped: (\d+).*\bfailed: (\d+)/
-      ifttt_published_total += $1.to_i
-      ifttt_skipped_total   += $2.to_i
-      ifttt_failed_total    += $3.to_i
+      ifttt_published_total        += $1.to_i
+      ifttt_queue_skipped_total    += $2.to_i
+      ifttt_failed_total           += $3.to_i
+
+    when /HTTP 404 fetching HTML/
+      ifttt_skips[:deleted_original] += 1
+
+    when /\[MastodonPublisher\] Status not found:/
+      ifttt_skips[:deleted_original] += 1
+
+    when /\[PostProcessor\] .+ Already published:/
+      # Pouze při DEBUG=1 — na prod bez DEBUG bude 0
+      ifttt_skips[:duplicate_post] += 1
 
     when /\] ERROR: (.+)/
-      # Zachovat [Module] prefix + text, normalizovat pouze dynamické části
-      ifttt_error_messages[normalize_error($1)] += 1
-      ifttt_errors_total += 1
+      msg = $1
+      # Přeskočit deleted_original patterny — jsou v ifttt_skips, ne v errors
+      unless msg.match?(/HTTP 404 fetching HTML|Status not found:/)
+        ifttt_error_messages[normalize_error(msg)] += 1
+        ifttt_errors_total += 1
+      end
 
     when /Video dedup \(pHash\): skipping duplicate/
       ifttt_events[:video_dedup_skipped] += 1
@@ -204,7 +223,7 @@ end
 
 # IFTTT zpracovává výhradně twitter zdroje
 platform_published['twitter'] += ifttt_published_total
-platform_errors['twitter']    += ifttt_errors_total
+platform_errors['twitter']    += ifttt_errors_total  # deleted_original jsou v ifttt_skips, ne zde
 
 # ── Profile sync — nejbližší log k window_to ─────────────────
 
@@ -263,17 +282,18 @@ report = {
     to:   window_to.strftime('%Y-%m-%d %H:%M:%S'),
   },
   summary: {
-    runner_published: runner_published_total,
-    ifttt_published:  ifttt_published_total,
-    total:            runner_published_total + ifttt_published_total,
-    runner_errors:    runner_errors_total,
-    runner_warnings:  runner_warnings_total,
-    ifttt_errors:     ifttt_errors_total,
-    ifttt_skipped:    ifttt_skipped_total,
-    ifttt_failed:     ifttt_failed_total,
+    runner_published:         runner_published_total,
+    ifttt_published:          ifttt_published_total,
+    total:                    runner_published_total + ifttt_published_total,
+    runner_errors:            runner_errors_total,
+    runner_warnings:          runner_warnings_total,
+    ifttt_errors:             ifttt_errors_total,
+    ifttt_queue_skipped_total: ifttt_queue_skipped_total,
+    ifttt_failed:             ifttt_failed_total,
   },
   platforms:         platforms_out,
   ifttt_events:      ifttt_events,
+  ifttt_skips:       ifttt_skips,
   top_runner_errors: top_runner_errors,
   top_ifttt_errors:  top_ifttt_errors,
   profile_sync:      profile_sync,
