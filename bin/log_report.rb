@@ -17,7 +17,7 @@
 # ============================================================
 
 BASE_DIR = File.expand_path('..', __dir__)
-LOG_DIR  = File.join(BASE_DIR, 'log')
+LOG_DIR  = [File.join(BASE_DIR, 'logs'), File.join(BASE_DIR, 'log')].find { |d| Dir.exist?(d) }
 
 require 'json'
 require 'date'
