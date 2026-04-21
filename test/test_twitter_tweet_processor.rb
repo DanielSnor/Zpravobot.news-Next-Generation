@@ -503,6 +503,113 @@ end
 test "Post.media= vyvolá NoMethodError (proto replace)", true, no_method_raised
 
 # ============================================================
+# 9. Thumbnail-only video: URL na originál
+# ============================================================
+#
+# Příčina č. 1: Syndication vrátí jen video_thumbnail (žádné video_url).
+# Thumbnail se nahraje jako type:'image' → media_ids není prázdný →
+# fallback blok (media_ids.empty? && has_real_video) se nespustí.
+# Formatter pro Tier 1.5/2 URL nepřidá. Fix: nový blok v publish_post
+# kontroluje raw[:video_thumbnail_only] a URL přidá vždy.
+
+section "9. Thumbnail-only video: URL na originál"
+
+# --- Unit: build_syndication_post nastaví video_thumbnail_only správně ---
+
+syndi_thumb_only = {
+  success: true, username: 'videouser', display_name: 'Video User',
+  created_at: '2025-01-01T12:00:00Z',
+  text: 'Check this video!', photos: [],
+  video_url: nil, video_url_variants: [],
+  video_thumbnail: 'https://pbs.twimg.com/ext_tw_video_thumb/123/pu/img/thumb.jpg',
+  poll_data: nil, card_image: nil
+}
+syndi_with_video = syndi_thumb_only.merge(
+  video_url: 'https://video.twimg.com/tweet_video/abc.mp4',
+  video_url_variants: ['https://video.twimg.com/tweet_video/abc.mp4']
+)
+
+cfg_thumb = source_config(url: { replace_to: 'xcancel.com' })
+build_proc9 = make_processor(post_processor: TrackingPostProcessor.new)
+
+post_thumb_only = build_proc9.send(:build_syndication_post, 'thumbonly_001', 'videouser', cfg_thumb, syndi_thumb_only, nil)
+post_with_video = build_proc9.send(:build_syndication_post, 'vidurl_002',   'videouser', cfg_thumb, syndi_with_video, nil)
+
+test "build_syndication_post: thumbnail-only → raw[:video_thumbnail_only] true",
+     true,  post_thumb_only.raw[:video_thumbnail_only]
+test "build_syndication_post: video_url present → raw[:video_thumbnail_only] false",
+     false, post_with_video.raw[:video_thumbnail_only]
+test "build_syndication_post: thumbnail-only → media type 'image'",
+     'image', post_thumb_only.media.first&.type
+test "build_syndication_post: video_url → media type 'video'",
+     'video', post_with_video.media.first&.type
+
+# --- Integration: publish_post přidá URL do textu při thumbnail-only ---
+#
+# Volá publish_post přímo (bez full pipeline) přes send,
+# aby se obešlo formátování a testoval se pouze URL-append.
+
+class CapturingPublisher
+  attr_reader :last_text, :last_media_ids
+  MAX_MEDIA_COUNT = 4
+
+  def initialize; @last_text = nil; @last_media_ids = nil; end
+
+  def upload_media_parallel(items, **_opts)
+    items.map { |_| "mid_#{rand(999)}" }
+  end
+
+  def upload_media_from_url(url, description: nil); 'mid_thumb'; end
+
+  def publish(text, media_ids: [], visibility: 'public', in_reply_to_id: nil)
+    @last_text      = text
+    @last_media_ids = media_ids
+    { 'id' => 'masto_thumb_test' }
+  end
+end
+
+cap_pub = CapturingPublisher.new
+pp_direct = Processors::PostProcessor.new(
+  state_manager: State::StateManager.new,
+  config_loader: Config::ConfigLoader.new
+)
+pp_direct.define_singleton_method(:get_publisher) { |_cfg| cap_pub }
+pp_direct.define_singleton_method(:upload_dummy_transparent_image) { |_pub| nil }
+
+# Formatted text without tweet URL (as Tier 1.5/2 formatter would produce)
+thumb_formatted_text = "Check this video!"
+
+quiet { pp_direct.send(:publish_post, thumb_formatted_text, post_thumb_only, cfg_thumb) }
+
+test "thumbnail-only publish: text obsahuje tweet URL (xcancel.com)",
+     true, cap_pub.last_text&.include?('xcancel.com/videouser/status/thumbonly_001')
+test "thumbnail-only publish: text obsahuje prefix 🎬",
+     true, cap_pub.last_text&.include?('🎬')
+test "thumbnail-only publish: thumbnail nahrán jako médium",
+     true, cap_pub.last_media_ids&.any?
+
+# --- URL se nepřidá znovu když už ji formatter vložil (video_url_added guard) ---
+
+post_url_already = build_proc9.send(:build_syndication_post, 'urldup_003', 'videouser', cfg_thumb, syndi_thumb_only, nil)
+post_url_already.raw[:video_url_added] = true
+
+cap_pub2 = CapturingPublisher.new
+pp_dup = Processors::PostProcessor.new(
+  state_manager: State::StateManager.new,
+  config_loader: Config::ConfigLoader.new
+)
+pp_dup.define_singleton_method(:get_publisher) { |_cfg| cap_pub2 }
+pp_dup.define_singleton_method(:upload_dummy_transparent_image) { |_pub| nil }
+
+already_text = "Check this video!\n🎬 https://xcancel.com/videouser/status/urldup_003"
+
+quiet { pp_dup.send(:publish_post, already_text, post_url_already, cfg_thumb) }
+
+url_count = cap_pub2.last_text.to_s.scan(%r{xcancel\.com/videouser/status/urldup_003}).size
+test "thumbnail-only: URL se nepřidá znovu pokud video_url_added true",
+     1, url_count
+
+# ============================================================
 # Summary
 # ============================================================
 
