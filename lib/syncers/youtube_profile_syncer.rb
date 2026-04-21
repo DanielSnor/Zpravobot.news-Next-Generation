@@ -2,7 +2,7 @@
 
 # YouTube Profile Syncer - Synchronizes profile info from YouTube to Mastodon
 #
-# Fetches channel data via plain HTTP GET (no API key required).
+# Uses Browserless.io API to render YouTube pages with JavaScript.
 # Extracts profile data from ytInitialData JSON embedded in channel page HTML.
 #
 # Syncs:
@@ -19,6 +19,7 @@
 #     youtube_handle: 'PetrLudvikPavel',
 #     mastodon_instance: 'https://zpravobot.news',
 #     mastodon_token: 'xxx',
+#     browserless_token: 'xxx',
 #     language: 'cs',
 #     retention_days: 180
 #   )
@@ -33,12 +34,17 @@ require_relative 'base_profile_syncer'
 
 module Syncers
   class YoutubeProfileSyncer < BaseProfileSyncer
+    BROWSERLESS_API = 'https://chrome.browserless.io/content'
     DEFAULT_MENTIONS_CONFIG = { 'type' => 'none', 'value' => '' }.freeze
+    # Bypasses GDPR consent wall for EU users
+    CONSENT_COOKIE = { name: 'CONSENT', value: 'YES+1', domain: '.youtube.com' }.freeze
 
-    attr_reader :youtube_handle
+    attr_reader :youtube_handle, :browserless_token
 
-    def initialize(youtube_handle:, **base_opts)
+    def initialize(youtube_handle:, browserless_token:, browserless_api: nil, **base_opts)
       @youtube_handle = youtube_handle.gsub(%r{^https?://[^/]+/}, '').gsub(/^@/, '')
+      @browserless_token = browserless_token
+      @browserless_api = (browserless_api || BROWSERLESS_API).chomp('/')
       super(**base_opts)
     end
 
@@ -68,16 +74,9 @@ module Syncers
 
     def fetch_platform_profile
       url = channel_url
-      log "  Fetching #{url}..."
+      log "  Fetching #{url} via Browserless..."
 
-      uri = URI(url)
-      response = http_get(uri, open_timeout: 15, read_timeout: 30)
-
-      unless response.is_a?(Net::HTTPSuccess)
-        raise "YouTube HTTP error: #{response.code} #{response.message}"
-      end
-
-      html = response.body.dup.force_encoding('UTF-8')
+      html = fetch_page_via_browserless(url)
       parse_youtube_profile(html)
     end
 
@@ -105,6 +104,29 @@ module Syncers
       else
         "https://youtube.com/@#{handle}"
       end
+    end
+
+    # ============================================
+    # Browserless fetch
+    # ============================================
+
+    def fetch_page_via_browserless(url)
+      uri = URI("#{@browserless_api}?token=#{browserless_token}")
+
+      body = {
+        url: url,
+        cookies: [CONSENT_COOKIE],
+        gotoOptions: { waitUntil: 'networkidle2' }
+      }
+
+      response = HttpClient.post_json(uri.to_s, body,
+                   open_timeout: 30, read_timeout: 60, user_agent: USER_AGENT)
+
+      unless response.is_a?(Net::HTTPSuccess)
+        raise "Browserless API error: #{response.code} #{response.message}"
+      end
+
+      response.body.dup.force_encoding('UTF-8')
     end
 
     # ============================================
