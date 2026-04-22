@@ -406,7 +406,7 @@ puts
 puts '=== YoutubeProfileSyncer ==='
 
 def build_youtube(handle: 'Mistrdabingu')
-  Syncers::YoutubeProfileSyncer.new(youtube_handle: handle, **BASE_OPTS)
+  Syncers::YoutubeProfileSyncer.new(youtube_handle: handle, browserless_token: 'dummy_token', **BASE_OPTS)
 end
 
 puts '--- template methods ---'
@@ -506,22 +506,22 @@ end
 
 puts '--- fetch_platform_profile ---'
 
-test('fetch_platform_profile calls http_get and returns parsed profile') do
-  stub_get(FakeSuccessResponse.new(YT_HTML))
+test('fetch_platform_profile calls post_json and returns parsed profile') do
+  stub_post_json(FakeSuccessResponse.new(YT_HTML))
   p = build_youtube.fetch_platform_profile
-  restore_get
+  restore_post_json
   p[:description] == 'Můj YT kanál o dabingu' && p[:avatar_url] == 'https://yt.cdn/avatar_hd.jpg'
 end
 
 test('fetch_platform_profile raises on HTTP error') do
-  stub_get(FakeErrorResponse.new('', '404'))
+  stub_post_json(FakeErrorResponse.new('', '404'))
   raised = false
   begin
     build_youtube.fetch_platform_profile
   rescue StandardError => e
-    raised = e.message.include?('YouTube') || e.message.include?('404')
+    raised = e.message.include?('Browserless') || e.message.include?('404')
   end
-  restore_get
+  restore_post_json
   raised
 end
 

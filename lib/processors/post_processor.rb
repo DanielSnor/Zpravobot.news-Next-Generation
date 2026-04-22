@@ -769,6 +769,20 @@ module Processors
         end
       end
     
+      # Thumbnail-only video post: Syndication returned only a thumbnail (no mp4 URL), which
+      # was uploaded as type:'image' — so media_ids is NOT empty and the block above was skipped.
+      # But the formatter (Tier 1.5/2 path) also did not add a URL to text, so we add it here.
+      if post.respond_to?(:raw) && post.raw.is_a?(Hash) && post.raw[:video_thumbnail_only]
+        video_url_already_added_th = post.raw[:video_url_added]
+        raw_url_th = post.respond_to?(:url) ? post.url.to_s : ''
+        url_th = build_trim_fallback_url(post, source_config) || raw_url_th
+        unless video_url_already_added_th || url_th.empty? ||
+               text.include?(url_th) || (!raw_url_th.empty? && raw_url_th != url_th && text.include?(raw_url_th))
+          video_prefix = source_config.dig(:formatting, :prefix_video) || '🎬'
+          text = "#{text}\n#{video_prefix} #{url_th}"
+        end
+      end
+
       # Profile card blocker: pokud text obsahuje mention ale nemáme žádná média,
       # přidáme průhledný 1×1px PNG aby Mastodon nezobrazil profile card prvního zmíněného profilu.
       if media_ids.empty? && contains_mention?(text)
@@ -817,6 +831,13 @@ module Processors
       end
 
       return [] if uploadable.empty?
+
+      # Mastodon forbids mixing video and images in a single post.
+      # When both are present, keep only the video (richer content).
+      if uploadable.any? { |m| m.type == 'video' } && uploadable.any? { |m| m.type == 'image' }
+        log "Mixed media (video + image) detected — dropping images, keeping video only"
+        uploadable = uploadable.reject { |m| m.type == 'image' }
+      end
 
       publisher_opts = max_size ? { max_size: max_size } : {}
 

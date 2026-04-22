@@ -331,6 +331,7 @@ module Processors
 
       # Media
       media = []
+      video_thumbnail_only = false
       syndication[:photos].each do |photo_url|
         media << Media.new(type: 'image', url: photo_url, alt_text: '')
       end
@@ -338,8 +339,12 @@ module Processors
         alt = (syndication[:text] || fallback_post&.text).to_s.strip
         media << Media.new(type: 'video', url: syndication[:video_url], alt_text: alt, url_variants: syndication[:video_url_variants])
       elsif syndication[:video_thumbnail] && media.empty?
+        # Syndication returned only a thumbnail (no direct mp4 URL). Upload it as a static
+        # image so the post has an attachment, but mark the flag so publish_post knows to
+        # append the tweet URL — the formatter won't add it for Tier 1.5/2 posts.
         alt = (syndication[:text] || fallback_post&.text).to_s.strip
         media << Media.new(type: 'image', url: syndication[:video_thumbnail], alt_text: alt)
+        video_thumbnail_only = true
       end
 
       # Typové příznaky z fallback_post (IFTTT/RSS jsou autoritativnější)
@@ -390,6 +395,7 @@ module Processors
           nitter_failed: true,
           ifttt_trigger: ifttt_trigger,
           video_thumbnail_url: syndication[:video_thumbnail],
+          video_thumbnail_only: video_thumbnail_only,
           link_card_url: link_card_url,  # Article URL pro OGP fetch (nil pokud nebyla nalezena)
           card_image: syndication[:card_image] # Twitter pre-fetched card image (pbs.twimg.com)
         }

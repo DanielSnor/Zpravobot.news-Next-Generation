@@ -383,8 +383,16 @@ class ProfileSyncRunner
     platform_config = @config_loader.load_platform_config('youtube')
     mentions_config = platform_config[:mentions] || { type: 'none', value: '' }
 
+    raw_token = platform_config.dig(:source, :browserless_token)
+    browserless_token = resolve_env_value(raw_token) || ENV['BROWSERLESS_TOKEN']
+    raise 'BROWSERLESS_TOKEN not configured' if browserless_token.nil? || browserless_token.empty?
+
+    global = @config_loader.load_global_config
+
     syncer = Syncers::YoutubeProfileSyncer.new(
       youtube_handle: youtube_handle,
+      browserless_token: browserless_token,
+      browserless_api: global.dig(:infrastructure, :browserless_api),
       mastodon_instance: source.mastodon_instance,
       mastodon_token: source.mastodon_token,
       language: source.data.fetch(:language, 'cs'),
@@ -526,8 +534,16 @@ class ProfileSyncRunner
     platform_config = @config_loader.load_platform_config('youtube')
     mentions_config = platform_config[:mentions] || { type: 'none', value: '' }
 
+    raw_token = platform_config.dig(:source, :browserless_token)
+    browserless_token = resolve_env_value(raw_token) || ENV['BROWSERLESS_TOKEN']
+    raise 'BROWSERLESS_TOKEN not configured' if browserless_token.nil? || browserless_token.empty?
+
+    global = @config_loader.load_global_config
+
     syncer = Syncers::YoutubeProfileSyncer.new(
       youtube_handle: youtube_handle,
+      browserless_token: browserless_token,
+      browserless_api: global.dig(:infrastructure, :browserless_api),
       mastodon_instance: source.mastodon_instance,
       mastodon_token: source.mastodon_token,
       language: source.data.fetch(:language, 'cs'),
