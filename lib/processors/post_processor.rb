@@ -832,6 +832,13 @@ module Processors
 
       return [] if uploadable.empty?
 
+      # Mastodon forbids mixing video and images in a single post.
+      # When both are present, keep only the video (richer content).
+      if uploadable.any? { |m| m.type == 'video' } && uploadable.any? { |m| m.type == 'image' }
+        log "Mixed media (video + image) detected — dropping images, keeping video only"
+        uploadable = uploadable.reject { |m| m.type == 'image' }
+      end
+
       publisher_opts = max_size ? { max_size: max_size } : {}
 
       # If we have pre-downloaded video bytes, upload the cached video directly
