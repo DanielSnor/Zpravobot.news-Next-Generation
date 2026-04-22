@@ -148,7 +148,8 @@ ifttt_skips = {
 
 # ── Runner logy ───────────────────────────────────────────────
 
-log_files_for('runner', window_from, window_to).each do |path|
+runner_log_files = log_files_for('runner', window_from, window_to)
+runner_log_files.each do |path|
   foreach_line(path) do |line|
     next unless in_window?(line, window_from, window_to)
 
@@ -175,7 +176,8 @@ end
 
 # ── IFTTT logy ────────────────────────────────────────────────
 
-log_files_for('ifttt_processor', window_from, window_to).each do |path|
+ifttt_log_files = log_files_for('ifttt_processor', window_from, window_to)
+ifttt_log_files.each do |path|
   foreach_line(path) do |line|
     next unless in_window?(line, window_from, window_to)
 
@@ -287,6 +289,145 @@ end
                     synced: stats[:synced], skipped: stats[:skipped], errors: stats[:errors] }
 end
 
+# ── Health JSON agregace ──────────────────────────────────────
+#
+# Čte log/health/health_YYYYMMDD_HHMMSS.json (jeden soubor každých ~5 min).
+# Z "Processing → Error Sources" sub-checku extrahuje source_id se strukturovanými
+# daty (SQL výsledek). "Problematic Sources" details jsou plain stringy — ignorujeme,
+# source_id bereme ze Error Sources.
+
+HEALTH_ENTRY_LIMIT = 20  # max last_entries per problematický zdroj
+
+LOG_LINE_RE = /^\[\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\]\s*(?:INFO|ERROR|WARN|DEBUG|FATAL):\s*/
+
+# Extrahuje ERROR/WARN log řádky pro daný source_id v rámci okna.
+# Vrací { total_errors:, errors_aggregated: [...], last_entries: [...] }
+def source_log_detail(source_id, runner_files, ifttt_files, t_from, t_to, limit)
+  pattern = /\[#{Regexp.escape(source_id)}\]/
+  entries = []
+
+  (runner_files + ifttt_files).each do |path|
+    foreach_line(path) do |line|
+      next unless in_window?(line, t_from, t_to)
+      next unless line.match?(/\] (?:ERROR|WARN):/)
+      next unless line.match?(pattern)
+      ts = parse_ts(line)
+      next unless ts
+      level   = line.include?('] ERROR:') ? 'error' : 'warn'
+      message = line.sub(LOG_LINE_RE, '').strip
+      entries << { ts: ts, level: level, message: message }
+    end
+  end
+
+  # Agregace po normalizované zprávě
+  agg = Hash.new { |h, k| h[k] = { count: 0, first: nil, last: nil } }
+  entries.each do |e|
+    a = agg[normalize_error(e[:message])]
+    a[:count] += 1
+    a[:first] ||= e[:ts].strftime('%H:%M:%S')
+    a[:last]   = e[:ts].strftime('%H:%M:%S')
+  end
+
+  {
+    total_errors:      entries.size,
+    errors_aggregated: agg.sort_by { |_, v| -v[:count] }
+                          .map { |msg, v| { message: msg, **v } },
+    last_entries:      entries.last(limit)
+                              .map { |e| { ts: e[:ts].strftime('%H:%M:%S'),
+                                           level: e[:level], message: e[:message] } },
+  }
+end
+
+health_dir            = LOG_DIR ? File.join(LOG_DIR, 'health') : nil
+health_snaps_total    = 0
+health_snaps_ok       = 0
+health_checks_tally   = Hash.new { |h, k| h[k] = { 'ok' => 0, 'warning' => 0, 'critical' => 0 } }
+health_non_ok_map     = {}   # "check|level|message" → { check:, level:, message:, count:, first:, last: }
+prob_source_map       = Hash.new { |h, k| h[k] = { count: 0, first: nil, last: nil } }
+
+if health_dir && Dir.exist?(health_dir)
+  date_from_s = window_from.strftime('%Y%m%d')
+  date_to_s   = window_to.strftime('%Y%m%d')
+
+  Dir.glob(File.join(health_dir, 'health_*.json')).sort.each do |path|
+    fname = File.basename(path)
+    next unless (m = fname.match(/health_(\d{8})_\d{6}\.json/))
+    next unless m[1] >= date_from_s && m[1] <= date_to_s
+
+    begin
+      data = JSON.parse(File.read(path, encoding: 'UTF-8'))
+      ts   = Time.parse(data['timestamp'])
+    rescue JSON::ParserError, ArgumentError, Errno::ENOENT
+      next
+    end
+    next unless ts >= window_from && ts < window_to
+
+    health_snaps_total += 1
+    health_snaps_ok    += 1 if data['overall_status'] == 'ok'
+
+    (data['checks'] || []).each do |check|
+      name  = check['name']
+      level = check['level'] || 'ok'
+      tally = health_checks_tally[name]
+      tally[level] = (tally[level] || 0) + 1
+
+      if level != 'ok'
+        # Deduplikované non-ok události (stejná zpráva → sloučíme, first/last/count)
+        key = "#{name}|#{level}|#{check['message']}"
+        e   = health_non_ok_map[key] ||= {
+          check: name, level: level, message: check['message'],
+          occurrences: 0, first: nil, last: nil
+        }
+        e[:occurrences] += 1
+        e[:first] ||= ts.strftime('%Y-%m-%d %H:%M')
+        e[:last]   = ts.strftime('%Y-%m-%d %H:%M')
+
+        # Extrahuj problematické source_id z Processing → Error Sources
+        next unless name == 'Processing'
+        (check['details'] || []).each do |sub|
+          next unless sub.is_a?(Hash) &&
+                      sub['name'] == 'Error Sources' &&
+                      sub['level'] != 'ok'
+          (sub['details'] || []).each do |src|
+            next unless src.is_a?(Hash) && (sid = src['source_id'])
+            s = prob_source_map[sid]
+            s[:count] += 1
+            s[:first] ||= ts.strftime('%Y-%m-%d %H:%M')
+            s[:last]   = ts.strftime('%Y-%m-%d %H:%M')
+          end
+        end
+      end
+    end
+  end
+end
+
+health_ok_rate = health_snaps_total > 0 ? (health_snaps_ok.to_f / health_snaps_total).round(4) : nil
+
+health_out = {
+  snapshots_in_window: health_snaps_total,
+  snapshots_ok:        health_snaps_ok,
+  ok_rate:             health_ok_rate,
+  checks_summary:      health_checks_tally,
+  non_ok_events:       health_non_ok_map.values.sort_by { |e| e[:first].to_s },
+}
+
+# ── Per-source detail pro problematické zdroje ────────────────
+
+problematic_sources_out = prob_source_map
+  .sort_by { |_, v| -v[:count] }
+  .map do |sid, v|
+    {
+      source_id:          sid,
+      health_appearances: v[:count],
+      first_seen:         v[:first],
+      last_seen:          v[:last],
+      log_entries:        source_log_detail(
+                            sid, runner_log_files, ifttt_log_files,
+                            window_from, window_to, HEALTH_ENTRY_LIMIT
+                          ),
+    }
+  end
+
 # ── Platform stats ────────────────────────────────────────────
 
 platforms_out = {}
@@ -331,9 +472,11 @@ report = {
   platforms:         platforms_out,
   ifttt_events:      ifttt_events,
   ifttt_skips:       ifttt_skips,
-  top_runner_errors: top_runner_errors,
-  top_ifttt_errors:  top_ifttt_errors,
-  profile_sync:      profile_sync,
+  top_runner_errors:    top_runner_errors,
+  top_ifttt_errors:     top_ifttt_errors,
+  profile_sync:         profile_sync,
+  health:               health_out,
+  problematic_sources:  problematic_sources_out,
 }
 
 puts options[:pretty] ? JSON.pretty_generate(report) : report.to_json
