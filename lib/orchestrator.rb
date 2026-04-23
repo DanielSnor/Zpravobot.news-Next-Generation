@@ -4,6 +4,7 @@ require 'time' # Pro Time.parse v source_due?
 require_relative 'logging'
 require_relative 'config/config_loader'
 require_relative 'support/threading_support'
+require_relative 'stats/run_stats'
 require_relative 'support/loggable'
 require_relative 'state/state_manager'
 require_relative 'adapters/rss_adapter'
@@ -45,8 +46,7 @@ module Orchestrator
 	  @dry_run = false
 	  @first_run = first_run
 	  @verbose = verbose
-	  @stats = { processed: 0, published: 0, skipped: 0, errors: 0 }
-	  @publishers_cache = {}
+	  @stats = Stats::RunStats.new(processed: 0, published: 0, skipped: 0, errors: 0)
 	  @thread_cache = {} # Pro ThreadingSupport modul
 	  @last_fingerprint_cleanup = nil
 
@@ -85,7 +85,7 @@ module Orchestrator
 	  @first_run = first_run
 	  @post_processor = nil  # Reset to pick up new dry_run setting
 	  @tweet_processor = nil # Reset so it inherits new @post_processor + dry_run
-	  @stats = { processed: 0, published: 0, skipped: 0, errors: 0 }
+	  @stats = Stats::RunStats.new(processed: 0, published: 0, skipped: 0, errors: 0)
 
 	  if exclude_platform && !VALID_PLATFORMS.include?(exclude_platform)
 		raise ArgumentError, "Invalid platform: #{exclude_platform}. Valid: #{VALID_PLATFORMS.join(', ')}"
@@ -130,7 +130,7 @@ module Orchestrator
 	  @first_run = first_run
 	  @post_processor = nil
 	  @tweet_processor = nil
-	  @stats = { processed: 0, published: 0, skipped: 0, errors: 0 }
+	  @stats = Stats::RunStats.new(processed: 0, published: 0, skipped: 0, errors: 0)
 
 	  log_info("Running source: #{source_id}")
 
@@ -151,7 +151,7 @@ module Orchestrator
 	  @first_run = first_run
 	  @post_processor = nil
 	  @tweet_processor = nil
-	  @stats = { processed: 0, published: 0, skipped: 0, errors: 0 }
+	  @stats = Stats::RunStats.new(processed: 0, published: 0, skipped: 0, errors: 0)
 
 	  unless VALID_PLATFORMS.include?(platform)
 		raise ArgumentError, "Invalid platform: #{platform}. Valid: #{VALID_PLATFORMS.join(', ')}"
@@ -181,7 +181,7 @@ module Orchestrator
 	# Process a single source
 	def process_source(source)
 	  log_info("[#{source.id}] Processing...")
-	  @stats[:processed] += 1
+	  @stats.increment(:processed)
 
 	  # Reset thread cache for this source at start of processing
 	  @thread_cache[source.id] = {}
@@ -242,7 +242,7 @@ module Orchestrator
 	  log_error("[#{source.id}] Error: #{e.message}")
 	  @state_manager.mark_check_error(source.id, e.message)
 	  @state_manager.log_activity(source.id, 'error', { message: e.message, backtrace: e.backtrace.first(3) })
-	  @stats[:errors] += 1
+	  @stats.increment(:errors)
 	end
 
 	# ============================================
@@ -274,21 +274,21 @@ module Orchestrator
 	  # Update stats based on result
 	  case result.status
 	  when :published
-		@stats[:published] += 1
+		@stats.increment(:published)
 		# Update thread cache (Orchestrator-specific)
 		update_thread_cache(source.id, post, result.mastodon_id) if result.mastodon_id
 	  when :skipped
-		@stats[:skipped] += 1
+		@stats.increment(:skipped)
 	  when :rate_limited
-		@stats[:rate_limited] = (@stats[:rate_limited] || 0) + 1
+		@stats.increment(:rate_limited)
 	  when :failed
-		@stats[:errors] += 1
+		@stats.increment(:errors)
 	  end
 
 	  result.status
 	rescue Zpravobot::AccountRateLimitedError => e
 	  log_warn("[#{source.id}] Rate limited (#{e.retry_after}s) — deferring")
-	  @stats[:rate_limited] = (@stats[:rate_limited] || 0) + 1
+	  @stats.increment(:rate_limited)
 	  :rate_limited
 	end
 
@@ -306,7 +306,7 @@ module Orchestrator
 
 	  unless post_id
 		log_warn("[#{source.id}] Cannot extract post_id from URL: #{rss_post.url}")
-		@stats[:skipped] += 1
+		@stats.increment(:skipped)
 		return :skipped
 	  end
 
@@ -318,16 +318,16 @@ module Orchestrator
 	  )
 
 	  case result
-	  when :published then @stats[:published] += 1
-	  when :skipped   then @stats[:skipped] += 1
-	  when :rate_limited then @stats[:rate_limited] = (@stats[:rate_limited] || 0) + 1
-	  when :failed    then @stats[:errors] += 1
+	  when :published then @stats.increment(:published)
+	  when :skipped   then @stats.increment(:skipped)
+	  when :rate_limited then @stats.increment(:rate_limited)
+	  when :failed    then @stats.increment(:errors)
 	  end
 
 	  result
 	rescue Zpravobot::AccountRateLimitedError => e
 	  log_warn("[#{source.id}] Rate limited (#{e.retry_after}s) — deferring")
-	  @stats[:rate_limited] = (@stats[:rate_limited] || 0) + 1
+	  @stats.increment(:rate_limited)
 	  :rate_limited
 	end
 
@@ -455,7 +455,7 @@ module Orchestrator
 	  state = @state_manager.get_source_state(source.id)
 	  if state
 		log_info("[#{source.id}] Already has state, skipping")
-		@stats[:skipped] += 1
+		@stats.increment(:skipped)
 		return
 	  end
 
@@ -466,7 +466,7 @@ module Orchestrator
 
 		if posts.empty?
 		  log_info("[#{source.id}] No posts found")
-		  @stats[:skipped] += 1
+		  @stats.increment(:skipped)
 		  @state_manager.mark_check_success(source.id, posts_published: 0)
 		  return
 		end
@@ -482,7 +482,7 @@ module Orchestrator
 
 		if valid_post.nil?
 		  log_info("[#{source.id}] No valid posts found")
-		  @stats[:skipped] += 1
+		  @stats.increment(:skipped)
 		  @state_manager.mark_check_success(source.id, posts_published: 0)
 		  return
 		end
@@ -499,11 +499,11 @@ module Orchestrator
 
 		log_info("[#{source.id}] ✅ Initialized with post: #{post_id}")
 		@state_manager.mark_check_success(source.id, posts_published: 0)
-		@stats[:processed] += 1
+		@stats.increment(:processed)
 	  rescue StandardError => e
 		log_error("[#{source.id}] First run error: #{e.message}")
 		@state_manager.mark_check_error(source.id, e.message)
-		@stats[:errors] += 1
+		@stats.increment(:errors)
 	  end
 	end
 

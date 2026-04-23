@@ -189,6 +189,13 @@ tests:
     exit_code_reliable: false
     description: "ConfigLoader source enumeration and merging"
 
+  test_run_stats:
+    file: test/test_run_stats.rb
+    category: unit
+    tags: [offline, stats]
+    exit_code_reliable: true
+    description: "Stats::RunStats increment/fetch/to_h (REFACTOR-1)"
+
   test_source_config_to_processor_hash:
     file: test/test_source_config_to_processor_hash.rb
     category: unit
