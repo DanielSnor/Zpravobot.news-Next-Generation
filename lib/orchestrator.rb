@@ -348,37 +348,7 @@ module Orchestrator
 	# Build source config hash from SourceConfig object
 	# PostProcessor expects a Hash, not SourceConfig
 	def build_source_config_hash(source)
-	  {
-		id: source.id,
-		platform: source.platform,
-		source: {
-		  handle: source.source_handle,
-		  nitter_instance: source.nitter_instance
-		},
-		formatting: source.formatting.merge(
-		  source_name: source.source_name,
-		  max_length: source.post_length
-		),
-		filtering: source.filtering,
-		processing: source.processing.merge(
-		  trim_strategy: source.trim_strategy,
-		  smart_tolerance_percent: source.processing.fetch(:smart_tolerance_percent, 12),
-		  url_domain_fixes: source.url_domain_fixes,
-		  content_replacements: source.content_replacements
-		),
-		target: {
-		  mastodon_account: source.mastodon_account,
-		  mastodon_instance: source.mastodon_instance,
-		  visibility: source.visibility
-		},
-		content: source.content_config,
-		thread_handling: source.thread_handling,
-		nitter_processing: source.nitter_processing,
-		url: source.url_config,
-		rss_source_type: source.respond_to?(:rss_source_type) ? source.rss_source_type : nil,
-		mentions: build_mentions_config(source),
-		_mastodon_token: source.mastodon_token
-	  }
+	  source.to_processor_hash(mentions: build_mentions_config(source))
 	end
 
 	# Build mentions config — enriches domain_suffix and local_or_domain_suffix for Twitter sources
