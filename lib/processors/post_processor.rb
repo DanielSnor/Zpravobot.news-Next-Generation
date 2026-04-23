@@ -23,55 +23,11 @@ require_relative '../support/loggable'
 require_relative '../errors'
 require_relative 'pipeline_steps'
 
-# Media deduplication (lazy loaded — guards against LoadError in unit tests)
-begin
-  require_relative 'media_dedup'
-  MEDIA_DEDUP_AVAILABLE = true unless defined?(MEDIA_DEDUP_AVAILABLE)
-rescue LoadError
-  MEDIA_DEDUP_AVAILABLE = false unless defined?(MEDIA_DEDUP_AVAILABLE)
-end
-
-# HttpClient for video pre-download in dedup step (lazy loaded)
-begin
-  require_relative '../utils/http_client'
-  HTTP_CLIENT_AVAILABLE = true unless defined?(HTTP_CLIENT_AVAILABLE)
-rescue LoadError
-  HTTP_CLIENT_AVAILABLE = false unless defined?(HTTP_CLIENT_AVAILABLE)
-end
-
-# ThumbnailPhash for aHash via ImageMagick (lazy loaded)
-begin
-  require_relative 'thumbnail_phash'
-  THUMBNAIL_PHASH_AVAILABLE = true unless defined?(THUMBNAIL_PHASH_AVAILABLE)
-rescue LoadError
-  THUMBNAIL_PHASH_AVAILABLE = false unless defined?(THUMBNAIL_PHASH_AVAILABLE)
-end
-
-# OGP fetcher for link card preview images (lazy loaded)
-begin
-  require_relative '../utils/ogp_fetcher'
-  OGP_FETCHER_AVAILABLE = true unless defined?(OGP_FETCHER_AVAILABLE)
-rescue LoadError
-  OGP_FETCHER_AVAILABLE = false unless defined?(OGP_FETCHER_AVAILABLE)
-end
-
-# Formatters (lazy loaded - expected to be required by caller)
-# require_relative '../formatters/twitter_formatter'
-# require_relative '../formatters/bluesky_formatter'
-# require_relative '../formatters/rss_formatter'
-# require_relative '../formatters/youtube_formatter'
-# require_relative '../formatters/universal_formatter'
-
-# Publishers (lazy loaded)
-# require_relative '../publishers/mastodon_publisher'
-
-# Edit detection (lazy loaded)
-begin
-  require_relative 'edit_detector'
-  EDIT_DETECTOR_AVAILABLE = true
-rescue LoadError
-  EDIT_DETECTOR_AVAILABLE = false
-end
+require_relative 'media_dedup'
+require_relative '../utils/http_client'
+require_relative 'thumbnail_phash'
+require_relative '../utils/ogp_fetcher'
+require_relative 'edit_detector'
 
 MENTION_BLOCKER_PNG_PATH = File.join(__dir__, '../../assets/white_strip_1280x1.png')
 
@@ -131,7 +87,7 @@ module Processors
 
       # Pipeline steps (extracted to reduce cyclomatic complexity)
       @dedup_step = DeduplicationStep.new(state_manager)
-      @edit_step = EditDetectionStep.new(state_manager, EDIT_DETECTOR_AVAILABLE, logger: logger)
+      @edit_step = EditDetectionStep.new(state_manager, true, logger: logger)
       @filter_step = ContentFilterStep.new
       @url_step = UrlProcessingStep.new(config_loader)
 
@@ -222,7 +178,7 @@ module Processors
       # Step 6b: Video dedup check (opt-in per source, skipped in dry_run)
       video_dedup_hours = source_config.dig(:processing, :video_dedup_hours)
       video_data_cache = nil
-      if !@dry_run && video_dedup_hours && MEDIA_DEDUP_AVAILABLE && HTTP_CLIENT_AVAILABLE
+      if !@dry_run && video_dedup_hours
         max_video_mb = source_config.dig(:processing, :max_video_size_mb)
         max_video_bytes = max_video_mb ? max_video_mb * 1024 * 1024 : nil
         video_data_cache = check_video_dedup(source_id, post_id, post, video_dedup_hours.to_i, max_video_bytes: max_video_bytes)
@@ -233,7 +189,7 @@ module Processors
       end
 
       # Step 6c: OGP fetch (opt-in, only when post has no media and feature is available)
-      if !@dry_run && OGP_FETCHER_AVAILABLE &&
+      if !@dry_run &&
          source_config.dig(:processing, :ogp_fetch_link_card)
         if post.media.empty?
           ogp_url = fetch_ogp_image_for_post(post, processed_text, source_id)
@@ -301,7 +257,7 @@ module Processors
 
       # Step 9b: Store video fingerprint after successful publication.
       # Only stored when phash is available — records without phash can never trigger dedup.
-      if video_data_cache.is_a?(Hash) && video_data_cache[:phash] && MEDIA_DEDUP_AVAILABLE
+      if video_data_cache.is_a?(Hash) && video_data_cache[:phash]
         begin
           media_dedup.store!(source_id, video_data_cache[:data],
                              post_id: post_id, media_url: video_data_cache[:url],
@@ -385,7 +341,7 @@ module Processors
 
         # pHash path: perceptual hash via ImageMagick, robust against re-encoding.
         # If phash is nil (ImageMagick unavailable or frame extraction failed), skip dedup entirely.
-        phash = THUMBNAIL_PHASH_AVAILABLE ? Processors::ThumbnailPhash.compute(video_data) : nil
+        phash = Processors::ThumbnailPhash.compute(video_data)
         if phash && media_dedup.duplicate_by_phash?(source_id, phash, hours: hours)
           log_info("[#{source_id}] Video dedup (pHash): skipping duplicate for post #{post_id}")
           return :duplicate
@@ -1045,8 +1001,6 @@ module Processors
     # @param tco_url [String] t.co URL
     # @return [String, nil] Expanded URL or nil on failure
     def expand_tco_url(tco_url)
-      return nil unless HTTP_CLIENT_AVAILABLE
-
       response = HttpClient.head(tco_url, open_timeout: 3, read_timeout: 3)
       response['location'] if response.is_a?(Net::HTTPRedirection)
     rescue StandardError
