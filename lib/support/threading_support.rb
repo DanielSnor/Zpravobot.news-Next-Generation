@@ -27,6 +27,7 @@
 
 module Support
   module ThreadingSupport
+    MAX_THREAD_CACHE_SIZE = 10_000
     # Resolve Mastodon parent ID for thread continuation
     #
     # Hledá v tomto pořadí:
@@ -72,8 +73,10 @@ module Support
       return unless author_handle
 
       @thread_cache ||= {}
-      @thread_cache[source_id] ||= {}
-      @thread_cache[source_id][author_handle] = mastodon_id
+      key = [source_id, author_handle]
+      @thread_cache.delete(key)
+      @thread_cache[key] = mastodon_id
+      @thread_cache.shift if @thread_cache.size > MAX_THREAD_CACHE_SIZE
 
       log_threading("Cached #{mastodon_id} for @#{author_handle}", source_id)
     end
@@ -102,7 +105,7 @@ module Support
       author_handle = extract_author_handle(post)
       return nil unless author_handle
 
-      @thread_cache.dig(source_id, author_handle)
+      @thread_cache[[source_id, author_handle]]
     end
 
     # Extract author handle from post
