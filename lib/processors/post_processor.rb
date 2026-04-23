@@ -369,7 +369,6 @@ module Processors
     # Process post as update to existing Mastodon status
     def process_as_update(post, source_config, edit_result, options)
       source_id = source_config[:id]
-      post_id = post.id || post.url
       mastodon_id = edit_result[:mastodon_id]
 
       # Guard: if mastodon_id is missing, we can't update — publish as new instead

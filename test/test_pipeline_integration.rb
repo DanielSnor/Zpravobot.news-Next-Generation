@@ -708,7 +708,7 @@ config_string = {
   '_mastodon_token' => 'test_token'
 }
 
-result_string = processor.process(post, config_string)
+_result_string = processor.process(post, config_string)
 # Výsledek by měl být buď error (nil platform) nebo :published s nil source_id
 # Důležité je, že symbol keys fungují a string keys ne
 test("String keys: source_id je nil (bez symbol keys)", nil, config_string[:id])

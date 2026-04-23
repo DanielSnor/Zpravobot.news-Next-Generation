@@ -107,8 +107,7 @@ module Processors
           
           # Handle global flag - Ruby gsub is always global
           result = result.gsub(regex, replacement)
-        rescue RegexpError => e
-          # Skip invalid patterns (same as IFTTT try/catch)
+        rescue RegexpError
           next
         end
       end
