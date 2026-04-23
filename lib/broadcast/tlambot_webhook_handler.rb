@@ -114,8 +114,7 @@ module Broadcast
     def extract_targets(mentions)
       # Get all mentioned usernames except tlambot itself
       other_mentions = (mentions || [])
-        .map { |m| m[:username]&.downcase }
-        .compact
+        .filter_map { |m| m[:username]&.downcase }
         .reject { |u| u == @trigger_account }
 
       # No other mentions → broadcast all
@@ -147,7 +146,7 @@ module Broadcast
       text = HtmlCleaner.clean(html)
 
       # Build list of all usernames to strip (tlambot + all mentioned)
-      all_mentioned = (mentions || []).map { |m| m[:username]&.downcase }.compact
+      all_mentioned = (mentions || []).filter_map { |m| m[:username]&.downcase }
       all_mentioned << @trigger_account unless all_mentioned.include?(@trigger_account)
 
       # Strip each mention pattern

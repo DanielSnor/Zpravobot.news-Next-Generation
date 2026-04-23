@@ -68,8 +68,7 @@ module Config
 
       sources_dir = File.join(@config_dir, 'sources')
       return [] unless Dir.exist?(sources_dir)
-      # Note: Using map + compact instead of filter_map for Ruby 2.6 compatibility
-      @all_sources = Dir.glob(File.join(sources_dir, '*.yml')).map do |file|
+      @all_sources = Dir.glob(File.join(sources_dir, '*.yml')).filter_map do |file|
         source_id = File.basename(file, '.yml')
 
         # Skip example files
@@ -80,7 +79,7 @@ module Config
       rescue StandardError => e
         warn "[ConfigLoader] Error loading #{source_id}: #{e.message}"
         nil
-      end.compact
+      end
     end
     # Load sources by platform
     # @param platform [String] Platform name (twitter, bluesky, rss, youtube)
@@ -119,11 +118,10 @@ module Config
     def source_ids
       sources_dir = File.join(@config_dir, 'sources')
       return [] unless Dir.exist?(sources_dir)
-      # Note: Using map + compact instead of filter_map for Ruby 2.6 compatibility
-      Dir.glob(File.join(sources_dir, '*.yml')).map do |file|
+      Dir.glob(File.join(sources_dir, '*.yml')).filter_map do |file|
         source_id = File.basename(file, '.yml')
         example_file?(source_id) ? nil : source_id
-      end.compact
+      end
     end
     # Clear cache (useful for reloading)
     def clear_cache

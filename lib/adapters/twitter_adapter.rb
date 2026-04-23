@@ -76,7 +76,7 @@ module Adapters
       items = parse_rss(xml)
       log "Found #{items.length} items"
 
-      posts = items.map { |item| convert_to_post(item) }.compact
+      posts = items.filter_map { |item| convert_to_post(item) }
 
       # Filter by date if specified
       if since

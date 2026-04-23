@@ -184,10 +184,10 @@ class SourceGenerator
 
   def load_aggregator_accounts
     accounts = load_all_mastodon_accounts
-    aggregators = accounts.map do |id, config|
+    aggregators = accounts.filter_map do |id, config|
       next unless config.is_a?(Hash) && config['aggregator'] == true
       { id: id, config: config }
-    end.compact
+    end
 
     # Razeni: betabot vzdy prvni, ostatni abecedne
     aggregators.sort_by { |acc| acc[:id] == 'betabot' ? '' : acc[:id] }

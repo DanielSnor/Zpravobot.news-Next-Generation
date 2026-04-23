@@ -253,10 +253,9 @@ module Adapters
       feed_items = response['feed']
       log "Received #{feed_items.count} items from API"
       
-      # Using map + compact instead of filter_map for Ruby 2.6 compatibility
-      posts = feed_items.map do |item|
+      posts = feed_items.filter_map do |item|
         post = parse_feed_item(item)
-        
+
         # Filter by date
         if since && post.published_at <= since
           log "Post #{post.id.split('/').last}: filtered by date (#{post.published_at.iso8601} <= #{since.iso8601})", level: :debug
@@ -267,7 +266,7 @@ module Adapters
         else
           post
         end
-      end.compact
+      end
 
       log "Returning #{posts.count} posts after filtering", level: :success
       posts

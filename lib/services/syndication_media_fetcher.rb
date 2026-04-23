@@ -204,7 +204,7 @@ module Services
         return mp4s.sort_by { |v|
           m = v['src'].to_s.match(%r{/(\d+)x(\d+)/})
           m ? -(m[1].to_i * m[2].to_i) : 0
-        }.map { |v| v['src'] }.compact
+        }.filter_map { |v| v['src'] }
       end
 
       # Structure 2: mediaDetails[n].video_info.variants s klíči content_type/url
@@ -219,7 +219,7 @@ module Services
       mp4s2.sort_by { |v|
         m = v['url'].to_s.match(%r{/(\d+)x(\d+)/})
         m ? -(m[1].to_i * m[2].to_i) : 0
-      }.map { |v| v['url'] }.compact
+      }.filter_map { |v| v['url'] }
     end
 
     # Extract best-quality mp4 video URL from response.
