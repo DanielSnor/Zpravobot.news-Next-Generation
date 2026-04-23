@@ -98,23 +98,16 @@ module Processors
       youtube.com/
     ].freeze
 
-    # Result struct for processing outcome
-    Result = Struct.new(:status, :mastodon_id, :error, :skipped_reason, keyword_init: true) do
-      def published?
-        status == :published
-      end
-      
-      def skipped?
-        status == :skipped
-      end
-      
-      def failed?
-        status == :failed
+    # Result value object for processing outcome (immutable)
+    Result = Data.define(:status, :mastodon_id, :error, :skipped_reason) do
+      def initialize(status:, mastodon_id: nil, error: nil, skipped_reason: nil)
+        super
       end
 
-      def rate_limited?
-        status == :rate_limited
-      end
+      def published?    = status == :published
+      def skipped?      = status == :skipped
+      def failed?       = status == :failed
+      def rate_limited? = status == :rate_limited
     end
 
     # Dependencies

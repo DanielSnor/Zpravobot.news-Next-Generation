@@ -602,7 +602,7 @@ mock_tweet_proc_user.define_singleton_method(:process) do |**kwargs|
   :published
 end
 parsed_with_handle = Webhook::WebhookPayloadParser::ParsedPayload.new(
-  bot_id: 'drozd', post_id: '999', username: 'drozd',
+  bot_id: 'drozd', post_id: '999', username: 'drozd', text: 'test',
   bot_config: { id: 'drozd_twitter', source: { handle: 'mzvcr' } },
   source_id: 'drozd_twitter'
 )
