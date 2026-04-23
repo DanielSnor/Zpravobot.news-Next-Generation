@@ -11,12 +11,23 @@ require_relative '../lib/formatters/youtube_formatter'
 
 # Mock Post class for testing
 class Post
-  attr_accessor :text, :title, :url, :author, :is_repost, :is_quote, 
-                :reposted_by, :quoted_post, :media, :raw
+  attr_accessor :text, :title, :url, :author, :is_repost, :is_quote, :is_reply,
+                :is_thread_post, :reposted_by, :quoted_post, :media, :raw, :poll_data
 
   def initialize(attrs = {})
+    @is_repost = false
+    @is_quote = false
+    @is_reply = false
+    @is_thread_post = false
+    @has_video = false
+    @media = []
     attrs.each { |k, v| send("#{k}=", v) }
   end
+
+  def has_video=(v); @has_video = v; end
+  def has_video; @has_video; end
+  def has_video?; @has_video; end
+  def has_poll?; false; end
 
   def has_title?
     !title.to_s.empty?

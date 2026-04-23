@@ -53,7 +53,8 @@ end
 # Mock Post class for testing
 class MockPost
   attr_reader :platform, :id, :url, :text, :published_at, :author,
-              :is_repost, :is_quote, :reposted_by, :quoted_post, :raw
+              :is_repost, :is_quote, :is_reply, :is_thread_post,
+              :reposted_by, :quoted_post, :raw, :media, :title, :poll_data
 
   def initialize(attrs = {})
     @platform = attrs[:platform] || 'bluesky'
@@ -64,9 +65,27 @@ class MockPost
     @author = attrs[:author]
     @is_repost = attrs[:is_repost] || false
     @is_quote = attrs[:is_quote] || false
+    @is_reply = attrs[:is_reply] || false
+    @is_thread_post = attrs[:is_thread_post] || false
     @reposted_by = attrs[:reposted_by]
     @quoted_post = attrs[:quoted_post]
     @raw = attrs[:raw] || {}
+    @media = attrs[:media] || []
+    @title = attrs[:title]
+    @poll_data = attrs[:poll_data]
+    @has_video = attrs[:has_video] || false
+  end
+
+  def has_video
+    @has_video
+  end
+
+  def has_video?
+    @has_video
+  end
+
+  def has_poll?
+    false
   end
 
   def self_repost?
