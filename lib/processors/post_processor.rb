@@ -35,13 +35,6 @@ module Processors
   class PostProcessor
     include Support::Loggable
 
-    # Platform/tracking domains to skip when looking for article URLs in post text.
-    # Avoids fetching OGP from tweet URLs, Bluesky links, or our own domains.
-    OGP_SKIP_DOMAINS = %w[
-      twitter.com x.com t.co bsky.app bsky.social
-      zpravobot.news nitter xcancel.com
-    ].freeze
-
     # URL prefixes that indicate a prefix-style profile mention.
     # These cause Mastodon to render a profile card — trigger the profile card blocker.
     # Suffix mentions (@handle@twitter.com) do not generate profile cards and are excluded.
@@ -86,10 +79,11 @@ module Processors
       @verbose = verbose
 
       # Pipeline steps (extracted to reduce cyclomatic complexity)
-      @dedup_step = DeduplicationStep.new(state_manager)
-      @edit_step = EditDetectionStep.new(state_manager, true, logger: logger)
-      @filter_step = ContentFilterStep.new
-      @url_step = UrlProcessingStep.new(config_loader)
+      @dedup_step          = DeduplicationStep.new(state_manager)
+      @edit_step           = EditDetectionStep.new(state_manager, true, logger: logger)
+      @filter_step         = ContentFilterStep.new
+      @url_step            = UrlProcessingStep.new(config_loader)
+      @media_enrich_step   = MediaEnrichmentStep.new(state_manager, dry_run: dry_run, logger: logger)
 
       # Lazy-loaded processors
       @content_filters = {}
@@ -175,48 +169,13 @@ module Processors
       # Callback for verbose logging
       options[:on_final]&.call(processed_text)
 
-      # Step 6b: Video dedup check (opt-in per source, skipped in dry_run)
-      video_dedup_hours = source_config.dig(:processing, :video_dedup_hours)
-      video_data_cache = nil
-      if !@dry_run && video_dedup_hours
-        max_video_mb = source_config.dig(:processing, :max_video_size_mb)
-        max_video_bytes = max_video_mb ? max_video_mb * 1024 * 1024 : nil
-        video_data_cache = check_video_dedup(source_id, post_id, post, video_dedup_hours.to_i, max_video_bytes: max_video_bytes)
-        if video_data_cache == :duplicate
-          mark_skipped(source_id, post_id, 'duplicate_video')
-          return Result.new(status: :skipped, skipped_reason: 'duplicate_video')
-        end
+      # Steps 6b-6d: Video dedup, OGP fetch, link card thumbnail
+      enrich_result = @media_enrich_step.call(post, source_id, post_id, processed_text, source_config)
+      if enrich_result[:action] == :skip
+        mark_skipped(source_id, post_id, enrich_result[:reason])
+        return Result.new(status: :skipped, skipped_reason: enrich_result[:reason])
       end
-
-      # Step 6c: OGP fetch (opt-in, only when post has no media and feature is available)
-      if !@dry_run &&
-         source_config.dig(:processing, :ogp_fetch_link_card)
-        if post.media.empty?
-          ogp_url = fetch_ogp_image_for_post(post, processed_text, source_id)
-          if ogp_url
-            post.media << Media.new(type: 'image', url: ogp_url, alt_text: '')
-            log_info("[#{source_id}] OGP: Přidán obrázek #{ogp_url}")
-          else
-            log_info("[#{source_id}] OGP: og:image nenalezen nebo fetch selhal")
-          end
-        else
-          log_debug("[#{source_id}] OGP: přeskočen — post již má #{post.media.size} médium/médií")
-        end
-      end
-
-      # Step 6d: Link card thumbnail (opt-in, only when post has only link_card media)
-      # Bluesky poskytuje thumbnail přímo v API odpovědi (external.thumb) — bez HTTP requestu.
-      if source_config.dig(:processing, :ogp_fetch_link_card)
-        if post.media.any? && post.media.all?(&:link_card?)
-          thumb_url = post.media.find { |m| m.link_card? }&.thumbnail_url
-          if thumb_url
-            post.media << Media.new(type: 'image', url: thumb_url, alt_text: '')
-            log_info("[#{source_id}] Link card thumbnail: Přidán obrázek #{thumb_url}")
-          else
-            log_debug("[#{source_id}] Link card thumbnail: přeskočen — thumbnail_url chybí")
-          end
-        end
-      end
+      video_data_cache = enrich_result[:video_data_cache]
 
       # Step 7-8: Publish (or dry run)
       if @dry_run
@@ -302,56 +261,11 @@ module Processors
     private
 
     # ============================================
-    # Video Dedup helpers
+    # Video Fingerprint Store (Step 9b — store after publish)
     # ============================================
 
     def media_dedup
       @media_dedup ||= Processors::MediaDedup.new(@state_manager, logger: @logger || as_logger)
-    end
-
-    # Download video and check for duplicate.
-    # Returns:
-    #   :duplicate                     — video already published, skip post
-    #   { url:, data: String, phash: } — new video, data + pHash cached for upload step
-    #   nil                            — no video found or all downloads failed (proceed normally)
-    def check_video_dedup(source_id, post_id, post, hours, max_video_bytes: nil)
-      return nil unless post.media.any?
-
-      video_media = Array(post.media).find { |m| m.type == 'video' }
-      return nil unless video_media&.url
-
-      download_limit = max_video_bytes || (10 * 1024 * 1024)
-
-      begin
-        urls_to_try = ([video_media.url] + Array(video_media.url_variants).reject { |u| u == video_media.url }).compact
-
-        video_url = nil
-        video_data = nil
-
-        urls_to_try.each do |url|
-          response = HttpClient.download(url, max_size: download_limit)
-          next if response.nil? || response == :too_large || response.body.nil? || response.body.empty?
-
-          video_url = url
-          video_data = response.body
-          break
-        end
-
-        return nil unless video_data
-
-        # pHash path: perceptual hash via ImageMagick, robust against re-encoding.
-        # If phash is nil (ImageMagick unavailable or frame extraction failed), skip dedup entirely.
-        phash = Processors::ThumbnailPhash.compute(video_data)
-        if phash && media_dedup.duplicate_by_phash?(source_id, phash, hours: hours)
-          log_info("[#{source_id}] Video dedup (pHash): skipping duplicate for post #{post_id}")
-          return :duplicate
-        end
-
-        { url: video_url, data: video_data, phash: phash }
-      rescue StandardError => e
-        log_warn("[#{source_id}] Video dedup check failed (proceeding): #{e.message}")
-        nil
-      end
     end
 
     # ============================================
@@ -901,103 +815,6 @@ module Processors
       result
     rescue StandardError => e
       log_warn("  Dummy image upload failed: #{e.message}")
-      nil
-    end
-
-    # ============================================
-    # Step 6c: OGP Image Fetch
-    # ============================================
-
-    # Locate the article URL in the post and attempt to fetch its og:image.
-    #
-    # Tři fallback vrstvy pro URL:
-    #   1. post.raw[:link_card_url] — uložena během build_syndication_post z expandovaného textu
-    #      (spolehlivá i pokud se expand_tco_links zdaří; t.co URL se expanduje on-the-fly)
-    #   2. První non-platform URL v processed_text (po formátování a URL rewriting)
-    #   3. První non-platform URL v post.text (před formátováním — záloha)
-    #
-    # @param post [Post] Post object
-    # @param processed_text [String] Post text after URL processing (t.co expanded)
-    # @param source_id [String] Source identifier for logging
-    # @return [String, nil] og:image URL or nil
-    def fetch_ogp_image_for_post(post, processed_text, source_id = nil)
-      # Priority 0: card image ze Syndication API (Twitter ji pre-fetchuje sám → pbs.twimg.com)
-      # Nevyžaduje scraping cílového článku, obchází blokování třetích stran.
-      if post.raw.is_a?(Hash)
-        card_image = post.raw[:card_image]
-        if card_image.to_s.start_with?('https://')
-          log_info("[#{source_id}] OGP: card image ze Syndication API → #{card_image}") if source_id
-          return card_image
-        end
-      end
-
-      fetcher = Utils::OgpFetcher.new
-      article_url = nil
-
-      # Priority 1: post.raw[:link_card_url] — uložena v build_syndication_post
-      raw_link = post.raw.is_a?(Hash) ? post.raw[:link_card_url].to_s : ''
-      if raw_link.start_with?('http://', 'https://')
-        # Pokud je stále t.co → expandovat on-the-fly přes HEAD request
-        if raw_link.include?('t.co/')
-          expanded = expand_tco_url(raw_link)
-          article_url = expanded if expanded && !expanded.include?('t.co/')
-          log_info("[#{source_id}] OGP: t.co expandováno → #{article_url || '(selhalo)'}") if source_id
-        else
-          article_url = raw_link
-        end
-        log_info("[#{source_id}] OGP: URL z post.raw → #{article_url}") if source_id && article_url
-      end
-
-      # Priority 2: první non-platform URL v processed_text
-      unless article_url
-        article_url = extract_article_url_from_text(processed_text)
-        log_info("[#{source_id}] OGP: URL z processed_text → #{article_url}") if source_id && article_url
-      end
-
-      # Priority 3: první non-platform URL přímo v post.text (před formátováním)
-      unless article_url
-        article_url = extract_article_url_from_text(post.text.to_s)
-        log_info("[#{source_id}] OGP: URL z post.text → #{article_url}") if source_id && article_url
-      end
-
-      unless article_url
-        log_info("[#{source_id}] OGP: žádná article URL nenalezena (t.co v textu? platforma bez URL?)") if source_id
-        return nil
-      end
-
-      fetcher.fetch_og_image(article_url)
-    rescue StandardError => e
-      log_warn("[OGP] fetch_ogp_image_for_post failed: #{e.message}")
-      nil
-    end
-
-    # Extract the first URL from text that is not a social/platform URL.
-    # Strips trailing punctuation from matched URLs (., , ; : ! ? etc.)
-    #
-    # @param text [String] Post text
-    # @return [String, nil] First article URL or nil
-    def extract_article_url_from_text(text)
-      return nil if text.nil? || text.empty?
-
-      urls = text.scan(%r{https?://[^\s>)]+})
-      urls.each do |raw_url|
-        # Strip trailing punctuation that regex may have captured
-        url = raw_url.sub(/[.,;:!?…]+$/, '')
-        next if OGP_SKIP_DOMAINS.any? { |domain| url.include?(domain) }
-        return url
-      end
-      nil
-    end
-
-    # Expand a single t.co URL via HTTP HEAD redirect.
-    # Used as on-the-fly fallback when post.raw[:link_card_url] is still a t.co link.
-    #
-    # @param tco_url [String] t.co URL
-    # @return [String, nil] Expanded URL or nil on failure
-    def expand_tco_url(tco_url)
-      response = HttpClient.head(tco_url, open_timeout: 3, read_timeout: 3)
-      response['location'] if response.is_a?(Net::HTTPRedirection)
-    rescue StandardError
       nil
     end
 
