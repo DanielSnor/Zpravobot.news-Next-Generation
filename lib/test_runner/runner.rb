@@ -30,7 +30,7 @@ module TestRunner
 
     def initialize(catalog_path:, project_root:, options: {})
       @project_root = project_root
-      @catalog = YAML.load_file(catalog_path)
+      @catalog = YAML.safe_load_file(catalog_path)
       @options = options
       @results = []
       @parser = OutputParser.new

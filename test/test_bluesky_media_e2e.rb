@@ -49,7 +49,7 @@ def load_mastodon_config
     exit 1
   end
   
-  config = YAML.load_file(MASTODON_CONFIG_PATH)
+  config = YAML.safe_load_file(MASTODON_CONFIG_PATH)
   
   {
     instance_url: config['instance_url'] || config[:instance_url],
