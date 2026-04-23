@@ -416,7 +416,7 @@ module Orchestrator
 	# @return [String, nil] Mastodon status ID of parent
 	def resolve_thread_parent(source, post)
 	  # Bluesky: explicit reply_to with AT URI (platform-specific)
-	  if post.respond_to?(:reply_to) && post.reply_to
+	  if post.reply_to
 		parent_uri = extract_parent_uri_from_reply_to(post.reply_to)
 		if parent_uri
 		  mastodon_id = find_parent_mastodon_id(source.id, parent_uri)
@@ -511,15 +511,15 @@ module Orchestrator
 	def should_skip_for_first_run?(source, post)
 	  filtering = source.filtering
 
-	  if post.respond_to?(:is_reply) && post.is_reply
-		is_self_reply = post.respond_to?(:is_thread_post) && post.is_thread_post
+	  if post.is_reply
+		is_self_reply = post.is_thread_post
 		return 'is_self_reply_thread' if is_self_reply && filtering[:skip_self_replies]
 		return 'is_external_reply' if !is_self_reply && filtering[:skip_replies]
 	  end
 
-	  return 'is_retweet' if filtering[:skip_retweets] && post.respond_to?(:is_repost) && post.is_repost
+	  return 'is_retweet' if filtering[:skip_retweets] && post.is_repost
 
-	  return 'is_quote' if filtering[:skip_quotes] && post.respond_to?(:is_quote) && post.is_quote
+	  return 'is_quote' if filtering[:skip_quotes] && post.is_quote
 
 	  nil
 	end
@@ -590,15 +590,15 @@ module Orchestrator
 		Logging.info("🔍 [#{source_id}]   Quoted URL: #{qp[:url] || 'N/A'}")
 	  end
 
-	  Logging.info("🔍 [#{source_id}]   Has media: #{post.respond_to?(:has_media?) ? post.has_media? : 'N/A'}")
+	  Logging.info("🔍 [#{source_id}]   Has media: #{post.has_media?}")
 	  Logging.info("🔍 [#{source_id}]   Media count: #{post.media&.length || 0}")
-	  Logging.info("🔍 [#{source_id}]   Has video: #{post.respond_to?(:has_video?) ? post.has_video? : 'N/A'}")
+	  Logging.info("🔍 [#{source_id}]   Has video: #{post.has_video?}")
 
-	  if post.respond_to?(:title) && post.title
+	  if post.title
 		Logging.info("🔍 [#{source_id}]   Title: #{truncate_for_log(post.title, 100)}")
 	  end
 
-	  if post.respond_to?(:raw) && post.raw.is_a?(Hash)
+	  if post.raw.is_a?(Hash)
 		embed = post.raw[:embed] || post.raw['embed']
 		if embed
 		  embed_type = embed[:$type] || embed['$type'] || 'unknown'
@@ -644,8 +644,8 @@ module Orchestrator
 	  types = []
 	  types << 'REPOST' if post.is_repost
 	  types << 'QUOTE' if post.is_quote
-	  types << 'THREAD' if post.respond_to?(:is_thread_post) && post.is_thread_post
-	  types << 'VIDEO' if post.respond_to?(:has_video?) && post.has_video?
+	  types << 'THREAD' if post.is_thread_post
+	  types << 'VIDEO' if post.has_video?
 	  types << 'POST' if types.empty?
 	  types.join('+')
 	end

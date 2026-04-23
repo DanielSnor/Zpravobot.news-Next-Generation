@@ -133,7 +133,7 @@ module Formatters
         format_repost(post, config)
       when post.is_quote
         format_quote(post, config)
-      when post.respond_to?(:is_thread_post) && post.is_thread_post
+      when post.is_thread_post
         format_thread(post, config)
       when needs_title_handling?(post, config)
         format_with_title(post, config)
@@ -156,7 +156,7 @@ module Formatters
 
       # Author header pro feed sources
       has_author_header = false
-      if config[:show_author_header] && post.respond_to?(:author) && post.author
+      if config[:show_author_header] && post.author
         author_header = build_author_header(post.author, config)
         if author_header
           parts << author_header
@@ -181,12 +181,12 @@ module Formatters
       text = move_url_to_end(text) if config[:move_url_to_end]
 
       # Poll handling: append poll block to text before composing output
-      if post.respond_to?(:poll_data) && post.poll_data
+      if post.poll_data
         text += format_poll(post.poll_data)
       end
 
       # Video handling
-      if post.respond_to?(:has_video) && post.has_video
+      if post.has_video
         return format_video_post(post, text, text_prefix, config)
       end
 
@@ -207,7 +207,7 @@ module Formatters
         # Tier 3: truncated, přidat URL s read_more
         url = rewrite_urls(post.url, config)
         compose_output(parts, url, config, post: post)
-      elsif post.respond_to?(:has_poll?) && post.has_poll?
+      elsif post.has_poll?
         # Poll post: přidat post URL jako odkaz na původní anketu
         url = rewrite_urls(post.url, config)
         compose_output(parts, url, config, post: post)
@@ -247,7 +247,7 @@ module Formatters
       end
       
       # Video handling
-      if post.respond_to?(:has_video) && post.has_video
+      if post.has_video
         return format_video_with_header(parts, post, config)
       end
       
@@ -284,7 +284,7 @@ module Formatters
       # Video handling — pouze pro Tier 3 (force_read_more).
       # Pro Tier 1.5/2 video je příloha, ale post URL přidáváme vždy přes compose_output níže
       # (quote tweet = odkaz na kontext je důležitý i bez videa v textu).
-      if post.respond_to?(:has_video) && post.has_video && force_read_more?(post)
+      if post.has_video && force_read_more?(post)
         return format_video_with_header(parts, post, config)
       end
 
@@ -370,7 +370,7 @@ module Formatters
         url_prefix = config[:video_read_more_prefix] || "\n🎬 + 📖➡️ "
 
         # Signal: formatter přidal video URL → PostProcessor to nepřidá znovu
-        if post.respond_to?(:raw) && post.raw.is_a?(Hash)
+        if post.raw.is_a?(Hash)
           post.raw[:video_url_added] = true
         end
 
@@ -394,7 +394,7 @@ module Formatters
         url_prefix = config[:video_read_more_prefix] || "\n🎬 + 📖➡️ "
 
         # Signal: formatter přidal video URL → PostProcessor to nepřidá znovu
-        if post.respond_to?(:raw) && post.raw.is_a?(Hash)
+        if post.raw.is_a?(Hash)
           post.raw[:video_url_added] = true
         end
 
@@ -560,9 +560,9 @@ module Formatters
     end
 
     def extract_link_card_url(post)
-      return nil unless post.respond_to?(:media) && post.media
+      return nil unless post.media
       
-      link_card = post.media.find { |m| m.respond_to?(:type) && m.type == 'link_card' }
+      link_card = post.media.find { |m| m.type == 'link_card' }
       link_card&.url
     end
 
@@ -669,7 +669,7 @@ module Formatters
     # @return [Boolean] true if post is truncated and needs read_more
     def force_read_more?(post)
       return false unless post
-      return false unless post.respond_to?(:raw) && post.raw.is_a?(Hash)
+      return false unless post.raw.is_a?(Hash)
       
       post.raw[:force_read_more] == true || post.raw['force_read_more'] == true
     end
@@ -768,12 +768,12 @@ module Formatters
     end
 
     def self_repost?(post)
-      return false unless post.respond_to?(:reposted_by) && post.respond_to?(:author)
+      return false unless post.author || post.reposted_by
       post.author&.username&.downcase == post.reposted_by&.downcase
     end
 
     def self_quote?(post, quoted_author)
-      return false unless post.respond_to?(:author)
+      return false unless post.author
       post.author&.username&.downcase == quoted_author&.downcase
     end
 
@@ -796,7 +796,7 @@ module Formatters
     # ===========================================
 
     def needs_title_handling?(post, config)
-      return false unless post.respond_to?(:title) && post.title
+      return false unless post.title
       return false if post.title.to_s.strip.empty?
       
       config[:show_title_as_content] || config[:combine_title_and_content]

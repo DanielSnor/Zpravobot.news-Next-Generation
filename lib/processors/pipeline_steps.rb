@@ -59,7 +59,7 @@ module Processors
     # @return [Hash] { action: :publish_new/:skip_older_version/:update_existing, ... }
     def check(ctx, username)
       detector = get_detector
-      text = ctx.post.respond_to?(:text) ? ctx.post.text : ctx.post.to_s
+      text = ctx.post.text
       detector.check_for_edit(ctx.source_id, ctx.post_id, username, text)
     end
 
@@ -68,18 +68,14 @@ module Processors
 
       detector = get_detector
       username = extract_username(post)
-      text = post.respond_to?(:text) ? post.text : post.to_s
+      text = post.text
       detector.add_to_buffer(source_id, post.id, username, text, mastodon_id: mastodon_id)
     end
 
     private
 
     def extract_username(post)
-      if post.respond_to?(:author) && post.author
-        return post.author.handle if post.author.respond_to?(:handle) && post.author.handle
-        return post.author.username if post.author.respond_to?(:username) && post.author.username
-      end
-      'unknown'
+      post.author&.handle || 'unknown'
     end
   end
 
@@ -90,8 +86,8 @@ module Processors
       filtering = source_config[:filtering] || {}
 
       # Reply handling
-      if post.respond_to?(:is_reply) && post.is_reply
-        is_self_reply = post.respond_to?(:is_thread_post) && post.is_thread_post
+      if post.is_reply
+        is_self_reply = post.is_thread_post
         if is_self_reply
           return 'is_self_reply_thread' if filtering[:skip_self_replies]
         else
@@ -100,12 +96,12 @@ module Processors
       end
 
       # Retweet/repost handling
-      if post.respond_to?(:is_repost) && post.is_repost
+      if post.is_repost
         return 'is_retweet' if filtering[:skip_retweets]
       end
 
       # Quote handling
-      if post.respond_to?(:is_quote) && post.is_quote
+      if post.is_quote
         return 'is_quote' if filtering[:skip_quotes]
       end
 
@@ -117,9 +113,9 @@ module Processors
 
     def check_content_filters(post, filtering)
       content_parts = []
-      content_parts << post.text if post.respond_to?(:text) && post.text
-      content_parts << post.title if post.respond_to?(:title) && post.title
-      content_parts << post.url if post.respond_to?(:url) && post.url
+      content_parts << post.text if post.text
+      content_parts << post.title if post.title
+      content_parts << post.url if post.url
       combined_content = content_parts.join(' ')
 
       return nil if combined_content.empty?

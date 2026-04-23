@@ -315,9 +315,9 @@ module Processors
     #   { url:, data: String, phash: } — new video, data + pHash cached for upload step
     #   nil                            — no video found or all downloads failed (proceed normally)
     def check_video_dedup(source_id, post_id, post, hours, max_video_bytes: nil)
-      return nil unless post.respond_to?(:media)
+      return nil unless post.media.any?
 
-      video_media = Array(post.media).find { |m| m.respond_to?(:type) && m.type == 'video' }
+      video_media = Array(post.media).find { |m| m.type == 'video' }
       return nil unless video_media&.url
 
       download_limit = max_video_bytes || (10 * 1024 * 1024)
@@ -359,9 +359,8 @@ module Processors
     # ============================================
 
     def extract_username(post, fallback: 'unknown')
-      if post.respond_to?(:author) && post.author
-        return post.author.handle if post.author.respond_to?(:handle) && post.author.handle
-        return post.author.username if post.author.respond_to?(:username) && post.author.username
+      if post.author
+        return post.author.handle
       end
       fallback
     end
@@ -638,7 +637,7 @@ module Processors
     # @param source_config [Hash] Source configuration
     # @return [String, nil] Rewritten post URL or nil
     def build_trim_fallback_url(post, source_config)
-      return nil unless post.respond_to?(:url) && !post.url.to_s.empty?
+      return nil if post.url.to_s.empty?
 
       url = post.url.dup
       formatting = source_config[:formatting] || {}
@@ -686,14 +685,10 @@ module Processors
       # zkus nejdřív nahrát thumbnail ze Syndication API jako náhradní obrázek;
       # pokud to nejde (nebo thumbnail není k dispozici), přidej odkaz na originál.
       # Poznámka: Nitter proxy thumbnail URL (video_thumbnail_url chybí v raw) záměrně ignorujeme.
-      has_real_video = (
-        post.respond_to?(:media) &&
-        post.media.is_a?(Array) &&
-        post.media.any? { |m| m.respond_to?(:type) && m.type == 'video' }
-      ) || (post.respond_to?(:has_video) && post.has_video)
+      has_real_video = post.media.any? { |m| m.type == 'video' } || post.has_video
       if media_ids.empty? && has_real_video
         # Zkus thumbnail jako náhradní obrázek (pouze pbs.twimg.com URL ze Syndication API)
-        thumbnail_url = post.respond_to?(:raw) && post.raw.is_a?(Hash) && post.raw[:video_thumbnail_url]
+        thumbnail_url = post.raw.is_a?(Hash) && post.raw[:video_thumbnail_url]
         if thumbnail_url
           begin
             thumbnail_id = publisher.upload_media_from_url(thumbnail_url, description: post.text.to_s.strip)
@@ -707,8 +702,8 @@ module Processors
         # Přidej odkaz na originál (pokud ho formatter již nepřidal).
         # Použij rewritten URL (xcancel.com pro Twitter) — stejnou jakou formatter vložil
         # do textu — aby dedup check text.include?(url) správně fungoval.
-        video_url_already_added = post.respond_to?(:raw) && post.raw.is_a?(Hash) && post.raw[:video_url_added]
-        raw_url = post.respond_to?(:url) ? post.url.to_s : ''
+        video_url_already_added = post.raw.is_a?(Hash) && post.raw[:video_url_added]
+        raw_url = post.url.to_s
         url     = build_trim_fallback_url(post, source_config) || raw_url
         unless video_url_already_added || url.empty? ||
                text.include?(url) || (!raw_url.empty? && raw_url != url && text.include?(raw_url))
@@ -720,9 +715,9 @@ module Processors
       # Thumbnail-only video post: Syndication returned only a thumbnail (no mp4 URL), which
       # was uploaded as type:'image' — so media_ids is NOT empty and the block above was skipped.
       # But the formatter (Tier 1.5/2 path) also did not add a URL to text, so we add it here.
-      if post.respond_to?(:raw) && post.raw.is_a?(Hash) && post.raw[:video_thumbnail_only]
+      if post.raw.is_a?(Hash) && post.raw[:video_thumbnail_only]
         video_url_already_added_th = post.raw[:video_url_added]
-        raw_url_th = post.respond_to?(:url) ? post.url.to_s : ''
+        raw_url_th = post.url.to_s
         url_th = build_trim_fallback_url(post, source_config) || raw_url_th
         unless video_url_already_added_th || url_th.empty? ||
                text.include?(url_th) || (!raw_url_th.empty? && raw_url_th != url_th && text.include?(raw_url_th))
@@ -769,7 +764,7 @@ module Processors
     end
 
     def upload_media(publisher, post, video_data_cache: nil, max_size: nil)
-      return [] unless post.respond_to?(:media) && post.media
+      return [] unless post.media
       return [] if post.media.empty?
 
       # Filter out non-uploadable media types before upload
@@ -961,7 +956,7 @@ module Processors
 
       # Priority 3: první non-platform URL přímo v post.text (před formátováním)
       unless article_url
-        article_url = extract_article_url_from_text(post.respond_to?(:text) ? post.text.to_s : '')
+        article_url = extract_article_url_from_text(post.text.to_s)
         log_info("[#{source_id}] OGP: URL z post.text → #{article_url}") if source_id && article_url
       end
 

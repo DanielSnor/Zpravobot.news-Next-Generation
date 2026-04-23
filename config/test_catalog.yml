@@ -203,6 +203,13 @@ tests:
     exit_code_reliable: true
     description: "SourceConfig#to_processor_hash field propagation (REFACTOR-2)"
 
+  test_post_model:
+    file: test/test_post_model.rb
+    category: unit
+    tags: [offline, model]
+    exit_code_reliable: true
+    description: "Post model attribute defaults and methods (MODEL-1)"
+
   test_yaml_quote:
     file: test/test_yaml_quote.rb
     category: unit

@@ -122,11 +122,11 @@ class Post
   end
 
   def has_title?
-    title && !title.strip.empty?
+    !title.nil? && !title.strip.empty?
   end
 
   def has_text?
-    text && !text.strip.empty?
+    !text.nil? && !text.strip.empty?
   end
 
   def empty?
