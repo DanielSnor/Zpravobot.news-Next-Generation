@@ -4,6 +4,7 @@ docs/*.private.md
 # Secrets and credentials
 env.sh
 config/mastodon_accounts.yml
+config/bluesky_accounts.yml
 config/global.yml
 config/sources/*
 

@@ -15,4 +15,4 @@ source "${SCRIPT_DIR}/env.sh"
 LOG_FILE="${ZBNW_LOG_DIR}/stats.log"
 
 cd "$ZBNW_DIR" || exit 1
-ruby bin/zpravobot_stats.rb --publish --account zpravobot >> "$LOG_FILE" 2>&1
+ruby bin/zpravobot_stats.rb --publish --account zpravobot --bluesky >> "$LOG_FILE" 2>&1

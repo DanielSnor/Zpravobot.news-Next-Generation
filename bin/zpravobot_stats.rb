@@ -51,7 +51,8 @@ options = {
   test:          false,
   week:          nil,
   account:       nil,
-  lang:          nil   # nil = both CZ+SK; 'cz' or 'sk' = only that lang
+  lang:          nil,   # nil = both CZ+SK; 'cz' or 'sk' = only that lang
+  bluesky:       false
 }
 
 OptionParser.new do |opts|
@@ -62,6 +63,7 @@ OptionParser.new do |opts|
   opts.on('--account ID',      'Mastodon account to post from')   { |v| options[:account] = v }
   opts.on('--lang LANG',       'Only generate post for cz or sk') { |v| options[:lang] = v.downcase }
   opts.on('--test',            'Use zpravobot_test schema')       { options[:test] = true }
+  opts.on('--bluesky',         'Also publish to Bluesky')         { options[:bluesky] = true }
   opts.on('-h', '--help', 'Show this help') { puts opts; exit 0 }
 end.parse!
 
@@ -293,6 +295,12 @@ publisher = Publishers::MastodonPublisher.new(
   access_token: pub_token
 )
 
+bs_publisher = if options[:bluesky]
+                 require 'publishers/bluesky_publisher'
+                 require 'publishers/bluesky_text_splitter'
+                 Publishers::BlueskyPublisher.new(account_id: 'zpravobot')
+               end
+
 # Publish as thread: first post is root, subsequent posts reply to it
 in_reply_to_id = nil
 
@@ -313,6 +321,26 @@ in_reply_to_id = nil
     $stderr.puts "PUBLISH FAILED (#{lang.upcase}): #{e.message}"
     db.disconnect
     exit 1
+  end
+end
+
+# Bluesky: each language post as its own thread (BS doesn't cross-link CZ+SK)
+if bs_publisher
+  splitter = Publishers::BlueskyTextSplitter.new
+  ['cs', 'sk'].each do |lang|
+    text = lang_posts[lang]
+    next unless text
+
+    begin
+      chunks = splitter.split(text)
+      next if chunks.empty?
+
+      log "Bluesky #{lang.upcase}: #{chunks.size} chunk(s)..."
+      bs_publisher.publish_thread(chunks)
+    rescue => e
+      $stderr.puts "BLUESKY PUBLISH FAILED (#{lang.upcase}): #{e.message}"
+      # Non-fatal — Mastodon publish already succeeded
+    end
   end
 end
 

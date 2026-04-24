@@ -54,16 +54,18 @@ module Reporting
       'Loučíme se s tímto zpravobotem:'
     ].freeze
 
-    # @param accounts_file  [String]  cesta k mastodon_accounts.yml
-    # @param snapshot_path  [String]  cesta k data/source_report_snapshot.yml
-    # @param publisher      [#publish, nil]  MastodonPublisher instance (nil = dry-run bez publisheru)
-    # @param dry_run        [Boolean]
-    # @param default_instance [String]  výchozí instance (bez https://)
+    # @param accounts_file     [String]  cesta k mastodon_accounts.yml
+    # @param snapshot_path     [String]  cesta k data/source_report_snapshot.yml
+    # @param publisher         [#publish, nil]  MastodonPublisher instance (nil = dry-run bez publisheru)
+    # @param bluesky_publisher [#publish_thread, nil]  BlueskyPublisher instance (optional)
+    # @param dry_run           [Boolean]
+    # @param default_instance  [String]  výchozí instance (bez https://)
     def initialize(accounts_file:, snapshot_path:, publisher: nil,
-                   dry_run: false, default_instance: 'zpravobot.news')
+                   bluesky_publisher: nil, dry_run: false, default_instance: 'zpravobot.news')
       @accounts_file     = accounts_file
       @snapshot_path     = snapshot_path
       @publisher         = publisher
+      @bluesky_publisher = bluesky_publisher
       @dry_run           = dry_run
       @default_instance  = default_instance
     end
@@ -324,6 +326,22 @@ module Reporting
         warn "[source_report] Chyba při publikování postu #{i + 1}: #{e.message}"
         raise  # Propaguj chybu — snapshot se neaktualizuje
       end
+
+      publish_thread_to_bluesky(posts)
+    end
+
+    def publish_thread_to_bluesky(mastodon_posts)
+      return unless @bluesky_publisher
+
+      require_relative '../publishers/bluesky_text_splitter'
+      splitter = Publishers::BlueskyTextSplitter.new
+      bs_posts = mastodon_posts.flat_map { |p| splitter.split(p) }
+      return if bs_posts.empty?
+
+      log "Publikuji na Bluesky (#{bs_posts.size} postů)..."
+      @bluesky_publisher.publish_thread(bs_posts)
+    rescue StandardError => e
+      warn "[source_report] Bluesky publish failed: #{e.message}"
     end
 
     def log(msg)

@@ -10,4 +10,4 @@ source "${SCRIPT_DIR}/env.sh"
 
 cd "$ZBNW_DIR" || exit 1
 
-ruby bin/source_report.rb >> "${ZBNW_LOG_DIR}/source_report.log" 2>&1
+ruby bin/source_report.rb --bluesky >> "${ZBNW_LOG_DIR}/source_report.log" 2>&1

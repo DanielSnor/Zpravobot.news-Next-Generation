@@ -16,4 +16,4 @@ source "${SCRIPT_DIR}/env.sh"
 LOG_FILE="${ZBNW_LOG_DIR}/friendly_follow.log"
 
 cd "$ZBNW_DIR" || exit 1
-ruby bin/friendly_follow.rb >> "$LOG_FILE" 2>&1
+ruby bin/friendly_follow.rb --bluesky >> "$LOG_FILE" 2>&1

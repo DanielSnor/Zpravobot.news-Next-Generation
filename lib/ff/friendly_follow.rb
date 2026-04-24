@@ -46,12 +46,14 @@ module FF
     OPEN_TIMEOUT = 5
     READ_TIMEOUT = 10
 
-    def initialize(config_dir:, state_path:, instance_url:, access_token:, dry_run: false)
-      @config_dir   = config_dir
-      @state_path   = state_path
-      @instance_url = instance_url.to_s.chomp('/')
-      @access_token = access_token
-      @dry_run      = dry_run
+    def initialize(config_dir:, state_path:, instance_url:, access_token:,
+                   dry_run: false, bluesky_publisher: nil)
+      @config_dir        = config_dir
+      @state_path        = state_path
+      @instance_url      = instance_url.to_s.chomp('/')
+      @access_token      = access_token
+      @dry_run           = dry_run
+      @bluesky_publisher = bluesky_publisher
     end
 
     # Main entry point.
@@ -87,13 +89,16 @@ module FF
         return { posted: false, accounts: selected_ids, post_text: post_text }
       end
 
-      # Publish
+      # Publish to Mastodon
       publisher = Publishers::MastodonPublisher.new(
         instance_url: @instance_url,
         access_token: @access_token
       )
       result = publisher.publish(post_text, visibility: 'public')
       log_info("[FF] Published: #{result['url']}")
+
+      # Publish to Bluesky (non-fatal)
+      publish_to_bluesky(post_text)
 
       # Save state only after successful publish
       save_state(state)
@@ -278,6 +283,18 @@ module FF
       parts.push('', '#zpravobot #ffcz')
 
       parts.join("\n")
+    end
+
+    def publish_to_bluesky(post_text)
+      return unless @bluesky_publisher
+
+      require_relative '../publishers/bluesky_text_splitter'
+      chunks = Publishers::BlueskyTextSplitter.new.split(post_text)
+      return if chunks.empty?
+
+      @bluesky_publisher.publish_thread(chunks)
+    rescue StandardError => e
+      log_warn("[FF] Bluesky publish failed: #{e.message}")
     end
 
     # Exposed for testing

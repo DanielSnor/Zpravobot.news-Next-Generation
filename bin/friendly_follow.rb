@@ -34,12 +34,13 @@ require 'ff/friendly_follow'
 # ============================================================
 # Parse CLI arguments
 # ============================================================
-options = { dry_run: false, test: false }
+options = { dry_run: false, test: false, bluesky: false }
 
 OptionParser.new do |opts|
   opts.banner = 'Usage: ruby bin/friendly_follow.rb [options]'
   opts.on('--dry-run', 'Show post, do not publish or update state') { options[:dry_run] = true }
   opts.on('--test',    'Use test schema (placeholder, not yet used)') { options[:test] = true }
+  opts.on('--bluesky', 'Also publish to Bluesky')                    { options[:bluesky] = true }
   opts.on('-h', '--help', 'Show help') { puts opts; exit 0 }
 end.parse!
 
@@ -90,14 +91,20 @@ die 'No access token for zpravobot. Set ZPRAVOBOT_REPORT_TOKEN or add zpravobot 
 # ============================================================
 # Run
 # ============================================================
-log "Friendly Follow#{options[:dry_run] ? ' [DRY RUN]' : ''}"
+log "Friendly Follow#{options[:dry_run] ? ' [DRY RUN]' : ''}#{options[:bluesky] ? ' +Bluesky' : ''}"
+
+bs_publisher = if options[:bluesky] && !options[:dry_run]
+                 require 'publishers/bluesky_publisher'
+                 Publishers::BlueskyPublisher.new(account_id: 'zpravobot')
+               end
 
 ff = FF::FriendlyFollow.new(
-  config_dir:   config_dir,
-  state_path:   state_path,
-  instance_url: instance_url,
-  access_token: access_token,
-  dry_run:      options[:dry_run]
+  config_dir:        config_dir,
+  state_path:        state_path,
+  instance_url:      instance_url,
+  access_token:      access_token,
+  dry_run:           options[:dry_run],
+  bluesky_publisher: bs_publisher
 )
 
 result = ff.run
