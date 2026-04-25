@@ -266,8 +266,15 @@ module Processors
 	  # Extract potential URL
 	  potential_url = result[url_start_index..]
 
-	  # Check if URL looks complete (ends properly)
-	  is_complete = potential_url.match?(%r{https?://[a-zA-Z0-9-]+\.[a-zA-Z]{3,}(?:/[^\s]*)?[a-zA-Z0-9/_\-~]$})
+	  # Strip trailing sentence punctuation before completeness check —
+	  # apply_domain_fixes may produce "https://foo.cz." where the dot is a sentence terminator, not part of the URL
+	  potential_url_clean = potential_url.sub(/[.!?,;]+$/, '')
+
+	  # Check if URL looks complete (ends properly); accept 2-char TLDs (.cz, .sk, etc.)
+	  # and multi-level domains (ticketing.hcverva.cz) — hostname allows dots.
+	  # Final-char check is part of optional path group so 2-char TLDs don't fail
+	  # (backtracking works for 3+ char TLDs but not for exactly 2-char TLDs).
+	  is_complete = potential_url_clean.match?(%r{https?://[a-zA-Z0-9][a-zA-Z0-9.\-]*\.[a-zA-Z]{2,}(?:/[^\s]*[a-zA-Z0-9/_\-~])?$})
 	  return result.strip if is_complete
 
 	  # Remove incomplete URL
