@@ -110,7 +110,7 @@ ff = FF::FriendlyFollow.new(
 result = ff.run
 
 if result[:posted]
-  log "Posted: #{result[:url]}"
+  log "Posted thread (#{result[:posts].size} posts): #{result[:url]}"
   log "Promoted: #{result[:accounts].join(', ')}"
 elsif result[:accounts].any?
   log 'Dry run — post NOT published, state NOT updated'
