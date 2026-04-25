@@ -6,7 +6,7 @@
 # Spouštět 1x denně — čas TBD.
 #
 # Crontab (zakomentováno — Daniel rozhodne čas):
-#   # 15 15 * * * /app/data/zbnw-ng/cron_ff.sh
+#   15 15 * * * /app/data/zbnw-ng/cron_ff.sh
 #   # 15 16 * * * /app/data/zbnw-ng/cron_ff.sh
 # ============================================================
 
