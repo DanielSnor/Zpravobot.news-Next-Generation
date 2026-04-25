@@ -37,7 +37,8 @@ module FF
     EXCLUDED_ACCOUNTS = %w[betabot].freeze
     ACCOUNTS_PER_POST = 3
     BIO_MAX_CHARS     = 500
-    POST_CHAR_LIMIT   = 300   # graphemes — compatible with Bluesky
+    POST_MAX_CHARS    = 2500   # Mastodon
+    BS_CHAR_LIMIT     = 300    # graphemes — Bluesky
     DEFAULT_INSTANCE  = 'zpravobot.news'
     HASHTAGS          = '#zpravobot #ffcz'
 
@@ -81,38 +82,31 @@ module FF
         { id: id, instance_host: instance_host }.merge(profile)
       end
 
-      posts = format_posts(accounts_data, Time.now)
+      post_text = format_post(accounts_data, Time.now)
+      bs_posts  = format_posts(accounts_data, Time.now)
 
-      posts.each_with_index do |p, i|
-        log_info("[FF] Post #{i + 1}/#{posts.size} (#{grapheme_length(p)} grafémů):\n#{p}")
-      end
+      log_info("[FF] Mastodon post (#{post_text.length} chars):\n#{post_text}")
 
       if @dry_run
-        posts.each { |p| puts p; puts '---' }
-        return { posted: false, accounts: selected_ids, posts: posts }
+        puts post_text
+        return { posted: false, accounts: selected_ids, post_text: post_text }
       end
 
-      # Publish to Mastodon as thread
+      # Publish to Mastodon as single post
       publisher = Publishers::MastodonPublisher.new(
         instance_url: @instance_url,
         access_token: @access_token
       )
-      reply_id = nil
-      last_result = nil
-      posts.each do |post_text|
-        last_result = publisher.publish(post_text, visibility: 'public', in_reply_to_id: reply_id)
-        reply_id = last_result['id']
-        sleep 1 if posts.size > 1
-      end
-      log_info("[FF] Published thread (#{posts.size} posts): #{last_result['url']}")
+      result = publisher.publish(post_text, visibility: 'public')
+      log_info("[FF] Published: #{result['url']}")
 
-      # Publish to Bluesky (non-fatal)
-      publish_to_bluesky(posts)
+      # Publish to Bluesky as thread (non-fatal)
+      publish_to_bluesky(bs_posts)
 
       # Save state only after successful publish
       save_state(state)
 
-      { posted: true, accounts: selected_ids, posts: posts, url: last_result['url'] }
+      { posted: true, accounts: selected_ids, post_text: post_text, url: result['url'] }
     end
 
     private
@@ -255,7 +249,42 @@ module FF
 
     # ---------- Formatting ----------
 
-    # Builds one post per account as a thread:
+    # Single Mastodon post (up to POST_MAX_CHARS), progressive bio truncation.
+    def format_post(accounts_data, time)
+      day_name      = DAYS_CS[time.wday]
+      date_str      = "#{time.day}. #{MONTHS_CS[time.month]} #{time.year}"
+      header        = "#FF 🇨🇿 tip na #{day_name}, #{date_str}:"
+      instance_host = accounts_data.first&.dig(:instance_host) || DEFAULT_INSTANCE
+
+      text = build_post_text(accounts_data, header, instance_host)
+      return text if text.length <= POST_MAX_CHARS
+
+      max_bio = BIO_MAX_CHARS
+      loop do
+        max_bio -= 50
+        break if max_bio <= 0
+
+        trimmed = accounts_data.map { |a| a[:bio] ? a.merge(bio: truncate_bio(a[:bio], max_bio)) : a }
+        text    = build_post_text(trimmed, header, instance_host)
+        return text if text.length <= POST_MAX_CHARS
+      end
+
+      build_post_text(accounts_data.map { |a| a.merge(bio: nil) }, header, instance_host)
+    end
+
+    def build_post_text(accounts_data, header, instance_host)
+      parts = [header, '']
+      accounts_data.each do |acc|
+        parts << "#{acc[:display_name]} \u2014 @#{acc[:id]}@#{instance_host}"
+        parts << acc[:bio] if acc[:bio]
+        parts << ''
+      end
+      parts.pop if parts.last == ''
+      parts.push('', HASHTAGS)
+      parts.join("\n")
+    end
+
+    # Builds one post per account as a thread (for Bluesky):
     #   Post 0: header + first account (handle + bio)
     #   Post 1+: one account each (handle + bio)
     # Hashtags only on the last post (stripped by BlueskyTextSplitter for BS).
@@ -282,9 +311,9 @@ module FF
       return "#{base}#{suffix}" unless bio
 
       candidate = "#{base}\n#{bio}#{suffix}"
-      return candidate if grapheme_length(candidate) <= POST_CHAR_LIMIT
+      return candidate if grapheme_length(candidate) <= BS_CHAR_LIMIT
 
-      budget = POST_CHAR_LIMIT - grapheme_length("#{base}\n#{suffix}") - 1
+      budget = BS_CHAR_LIMIT - grapheme_length("#{base}\n#{suffix}") - 1
       return "#{base}#{suffix}" if budget < 10
 
       "#{base}\n#{truncate_to_graphemes(bio, budget)}#{suffix}"
