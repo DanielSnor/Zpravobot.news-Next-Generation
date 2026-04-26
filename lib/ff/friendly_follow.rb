@@ -275,7 +275,7 @@ module FF
     def build_post_text(accounts_data, header, instance_host)
       parts = [header, '']
       accounts_data.each do |acc|
-        parts << "#{acc[:display_name]} \u2014 @#{acc[:id]}@#{instance_host}"
+        parts << "#{acc[:display_name]} \u2014 https://#{instance_host}/@#{acc[:id]}"
         parts << acc[:bio] if acc[:bio]
         parts << ''
       end
@@ -300,7 +300,7 @@ module FF
         last   = idx == accounts_data.size - 1
         suffix = last ? "\n\n#{HASHTAGS}" : ''
 
-        handle_line = "#{acc[:display_name]} \u2014 @#{acc[:id]}@#{instance_host}"
+        handle_line = "#{acc[:display_name]} \u2014 https://#{instance_host}/@#{acc[:id]}"
         base        = first ? "#{header}\n\n#{handle_line}" : handle_line
 
         build_account_post(base, acc[:bio], suffix)

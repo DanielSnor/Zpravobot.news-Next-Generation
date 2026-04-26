@@ -111,7 +111,7 @@ module Stats
         curr  = data[:this_week].to_i
         prev  = data[:last_week].to_i
         trend = trend_str(curr, prev)
-        lines << "#{medal(i)} @#{account} — #{curr} postů#{trend}"
+        lines << "#{medal(i)} https://zpravobot.news/@#{account} — #{curr} postů#{trend}"
       end
       lines.join("\n")
     end
@@ -130,7 +130,7 @@ module Stats
       lines = ["👥 Nejsledovanější boty (TOP #{[sorted.size, top_n].min}):"]
       sorted.each_with_index do |(account, data), i|
         followers = data[:followers].to_i
-        lines << "#{medal(i)} @#{account} — #{followers} sledujících"
+        lines << "#{medal(i)} https://zpravobot.news/@#{account} — #{followers} sledujících"
       end
       lines.join("\n")
     end
