@@ -92,7 +92,7 @@ module Processors
     # ---------------------------------------------------------------------------
     def restore_hashtag_block(text)
       # Najít první hashtag který začíná blok a není na začátku řádku
-      text.gsub(/([^\n])\s+(#\w+(?:\s+#\w+)*)$/) do
+      text.gsub(/([^\n])\s+(#\w+(?:[\s|]+#\w+)*)$/) do
         "#{$1}\n\n#{$2}"
       end
     end
