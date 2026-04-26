@@ -12,8 +12,10 @@ module Webhook
   class WebhookEditHandler
     include Support::Loggable
 
-    # Result of edit handling
-    EditResult = Struct.new(:action, :mastodon_id, keyword_init: true)
+    # Result value object for edit handling (immutable)
+    EditResult = Data.define(:action, :mastodon_id) do
+      def initialize(action:, mastodon_id: nil) = super
+    end
 
     # @param edit_detector [Processors::EditDetector]
     # @param thread_cache [Hash] Reference to parent's thread cache

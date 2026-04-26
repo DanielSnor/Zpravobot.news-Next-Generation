@@ -31,12 +31,13 @@ require 'trending/hrubot_commenter'
 # ============================================================
 # CLI arguments
 # ============================================================
-options = { dry_run: false, test: false }
+options = { dry_run: false, test: false, bluesky: false }
 
 OptionParser.new do |opts|
   opts.banner = "Usage: #{$PROGRAM_NAME} [options]"
   opts.on('--dry-run', 'Preview new trends without publishing') { options[:dry_run] = true }
   opts.on('--test',    'Use test environment config')           { options[:test]    = true }
+  opts.on('--bluesky', 'Also publish to Bluesky')              { options[:bluesky] = true }
   opts.on('-h', '--help', 'Show help') { puts opts; exit 0 }
 end.parse!
 
@@ -98,18 +99,25 @@ if ai_comments_enabled
   end
 end
 
+bs_publisher = if options[:bluesky] && !options[:dry_run]
+                 require 'publishers/bluesky_publisher'
+                 Publishers::BlueskyPublisher.new(account_id: 'zpravobot')
+               end
+
 puts "[#{Time.now.iso8601}] 📈 Trending check start#{options[:dry_run] ? ' (dry run)' : ''}"
 puts "[#{Time.now.iso8601}]    instance:    #{instance_url}"
 puts "[#{Time.now.iso8601}]    state file:  #{state_path}"
 puts "[#{Time.now.iso8601}]    AI comments: #{commenter ? 'enabled' : 'disabled'}"
+puts "[#{Time.now.iso8601}]    Bluesky:     #{bs_publisher ? 'enabled' : 'disabled'}"
 
 begin
   checker = Trending::TrendingChecker.new(
-    instance_url: instance_url,
-    access_token:  token,
-    state_path:    state_path,
-    dry_run:       options[:dry_run],
-    commenter:     commenter
+    instance_url:      instance_url,
+    access_token:      token,
+    state_path:        state_path,
+    dry_run:           options[:dry_run],
+    commenter:         commenter,
+    bluesky_publisher: bs_publisher
   )
 
   result = checker.run

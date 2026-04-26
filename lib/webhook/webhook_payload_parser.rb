@@ -9,11 +9,8 @@ module Webhook
   # Extracts: bot_id, post_id, username, text from IFTTT JSON payload
   # Resolves: source config (bot_config) via ConfigLoader
   class WebhookPayloadParser
-    # Parsed webhook data
-    ParsedPayload = Struct.new(
-      :bot_id, :post_id, :username, :text, :bot_config, :source_id,
-      keyword_init: true
-    )
+    # Parsed webhook data (immutable value object)
+    ParsedPayload = Data.define(:bot_id, :post_id, :username, :text, :bot_config, :source_id)
 
     # Parse webhook payload and resolve config
     # @param payload [Hash] Raw webhook data (string keys from JSON.parse)

@@ -26,7 +26,7 @@ unless File.exist?(config_path)
   exit 1
 end
 
-config = YAML.load_file(config_path)
+config = YAML.safe_load_file(config_path)
 
 # 2. Initialize components
 puts "📡 Initializing components..."

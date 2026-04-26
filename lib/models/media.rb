@@ -49,17 +49,17 @@ class Media
 
   # Serialization
   def to_h
-  {
-    type: type,
-    url: url,
-    alt_text: alt_text,
-    width: width,
-    height: height,
-    thumbnail_url: thumbnail_url,
-    title: title,
-    description: description
-  }.compact
-end
+    {
+      type: type,
+      url: url,
+      alt_text: alt_text,
+      width: width,
+      height: height,
+      thumbnail_url: thumbnail_url,
+      title: title,
+      description: description
+    }.compact
+  end
 
   def inspect
     "#<Media type=#{type} url=#{url[0..50]}...>"

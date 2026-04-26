@@ -124,7 +124,7 @@ host = ThreadingHost.new
 post_alice = MockPost.new(is_thread_post: true, author: MockAuthor.new(username: 'alice'))
 
 host.update_thread_cache('source_a', post_alice, '12345')
-test("update_thread_cache stores mastodon_id", '12345', host.thread_cache.dig('source_a', 'alice'))
+test("update_thread_cache stores mastodon_id", '12345', host.thread_cache[['source_a', 'alice']])
 
 # resolve_thread_parent should find cached ID
 cached_id = host.resolve_thread_parent('source_a', post_alice)
@@ -181,6 +181,46 @@ host6 = ThreadingHost.new(state_manager: sm_nil)
 post_t3 = MockPost.new(is_thread_post: true, author: MockAuthor.new(username: 'eve'))
 result_nil = host6.resolve_thread_parent('src', post_t3)
 test("returns nil when both cache and DB empty", nil, result_nil)
+
+# =============================================================================
+# LRU eviction
+# =============================================================================
+section("LRU eviction")
+
+host_lru = ThreadingHost.new
+cap = Support::ThreadingSupport::MAX_THREAD_CACHE_SIZE
+# Fill to cap
+cap.times do |i|
+  p = MockPost.new(is_thread_post: true, author: MockAuthor.new(username: "user#{i}"))
+  host_lru.update_thread_cache('src', p, "id#{i}")
+end
+test("cache at cap has correct size", cap, host_lru.thread_cache.size)
+
+# First key inserted
+first_key = ['src', 'user0']
+test("first key present before overflow", true, host_lru.thread_cache.key?(first_key))
+
+# Insert one more — should evict user0
+overflow_post = MockPost.new(is_thread_post: true, author: MockAuthor.new(username: 'overflow'))
+host_lru.update_thread_cache('src', overflow_post, 'id_overflow')
+test("cache size stays at cap after overflow", cap, host_lru.thread_cache.size)
+test("oldest entry evicted", false, host_lru.thread_cache.key?(first_key))
+test("new entry present", 'id_overflow', host_lru.thread_cache[['src', 'overflow']])
+
+# Re-accessing existing key should move it to end (not evicted next)
+host_lru2 = ThreadingHost.new
+cap.times do |i|
+  p = MockPost.new(is_thread_post: true, author: MockAuthor.new(username: "u#{i}"))
+  host_lru2.update_thread_cache('src', p, "id#{i}")
+end
+# Touch u0 (moves it to end)
+p0 = MockPost.new(is_thread_post: true, author: MockAuthor.new(username: 'u0'))
+host_lru2.update_thread_cache('src', p0, 'id0_refreshed')
+# Now add one more — u1 should be evicted (oldest), u0 should survive
+p_new = MockPost.new(is_thread_post: true, author: MockAuthor.new(username: 'unew'))
+host_lru2.update_thread_cache('src', p_new, 'idnew')
+test("refreshed entry survives eviction", 'id0_refreshed', host_lru2.thread_cache[['src', 'u0']])
+test("second-oldest evicted after refresh", false, host_lru2.thread_cache.key?(['src', 'u1']))
 
 # =============================================================================
 # log_threading — no crash

@@ -19,6 +19,20 @@
 
 module Processors
   class ContentFilter
+    CAMEL_TO_SNAKE = {
+      contentRegex: :content_regex,
+      usernameRegex: :username_regex,
+      domainRegex: :domain_regex
+    }.freeze
+
+    RULE_TYPE_HANDLERS = {
+      'literal' => :match_rule_literal,
+      'regex'   => :match_rule_regex,
+      'and'     => :match_rule_and,
+      'or'      => :match_rule_or,
+      'not'     => :match_rule_not,
+      'complex' => :match_rule_complex
+    }.freeze
     # @param banned_phrases [Array<String, Hash>] PHRASES_BANNED equivalent
     # @param required_keywords [Array<String, Hash>] PHRASES_REQUIRED equivalent
     # @param content_replacements [Array<Hash>] CONTENT_REPLACEMENTS equivalent
@@ -93,8 +107,7 @@ module Processors
           
           # Handle global flag - Ruby gsub is always global
           result = result.gsub(regex, replacement)
-        rescue RegexpError => e
-          # Skip invalid patterns (same as IFTTT try/catch)
+        rescue RegexpError
           next
         end
       end
@@ -129,83 +142,16 @@ module Processors
 
       lower_str = str.downcase
 
-      # SIMPLE STRING - case-insensitive substring match
-      if rule.is_a?(String)
-        return lower_str.include?(rule.downcase)
-      end
+      return lower_str.include?(rule.downcase) if rule.is_a?(String)
+      return rule.match?(str)                  if rule.is_a?(Regexp)
+      return false                             unless rule.is_a?(Hash)
 
-      # NATIVE REGEXP
-      if rule.is_a?(Regexp)
-        return rule.match?(str)
-      end
+      handler = RULE_TYPE_HANDLERS[rule[:type]&.to_s]
+      return send(handler, str, rule, lower_str) if handler
 
-      # Must be a Hash (object)
-      return false unless rule.is_a?(Hash)
-
-      type = rule[:type]
-
-      case type&.to_s
-      when 'literal'
-        # LITERAL: Case-insensitive substring match
-        pattern = rule[:pattern]
-        return false unless pattern
-        lower_str.include?(pattern.to_s.downcase)
-
-      when 'regex'
-        # REGEX: Regular expression matching
-        pattern = rule[:pattern]
-        return false unless pattern
-
-        flags = rule[:flags] || 'i'
-        options = build_regex_options(flags)
-        
-        begin
-          regex = Regexp.new(pattern, options)
-          regex.match?(str)
-        rescue RegexpError
-          false
-        end
-
-      when 'and'
-        # AND: All conditions in unified structure must match
-        matches_unified_filter?(str, rule, :and)
-
-      when 'or'
-        # OR: At least one condition must match
-        matches_unified_filter?(str, rule, :or)
-
-      when 'not'
-        # NOT: None should match (inverts result)
-        matches_unified_filter?(str, rule, :not)
-
-      when 'complex'
-        # COMPLEX: Combines multiple rules using AND/OR operator
-        rules = rule[:rules]
-        operator = rule[:operator]
-        
-        return false if rules.nil? || rules.empty?
-        return false if operator.nil?
-
-        case operator.to_s
-        when 'and'
-          # All nested rules must be satisfied
-          rules.all? { |r| matches_filter_rule?(str, r) }
-        when 'or'
-          # At least one nested rule must be satisfied
-          rules.any? { |r| matches_filter_rule?(str, r) }
-        else
-          false
-        end
-
-      else
-        # Unknown type - try as simple string match if pattern exists
-        pattern = rule[:pattern]
-        if pattern
-          lower_str.include?(pattern.to_s.downcase)
-        else
-          false
-        end
-      end
+      # Unknown type — fallback to substring match if pattern exists
+      pattern = rule[:pattern]
+      pattern ? lower_str.include?(pattern.to_s.downcase) : false
     end
 
     # Evaluate unified filter (content/username/domain with regex)
@@ -232,10 +178,9 @@ module Processors
       end
 
       # Process regex arrays (contentRegex, usernameRegex, domainRegex)
-      [:contentRegex, :usernameRegex, :domainRegex].each do |key|
-        # Support both camelCase and snake_case
-        arr = rule[key] || rule[key.to_s] || 
-              rule[to_snake_case(key)] || rule[to_snake_case(key).to_s]
+      CAMEL_TO_SNAKE.each_key do |key|
+        snake = CAMEL_TO_SNAKE[key]
+        arr = rule[key] || rule[key.to_s] || rule[snake] || rule[snake.to_s]
         next unless arr.is_a?(Array) && !arr.empty?
 
         arr.each do |pattern|
@@ -265,13 +210,34 @@ module Processors
       end
     end
 
-    # Convert camelCase to snake_case
-    def to_snake_case(sym)
-      sym.to_s
-         .gsub(/([A-Z]+)([A-Z][a-z])/, '\1_\2')
-         .gsub(/([a-z\d])([A-Z])/, '\1_\2')
-         .downcase
-         .to_sym
+    def match_rule_literal(_, rule, lower_str)
+      pattern = rule[:pattern]
+      return false unless pattern
+      lower_str.include?(pattern.to_s.downcase)
+    end
+
+    def match_rule_regex(str, rule, _lower_str)
+      pattern = rule[:pattern]
+      return false unless pattern
+      options = build_regex_options(rule[:flags] || 'i')
+      Regexp.new(pattern, options).match?(str)
+    rescue RegexpError
+      false
+    end
+
+    def match_rule_and(str, rule, _lower_str) = matches_unified_filter?(str, rule, :and)
+    def match_rule_or(str, rule, _lower_str)  = matches_unified_filter?(str, rule, :or)
+    def match_rule_not(str, rule, _lower_str) = matches_unified_filter?(str, rule, :not)
+
+    def match_rule_complex(str, rule, _lower_str)
+      rules    = rule[:rules]
+      operator = rule[:operator]
+      return false if rules.nil? || rules.empty? || operator.nil?
+      case operator.to_s
+      when 'and' then rules.all? { |r| matches_filter_rule?(str, r) }
+      when 'or'  then rules.any? { |r| matches_filter_rule?(str, r) }
+      else false
+      end
     end
 
     # Build Ruby Regexp options from JavaScript-style flags

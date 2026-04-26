@@ -265,6 +265,151 @@ test_no_error("UrlProcessingStep initializes") do
 end
 
 # =============================================================================
+# 6. MediaEnrichmentStep
+# =============================================================================
+
+# Stub dependencies so the step can run without requiring the real implementations
+require_relative '../lib/models/media'
+require_relative '../lib/models/author'
+require_relative '../lib/models/post'
+
+module Processors
+  module ThumbnailPhash
+    def self.compute(_data); 12345; end
+  end
+
+  class MediaDedup
+    def initialize(state_manager, logger: nil); @dupes = []; end
+    def duplicate_by_phash?(source_id, phash, hours:); @dupes.include?(phash); end
+    def mark_duplicate(phash); @dupes << phash; end
+  end
+end
+
+module Utils
+  class OgpFetcher
+    def fetch_og_image(url); "https://cdn.example.com/og.jpg"; end
+  end
+end
+
+class MockHttpClient
+  class Response
+    attr_reader :body
+    def initialize(body); @body = body; end
+  end
+  @@response = nil
+  def self.set_response(r); @@response = r; end
+  def self.download(url, max_size: nil); @@response; end
+  def self.head(url, **opts); nil; end
+end
+
+HttpClient = MockHttpClient unless defined?(HttpClient)
+
+def build_post_with_media(type:, url:)
+  Post.new(
+    platform: 'twitter', id: '1', url: 'https://x.com/u/status/1',
+    text: 'Hello', published_at: Time.now,
+    author: Author.new(username: 'testuser'),
+    media: [Media.new(type: type, url: url)]
+  )
+end
+
+def build_post_no_media
+  Post.new(
+    platform: 'rss', id: '2', url: 'https://example.com/article',
+    text: 'Article text https://example.com/article',
+    published_at: Time.now,
+    author: Author.new(username: 'feed')
+  )
+end
+
+section("MediaEnrichmentStep: no video_dedup_hours → continue, no cache")
+
+step = Processors::MediaEnrichmentStep.new(MockStateManager.new, dry_run: false)
+post = build_post_with_media(type: 'video', url: 'https://cdn.example.com/vid.mp4')
+result = step.call(post, 'src1', 'p1', 'text', { processing: {} })
+test("no dedup config → action :continue", :continue, result[:action])
+test("no dedup config → video_data_cache nil", nil, result[:video_data_cache])
+
+section("MediaEnrichmentStep: dry_run skips video dedup")
+
+step_dry = Processors::MediaEnrichmentStep.new(MockStateManager.new, dry_run: true)
+post2 = build_post_with_media(type: 'video', url: 'https://cdn.example.com/vid.mp4')
+MockHttpClient.set_response(MockHttpClient::Response.new('video_bytes'))
+result2 = step_dry.call(post2, 'src1', 'p1', 'text', { processing: { video_dedup_hours: 72 } })
+test("dry_run skips dedup → action :continue", :continue, result2[:action])
+test("dry_run → video_data_cache nil", nil, result2[:video_data_cache])
+
+section("MediaEnrichmentStep: new video → cache returned")
+
+step3 = Processors::MediaEnrichmentStep.new(MockStateManager.new, dry_run: false)
+post3 = build_post_with_media(type: 'video', url: 'https://cdn.example.com/vid.mp4')
+MockHttpClient.set_response(MockHttpClient::Response.new('video_bytes'))
+result3 = step3.call(post3, 'src1', 'p1', 'text', { processing: { video_dedup_hours: 72 } })
+test("new video → action :continue", :continue, result3[:action])
+test("new video → cache is hash", true, result3[:video_data_cache].is_a?(Hash))
+test("new video → cache has data", true, result3[:video_data_cache]&.key?(:data))
+test("new video → cache has phash", true, result3[:video_data_cache]&.key?(:phash))
+
+section("MediaEnrichmentStep: duplicate video → :skip")
+
+sm_dup = MockStateManager.new
+step4 = Processors::MediaEnrichmentStep.new(sm_dup, dry_run: false)
+# Pre-seed the dedup store with the phash that ThumbnailPhash will return (12345)
+step4.instance_variable_get(:@dedup_store)&.mark_duplicate(12345) rescue nil
+# Force dedup store creation and mark duplicate
+dedup_store = Processors::MediaDedup.new(sm_dup)
+dedup_store.mark_duplicate(12345)
+step4.instance_variable_set(:@dedup_store, dedup_store)
+post4 = build_post_with_media(type: 'video', url: 'https://cdn.example.com/vid.mp4')
+MockHttpClient.set_response(MockHttpClient::Response.new('video_bytes'))
+result4 = step4.call(post4, 'src1', 'p1', 'text', { processing: { video_dedup_hours: 72 } })
+test("duplicate video → action :skip", :skip, result4[:action])
+test("duplicate video → reason", 'duplicate_video', result4[:reason])
+
+section("MediaEnrichmentStep: OGP fetch adds to post.media")
+
+step5 = Processors::MediaEnrichmentStep.new(MockStateManager.new, dry_run: false)
+post5 = build_post_no_media
+post5.raw = {}
+original_media_count = post5.media.length
+result5 = step5.call(post5, 'src2', 'p2', 'https://example.com/article', {
+  processing: { ogp_fetch_link_card: true }
+})
+test("OGP → action :continue", :continue, result5[:action])
+test("OGP → media added to post", 1, post5.media.length)
+test("OGP → media type image", 'image', post5.media.first&.type)
+
+section("MediaEnrichmentStep: OGP skipped when post already has media")
+
+step6 = Processors::MediaEnrichmentStep.new(MockStateManager.new, dry_run: false)
+post6 = build_post_with_media(type: 'image', url: 'https://img.example.com/pic.jpg')
+result6 = step6.call(post6, 'src2', 'p3', 'text', { processing: { ogp_fetch_link_card: true } })
+test("OGP skipped when media present → :continue", :continue, result6[:action])
+test("OGP skipped → media count unchanged", 1, post6.media.length)
+
+section("MediaEnrichmentStep: link card thumbnail extraction")
+
+step7 = Processors::MediaEnrichmentStep.new(MockStateManager.new, dry_run: false)
+link_card = Media.new(type: 'link_card', url: 'https://example.com/article',
+                      thumbnail_url: 'https://img.example.com/thumb.jpg')
+post7 = Post.new(
+  platform: 'bluesky', id: '3', url: 'https://example.com/article',
+  text: 'Article', published_at: Time.now,
+  author: Author.new(username: 'user'),
+  media: [link_card]
+)
+result7 = step7.call(post7, 'src3', 'p4', 'text', { processing: { ogp_fetch_link_card: true } })
+test("link card thumbnail → :continue", :continue, result7[:action])
+test("link card thumbnail → image appended", 2, post7.media.length)
+test("link card thumbnail → appended is image", 'image', post7.media.last&.type)
+
+section("MediaEnrichmentStep: OGP_SKIP_DOMAINS constant")
+test("OGP_SKIP_DOMAINS includes twitter.com", true,
+     Processors::MediaEnrichmentStep::OGP_SKIP_DOMAINS.include?('twitter.com'))
+test("OGP_SKIP_DOMAINS includes bsky.app", true,
+     Processors::MediaEnrichmentStep::OGP_SKIP_DOMAINS.include?('bsky.app'))
+
+# =============================================================================
 # Summary
 # =============================================================================
 puts

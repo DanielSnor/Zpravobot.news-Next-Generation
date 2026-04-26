@@ -31,17 +31,21 @@ module Trending
     # Bot accounts whose posts are always excluded from trending quotes
     BOT_ACCOUNTS = %w[betabot udrzbot tlambot].freeze
 
-    # @param instance_url  [String]  Base URL of the Mastodon instance (no trailing slash)
-    # @param access_token  [String]  Bearer token for @zpravobot
-    # @param state_path    [String]  Override for the state JSON file path
-    # @param dry_run       [Boolean] When true, prints actions without HTTP POSTs
-    # @param commenter     [#comment_for, nil] Optional AI commenter for Hrubot comments
-    def initialize(instance_url:, access_token:, state_path: nil, dry_run: false, commenter: nil)
-      @instance_url = instance_url.chomp('/')
-      @access_token = access_token
-      @state_path   = state_path || resolve_state_path
-      @dry_run      = dry_run
-      @commenter    = commenter
+    # @param instance_url      [String]         Base URL of the Mastodon instance (no trailing slash)
+    # @param access_token      [String]         Bearer token for @zpravobot
+    # @param state_path        [String]         Override for the state JSON file path
+    # @param dry_run           [Boolean]        When true, prints actions without HTTP POSTs
+    # @param commenter         [#comment_for, nil] Optional AI commenter for Hrubot comments
+    # @param bluesky_publisher [#publish, nil]  Optional BlueskyPublisher for parallel publishing
+    def initialize(instance_url:, access_token:, state_path: nil, dry_run: false,
+                   commenter: nil, bluesky_publisher: nil)
+      @instance_url      = instance_url.chomp('/')
+      @access_token      = access_token
+      @state_path        = state_path || resolve_state_path
+      @dry_run           = dry_run
+      @commenter         = commenter
+      @bluesky_publisher = bluesky_publisher
+      @bs_state_path     = @state_path.sub(/\.json\z/, '_bluesky.json')
     end
 
     # Run one trending check cycle.
@@ -235,6 +239,7 @@ module Trending
           state['announced_ids'] << trend['id']
           state['last_post_at'] = Time.now.iso8601
           posted += 1
+          publish_trend_to_bluesky(trend)
         end
       end
 
@@ -262,6 +267,29 @@ module Trending
                    end
 
       [first_line, '', HASHTAGS_LINE].join("\n")
+    end
+
+    # ----------------------------------------------------------------
+    # Bluesky
+    # ----------------------------------------------------------------
+
+    def publish_trend_to_bluesky(trend)
+      return unless @bluesky_publisher
+
+      url  = trend['url'] || trend['id']
+      # Strip hashtags — BlueskyTextSplitter would remove them anyway,
+      # but trending posts are very short so we build the BS text directly.
+      first_line = if @commenter
+                     comment = @commenter.comment_for(trend)
+                     comment && !comment.empty? ? "#{HEADER_LINE} #{comment}." : HEADER_LINE
+                   else
+                     HEADER_LINE
+                   end
+      text = "#{first_line}\n\n#{url}"
+
+      @bluesky_publisher.publish(text)
+    rescue StandardError => e
+      warn "  [WARN] Bluesky publish failed for trend #{trend['id']}: #{e.message}"
     end
 
     # ----------------------------------------------------------------

@@ -205,10 +205,18 @@ module Syncers
         profile[:cover_url] = decode_facebook_url($1)
       end
 
-      # Extract description from og:description
-      if html =~ /<meta property="og:description" content="([^"]+)"/
+      # Extract description — try embedded JSON first (full text, not truncated),
+      # fall back to og:description (FB truncates it at ~300 chars).
+      json_desc = extract_description_from_json(html)
+      if json_desc && !json_desc.empty?
+        log "  Description source: embedded JSON (#{json_desc.length} chars)"
+        profile[:description] = json_desc
+      elsif html =~ /<meta property="og:description" content="([^"]+)"/
         desc = HtmlCleaner.decode_html_entities($1)
-        desc = desc.sub(/^[^.]+\.\s*[\d\s]+[^.]+\.\s*/, '')
+        # Strip FB metrics prefix: "Page Name. 232,088 likes · 19,789 talking about this. "
+        # Previous regex failed for page names containing dots (e.g. "noviny.sk").
+        desc = desc.sub(/\A.*?\d[\d,]*\s+likes[^.]*\.\s*/m, '')
+        log "  Description source: og:description (#{desc.length} chars)"
         profile[:description] = desc unless desc.empty?
       end
 
@@ -225,6 +233,39 @@ module Syncers
       end
 
       profile
+    end
+
+    # Try to extract the full (untruncated) page description from FB's embedded JSON.
+    # FB embeds page data in script tags; the "about" field is not truncated unlike og:description.
+    def extract_description_from_json(html)
+      # Pattern 1: "about":{"text":"..."} — common in newer FB JSON bundles
+      if html =~ /"about":\{"text":"((?:[^"\\]|\\.)*)"/
+        text = unescape_json_string($1)
+        return text if text && !text.empty?
+      end
+
+      # Pattern 2: pageAboutInfo / page_about_fields with description key
+      if html =~ /"pageAboutInfo"[^{]*\{[^}]*"description":"((?:[^"\\]|\\.)*)"/ ||
+         html =~ /"page_about_fields"[^{]*\{[^}]*"description":"((?:[^"\\]|\\.)*)"/
+        text = unescape_json_string($1)
+        return text if text && !text.empty?
+      end
+
+      nil
+    end
+
+    def unescape_json_string(s)
+      return nil if s.nil?
+
+      s.gsub('\\"', '"')
+       .gsub('\\n', "\n")
+       .gsub('\\r', '')
+       .gsub('\\t', ' ')
+       .gsub('\\/', '/')
+       .gsub('\\u0026', '&')
+       .gsub('\\u003C', '<')
+       .gsub('\\u003E', '>')
+       .strip
     end
 
     def decode_facebook_url(url)

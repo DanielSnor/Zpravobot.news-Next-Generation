@@ -68,8 +68,7 @@ module Config
 
       sources_dir = File.join(@config_dir, 'sources')
       return [] unless Dir.exist?(sources_dir)
-      # Note: Using map + compact instead of filter_map for Ruby 2.6 compatibility
-      @all_sources = Dir.glob(File.join(sources_dir, '*.yml')).map do |file|
+      @all_sources = Dir.glob(File.join(sources_dir, '*.yml')).filter_map do |file|
         source_id = File.basename(file, '.yml')
 
         # Skip example files
@@ -80,7 +79,7 @@ module Config
       rescue StandardError => e
         warn "[ConfigLoader] Error loading #{source_id}: #{e.message}"
         nil
-      end.compact
+      end
     end
     # Load sources by platform
     # @param platform [String] Platform name (twitter, bluesky, rss, youtube)
@@ -119,11 +118,10 @@ module Config
     def source_ids
       sources_dir = File.join(@config_dir, 'sources')
       return [] unless Dir.exist?(sources_dir)
-      # Note: Using map + compact instead of filter_map for Ruby 2.6 compatibility
-      Dir.glob(File.join(sources_dir, '*.yml')).map do |file|
+      Dir.glob(File.join(sources_dir, '*.yml')).filter_map do |file|
         source_id = File.basename(file, '.yml')
         example_file?(source_id) ? nil : source_id
-      end.compact
+      end
     end
     # Clear cache (useful for reloading)
     def clear_cache
@@ -422,6 +420,46 @@ module Config
     end
     def to_h
       @data
+    end
+
+    # Build the hash structure expected by PostProcessor and TwitterTweetProcessor.
+    # Encapsulates field mapping so adding a new YAML key requires only one change here.
+    #
+    # @param mentions [Hash, nil] Pre-computed mentions config (caller may inject
+    #   context-dependent enrichment such as local handle maps).
+    # @return [Hash]
+    def to_processor_hash(mentions: nil)
+      {
+        id: id,
+        platform: platform,
+        source: {
+          handle: source_handle,
+          nitter_instance: nitter_instance
+        },
+        formatting: formatting.merge(
+          source_name: source_name,
+          max_length: post_length
+        ),
+        filtering: filtering,
+        processing: processing.merge(
+          trim_strategy: trim_strategy,
+          smart_tolerance_percent: processing.fetch(:smart_tolerance_percent, 12),
+          url_domain_fixes: url_domain_fixes,
+          content_replacements: content_replacements
+        ),
+        target: {
+          mastodon_account: mastodon_account,
+          mastodon_instance: mastodon_instance,
+          visibility: visibility
+        },
+        content: content_config,
+        thread_handling: thread_handling,
+        nitter_processing: nitter_processing,
+        url: url_config,
+        rss_source_type: rss_source_type,
+        mentions: mentions || self.mentions || {},
+        _mastodon_token: mastodon_token
+      }
     end
   end
 end

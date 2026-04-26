@@ -380,8 +380,8 @@ thread_post_cached = make_post(id: '503', is_thread_post: true)
 pp_basic3 = TrackingPostProcessor.new(mastodon_id: 'masto_cached_503')
 proc_basic3 = make_processor(post_processor: pp_basic3)
 stub_fetches(proc_basic3, nitter_result: thread_post_cached)
-# Naseed thread_cache: test_source → testuser → masto_parent_456
-proc_basic3.instance_variable_get(:@thread_cache)['test_source'] = { 'testuser' => 'masto_parent_456' }
+# Naseed thread_cache: tuple key [source_id, author_handle] → mastodon_id
+proc_basic3.instance_variable_get(:@thread_cache)[['test_source', 'testuser']] = 'masto_parent_456'
 
 quiet { proc_basic3.process(post_id: '503', username: 'testuser', source_config: source_config) }
 test "basic threading: thread_post, parent v cache → in_reply_to z cache", 'masto_parent_456', pp_basic3.last_in_reply_to

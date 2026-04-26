@@ -373,9 +373,20 @@ class ProfileSyncRunner
     sync_config = source.data.dig(:profile_sync) || {}
 
     # Profile sync is opt-in for YouTube: only sources with source.handle are synced.
-    # Supplementary sources (channel_id only) are silently skipped.
+    # Exception: if social_profile is configured, delegate to that platform syncer.
     youtube_handle = source.source_handle
     unless youtube_handle
+      social_profile = sync_config[:social_profile]
+      if social_profile && social_profile[:platform] && social_profile[:handle]
+        platform = social_profile[:platform].to_s
+        handle   = social_profile[:handle].to_s
+        case platform
+        when 'facebook' then return sync_facebook_for_rss(source, handle, sync_config)
+        when 'twitter'  then return sync_twitter_for_rss(source, handle, sync_config)
+        when 'bluesky'  then return sync_bluesky_for_rss(source, handle, sync_config)
+        when 'instagram' then return sync_instagram_for_rss(source, handle, sync_config)
+        end
+      end
       @stats[:skipped] += 1
       return
     end

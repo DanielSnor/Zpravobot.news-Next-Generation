@@ -22,6 +22,7 @@ require 'json'
 require 'fileutils'
 require 'set'
 require_relative '../logging'
+require_relative '../stats/run_stats'
 require_relative '../adapters/twitter_nitter_adapter'
 require_relative '../config/config_loader'
 require_relative '../state/state_manager'
@@ -137,7 +138,7 @@ module Webhook
       pending_dir = File.join(QUEUE_DIR, 'pending')
       files = Dir.glob(File.join(pending_dir, '*.json')).sort.first(500)
 
-      stats = { processed: 0, published: 0, skipped: 0, failed: 0, updated: 0, rate_limited: 0 }
+      stats = Stats::RunStats.new(processed: 0, published: 0, skipped: 0, failed: 0, updated: 0, rate_limited: 0)
 
       # Track which usernames have been rate-limited in this run → skip remaining files for same user
       rate_limited_accounts = Set.new
@@ -156,12 +157,12 @@ module Webhook
         username = extract_username_from_filename(filepath)
         if username && rate_limited_accounts.include?(username)
           log "Skipping #{File.basename(filepath)} — account #{username} rate-limited in this run"
-          stats[:rate_limited] += 1
+          stats.increment(:rate_limited)
           next
         end
         result = process_webhook_file(filepath, force_tier2: false)
-        stats[result] = (stats[result] || 0) + 1
-        stats[:processed] += 1
+        stats.increment(result)
+        stats.increment(:processed)
         rate_limited_accounts.add(username) if result == :rate_limited && username
       end
 
@@ -173,8 +174,8 @@ module Webhook
         log "Processing batch of #{ready.count} webhooks (#{batch_candidates.count - ready.count} still waiting)"
         batch_results = process_batch(ready, rate_limited_accounts: rate_limited_accounts)
         batch_results.each do |result|
-          stats[result] = (stats[result] || 0) + 1
-          stats[:processed] += 1
+          stats.increment(result)
+          stats.increment(:processed)
         end
       else
         waiting = batch_candidates.count

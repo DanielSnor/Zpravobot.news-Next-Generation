@@ -10,6 +10,7 @@
 require_relative 'universal_formatter'
 require_relative '../utils/hash_helpers'
 require_relative '../models/post_text_wrapper'
+require_relative '../processors/instagram_processor'
 
 module Formatters
   class RssFormatter
@@ -68,7 +69,12 @@ module Formatters
       if @config[:rss_source_type] == 'facebook'
         post = apply_facebook_preprocessing(post)
       end
-      
+
+      # Pre-processing: Instagram-specific processing
+      if @config[:rss_source_type] == 'instagram'
+        post = apply_instagram_preprocessing(post)
+      end
+
       # Delegate to UniversalFormatter
       @universal.format(post, runtime_config)
     end
@@ -107,6 +113,26 @@ module Formatters
     # Runtime config (can vary per-post if needed)
     def runtime_config
       {}
+    end
+
+    # Apply Instagram-specific preprocessing
+    # Reconstructs paragraph breaks lost during RSS.app conversion
+    def apply_instagram_preprocessing(post)
+      return post unless defined?(Processors::InstagramProcessor)
+      return post unless post.respond_to?(:text) && post.text
+
+      processor = Processors::InstagramProcessor.new
+      processed_text = processor.process(post.text)
+
+      if post.respond_to?(:dup)
+        modified = post.dup
+        if modified.respond_to?(:text=)
+          modified.text = processed_text
+          return modified
+        end
+      end
+
+      PostTextWrapper.new(post, processed_text)
     end
 
     # Apply Facebook-specific preprocessing

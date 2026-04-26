@@ -37,8 +37,10 @@ module FF
     EXCLUDED_ACCOUNTS = %w[betabot].freeze
     ACCOUNTS_PER_POST = 3
     BIO_MAX_CHARS     = 500
-    POST_MAX_CHARS    = 2500
+    POST_MAX_CHARS    = 2500   # Mastodon
+    BS_CHAR_LIMIT     = 300    # graphemes — Bluesky
     DEFAULT_INSTANCE  = 'zpravobot.news'
+    HASHTAGS          = '#zpravobot #ffcz'
 
     MONTHS_CS = %w[_ ledna února března dubna května června července srpna září října listopadu prosince].freeze
     DAYS_CS   = %w[neděli pondělí úterý středu čtvrtek pátek sobotu].freeze
@@ -46,23 +48,25 @@ module FF
     OPEN_TIMEOUT = 5
     READ_TIMEOUT = 10
 
-    def initialize(config_dir:, state_path:, instance_url:, access_token:, dry_run: false)
-      @config_dir   = config_dir
-      @state_path   = state_path
-      @instance_url = instance_url.to_s.chomp('/')
-      @access_token = access_token
-      @dry_run      = dry_run
+    def initialize(config_dir:, state_path:, instance_url:, access_token:,
+                   dry_run: false, bluesky_publisher: nil)
+      @config_dir        = config_dir
+      @state_path        = state_path
+      @instance_url      = instance_url.to_s.chomp('/')
+      @access_token      = access_token
+      @dry_run           = dry_run
+      @bluesky_publisher = bluesky_publisher
     end
 
     # Main entry point.
-    # @return [Hash] { posted:, accounts:, post_text:, url: (if posted) }
+    # @return [Hash] { posted:, accounts:, posts:, url: (if posted) }
     def run
       accounts_config = load_accounts_config
       state = load_or_init_rotation(accounts_config)
 
       if state[:remaining].empty?
         log_warn('[FF] No accounts available to promote')
-        return { posted: false, accounts: [], post_text: nil }
+        return { posted: false, accounts: [], posts: [] }
       end
 
       # Select accounts
@@ -79,21 +83,25 @@ module FF
       end
 
       post_text = format_post(accounts_data, Time.now)
+      bs_posts  = format_posts(accounts_data, Time.now)
 
-      log_info("[FF] Post (#{post_text.length} chars):\n#{post_text}")
+      log_info("[FF] Mastodon post (#{post_text.length} chars):\n#{post_text}")
 
       if @dry_run
         puts post_text
         return { posted: false, accounts: selected_ids, post_text: post_text }
       end
 
-      # Publish
+      # Publish to Mastodon as single post
       publisher = Publishers::MastodonPublisher.new(
         instance_url: @instance_url,
         access_token: @access_token
       )
       result = publisher.publish(post_text, visibility: 'public')
       log_info("[FF] Published: #{result['url']}")
+
+      # Publish to Bluesky as thread (non-fatal)
+      publish_to_bluesky(bs_posts)
 
       # Save state only after successful publish
       save_state(state)
@@ -241,6 +249,7 @@ module FF
 
     # ---------- Formatting ----------
 
+    # Single Mastodon post (up to POST_MAX_CHARS), progressive bio truncation.
     def format_post(accounts_data, time)
       day_name      = DAYS_CS[time.wday]
       date_str      = "#{time.day}. #{MONTHS_CS[time.month]} #{time.year}"
@@ -250,34 +259,91 @@ module FF
       text = build_post_text(accounts_data, header, instance_host)
       return text if text.length <= POST_MAX_CHARS
 
-      # Progressively shorten bios to fit
       max_bio = BIO_MAX_CHARS
       loop do
         max_bio -= 50
         break if max_bio <= 0
 
-        trimmed  = accounts_data.map { |a| a[:bio] ? a.merge(bio: truncate_bio(a[:bio], max_bio)) : a }
-        text     = build_post_text(trimmed, header, instance_host)
+        trimmed = accounts_data.map { |a| a[:bio] ? a.merge(bio: truncate_bio(a[:bio], max_bio)) : a }
+        text    = build_post_text(trimmed, header, instance_host)
         return text if text.length <= POST_MAX_CHARS
       end
 
-      # Last resort: no bios
       build_post_text(accounts_data.map { |a| a.merge(bio: nil) }, header, instance_host)
     end
 
     def build_post_text(accounts_data, header, instance_host)
       parts = [header, '']
-
       accounts_data.each do |acc|
-        parts << "#{acc[:display_name]} \u2014 @#{acc[:id]}@#{instance_host}"
+        parts << "#{acc[:display_name]} \u2014 https://#{instance_host}/@#{acc[:id]}"
         parts << acc[:bio] if acc[:bio]
         parts << ''
       end
-
       parts.pop if parts.last == ''
-      parts.push('', '#zpravobot #ffcz')
-
+      parts.push('', HASHTAGS)
       parts.join("\n")
+    end
+
+    # Builds one post per account as a thread (for Bluesky):
+    #   Post 0: header + first account (handle + bio)
+    #   Post 1+: one account each (handle + bio)
+    # Hashtags only on the last post (stripped by BlueskyTextSplitter for BS).
+    # Each post is ≤ POST_CHAR_LIMIT graphemes.
+    def format_posts(accounts_data, time)
+      day_name      = DAYS_CS[time.wday]
+      date_str      = "#{time.day}. #{MONTHS_CS[time.month]} #{time.year}"
+      header        = "#FF 🇨🇿 tip na #{day_name}, #{date_str}:"
+      instance_host = accounts_data.first&.dig(:instance_host) || DEFAULT_INSTANCE
+
+      accounts_data.each_with_index.map do |acc, idx|
+        first  = idx == 0
+        last   = idx == accounts_data.size - 1
+        suffix = last ? "\n\n#{HASHTAGS}" : ''
+
+        handle_line = "#{acc[:display_name]} \u2014 https://#{instance_host}/@#{acc[:id]}"
+        base        = first ? "#{header}\n\n#{handle_line}" : handle_line
+
+        build_account_post(base, acc[:bio], suffix)
+      end
+    end
+
+    def build_account_post(base, bio, suffix)
+      return "#{base}#{suffix}" unless bio
+
+      candidate = "#{base}\n#{bio}#{suffix}"
+      return candidate if grapheme_length(candidate) <= BS_CHAR_LIMIT
+
+      budget = BS_CHAR_LIMIT - grapheme_length("#{base}\n#{suffix}") - 1
+      return "#{base}#{suffix}" if budget < 10
+
+      "#{base}\n#{truncate_to_graphemes(bio, budget)}#{suffix}"
+    end
+
+    def publish_to_bluesky(posts)
+      return unless @bluesky_publisher
+
+      require_relative '../publishers/bluesky_text_splitter'
+      splitter = Publishers::BlueskyTextSplitter.new
+      # Each post is already ≤ 300 graphemes; splitter strips trailing hashtags
+      bs_posts = posts.flat_map { |p| splitter.split(p) }
+      return if bs_posts.empty?
+
+      @bluesky_publisher.publish_thread(bs_posts)
+    rescue StandardError => e
+      log_warn("[FF] Bluesky publish failed: #{e.message}")
+    end
+
+    # ---------- Grapheme helpers ----------
+
+    def grapheme_length(str)
+      str.scan(/\X/).length
+    end
+
+    def truncate_to_graphemes(text, max)
+      graphemes = text.scan(/\X/)
+      return text if graphemes.length <= max
+
+      graphemes.first(max - 1).join + "\u2026"
     end
 
     # Exposed for testing

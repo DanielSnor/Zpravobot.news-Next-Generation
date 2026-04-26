@@ -6,19 +6,18 @@ require 'yaml'
 require 'time'
 
 module TestRunner
-  TestResult = Struct.new(
-    :name,           # String: test identifier from catalog
-    :file,           # String: relative path to test file
-    :category,       # Symbol: :unit, :network, :e2e, :db
-    :status,         # Symbol: :pass, :fail, :error, :skip, :timeout
-    :exit_code,      # Integer or nil
-    :stdout,         # String: captured stdout
-    :stderr,         # String: captured stderr
-    :duration,       # Float: seconds
-    :parsed_pass,    # Integer: count of parsed pass indicators
-    :parsed_fail,    # Integer: count of parsed fail indicators
-    :detail,         # String: human-readable explanation
-    keyword_init: true
+  TestResult = Data.define(
+    :name,        # String: test identifier from catalog
+    :file,        # String: relative path to test file
+    :category,    # Symbol: :unit, :network, :e2e, :db
+    :status,      # Symbol: :pass, :fail, :error, :skip, :timeout
+    :exit_code,   # Integer or nil
+    :stdout,      # String: captured stdout
+    :stderr,      # String: captured stderr
+    :duration,    # Float: seconds
+    :parsed_pass, # Integer: count of parsed pass indicators
+    :parsed_fail, # Integer: count of parsed fail indicators
+    :detail       # String: human-readable explanation
   )
 
   class Runner
@@ -31,7 +30,7 @@ module TestRunner
 
     def initialize(catalog_path:, project_root:, options: {})
       @project_root = project_root
-      @catalog = YAML.load_file(catalog_path)
+      @catalog = YAML.safe_load_file(catalog_path)
       @options = options
       @results = []
       @parser = OutputParser.new

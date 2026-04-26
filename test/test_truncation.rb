@@ -32,8 +32,8 @@ require_relative '../lib/formatters/twitter_formatter'
 # Mock Post class
 class MockPost
   attr_accessor :text, :url, :author, :is_repost, :is_quote, :is_thread_post,
-                :reposted_by, :quoted_post, :media
-  
+                :reposted_by, :quoted_post, :media, :title, :raw, :poll_data, :is_reply
+
   def initialize(attrs = {})
     @text = attrs[:text] || ''
     @url = attrs[:url] || 'https://x.com/user/status/123456789'
@@ -41,20 +41,32 @@ class MockPost
     @is_repost = attrs[:is_repost] || false
     @is_quote = attrs[:is_quote] || false
     @is_thread_post = attrs[:is_thread_post] || false
+    @is_reply = attrs[:is_reply] || false
     @reposted_by = attrs[:reposted_by]
     @quoted_post = attrs[:quoted_post]
     @media = attrs[:media] || []
+    @title = attrs[:title]
+    @raw = attrs[:raw]
+    @poll_data = attrs[:poll_data]
     @has_video = attrs[:has_video] || false
   end
-  
+
+  def has_video
+    @has_video
+  end
+
   def has_video?
     @has_video
   end
-  
+
+  def has_poll?
+    false
+  end
+
   def self_repost?
     false
   end
-  
+
   def self_quote?
     false
   end

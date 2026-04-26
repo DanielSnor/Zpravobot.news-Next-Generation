@@ -4,6 +4,7 @@ require 'time' # Pro Time.parse v source_due?
 require_relative 'logging'
 require_relative 'config/config_loader'
 require_relative 'support/threading_support'
+require_relative 'stats/run_stats'
 require_relative 'support/loggable'
 require_relative 'state/state_manager'
 require_relative 'adapters/rss_adapter'
@@ -45,8 +46,7 @@ module Orchestrator
 	  @dry_run = false
 	  @first_run = first_run
 	  @verbose = verbose
-	  @stats = { processed: 0, published: 0, skipped: 0, errors: 0 }
-	  @publishers_cache = {}
+	  @stats = Stats::RunStats.new(processed: 0, published: 0, skipped: 0, errors: 0)
 	  @thread_cache = {} # Pro ThreadingSupport modul
 	  @last_fingerprint_cleanup = nil
 
@@ -85,7 +85,7 @@ module Orchestrator
 	  @first_run = first_run
 	  @post_processor = nil  # Reset to pick up new dry_run setting
 	  @tweet_processor = nil # Reset so it inherits new @post_processor + dry_run
-	  @stats = { processed: 0, published: 0, skipped: 0, errors: 0 }
+	  @stats = Stats::RunStats.new(processed: 0, published: 0, skipped: 0, errors: 0)
 
 	  if exclude_platform && !VALID_PLATFORMS.include?(exclude_platform)
 		raise ArgumentError, "Invalid platform: #{exclude_platform}. Valid: #{VALID_PLATFORMS.join(', ')}"
@@ -130,7 +130,7 @@ module Orchestrator
 	  @first_run = first_run
 	  @post_processor = nil
 	  @tweet_processor = nil
-	  @stats = { processed: 0, published: 0, skipped: 0, errors: 0 }
+	  @stats = Stats::RunStats.new(processed: 0, published: 0, skipped: 0, errors: 0)
 
 	  log_info("Running source: #{source_id}")
 
@@ -151,7 +151,7 @@ module Orchestrator
 	  @first_run = first_run
 	  @post_processor = nil
 	  @tweet_processor = nil
-	  @stats = { processed: 0, published: 0, skipped: 0, errors: 0 }
+	  @stats = Stats::RunStats.new(processed: 0, published: 0, skipped: 0, errors: 0)
 
 	  unless VALID_PLATFORMS.include?(platform)
 		raise ArgumentError, "Invalid platform: #{platform}. Valid: #{VALID_PLATFORMS.join(', ')}"
@@ -181,7 +181,7 @@ module Orchestrator
 	# Process a single source
 	def process_source(source)
 	  log_info("[#{source.id}] Processing...")
-	  @stats[:processed] += 1
+	  @stats.increment(:processed)
 
 	  # Reset thread cache for this source at start of processing
 	  @thread_cache[source.id] = {}
@@ -242,7 +242,7 @@ module Orchestrator
 	  log_error("[#{source.id}] Error: #{e.message}")
 	  @state_manager.mark_check_error(source.id, e.message)
 	  @state_manager.log_activity(source.id, 'error', { message: e.message, backtrace: e.backtrace.first(3) })
-	  @stats[:errors] += 1
+	  @stats.increment(:errors)
 	end
 
 	# ============================================
@@ -274,21 +274,21 @@ module Orchestrator
 	  # Update stats based on result
 	  case result.status
 	  when :published
-		@stats[:published] += 1
+		@stats.increment(:published)
 		# Update thread cache (Orchestrator-specific)
 		update_thread_cache(source.id, post, result.mastodon_id) if result.mastodon_id
 	  when :skipped
-		@stats[:skipped] += 1
+		@stats.increment(:skipped)
 	  when :rate_limited
-		@stats[:rate_limited] = (@stats[:rate_limited] || 0) + 1
+		@stats.increment(:rate_limited)
 	  when :failed
-		@stats[:errors] += 1
+		@stats.increment(:errors)
 	  end
 
 	  result.status
 	rescue Zpravobot::AccountRateLimitedError => e
 	  log_warn("[#{source.id}] Rate limited (#{e.retry_after}s) — deferring")
-	  @stats[:rate_limited] = (@stats[:rate_limited] || 0) + 1
+	  @stats.increment(:rate_limited)
 	  :rate_limited
 	end
 
@@ -306,7 +306,7 @@ module Orchestrator
 
 	  unless post_id
 		log_warn("[#{source.id}] Cannot extract post_id from URL: #{rss_post.url}")
-		@stats[:skipped] += 1
+		@stats.increment(:skipped)
 		return :skipped
 	  end
 
@@ -318,16 +318,16 @@ module Orchestrator
 	  )
 
 	  case result
-	  when :published then @stats[:published] += 1
-	  when :skipped   then @stats[:skipped] += 1
-	  when :rate_limited then @stats[:rate_limited] = (@stats[:rate_limited] || 0) + 1
-	  when :failed    then @stats[:errors] += 1
+	  when :published then @stats.increment(:published)
+	  when :skipped   then @stats.increment(:skipped)
+	  when :rate_limited then @stats.increment(:rate_limited)
+	  when :failed    then @stats.increment(:errors)
 	  end
 
 	  result
 	rescue Zpravobot::AccountRateLimitedError => e
 	  log_warn("[#{source.id}] Rate limited (#{e.retry_after}s) — deferring")
-	  @stats[:rate_limited] = (@stats[:rate_limited] || 0) + 1
+	  @stats.increment(:rate_limited)
 	  :rate_limited
 	end
 
@@ -348,37 +348,7 @@ module Orchestrator
 	# Build source config hash from SourceConfig object
 	# PostProcessor expects a Hash, not SourceConfig
 	def build_source_config_hash(source)
-	  {
-		id: source.id,
-		platform: source.platform,
-		source: {
-		  handle: source.source_handle,
-		  nitter_instance: source.nitter_instance
-		},
-		formatting: source.formatting.merge(
-		  source_name: source.source_name,
-		  max_length: source.post_length
-		),
-		filtering: source.filtering,
-		processing: source.processing.merge(
-		  trim_strategy: source.trim_strategy,
-		  smart_tolerance_percent: source.processing.fetch(:smart_tolerance_percent, 12),
-		  url_domain_fixes: source.url_domain_fixes,
-		  content_replacements: source.content_replacements
-		),
-		target: {
-		  mastodon_account: source.mastodon_account,
-		  mastodon_instance: source.mastodon_instance,
-		  visibility: source.visibility
-		},
-		content: source.content_config,
-		thread_handling: source.thread_handling,
-		nitter_processing: source.nitter_processing,
-		url: source.url_config,
-		rss_source_type: source.respond_to?(:rss_source_type) ? source.rss_source_type : nil,
-		mentions: build_mentions_config(source),
-		_mastodon_token: source.mastodon_token
-	  }
+	  source.to_processor_hash(mentions: build_mentions_config(source))
 	end
 
 	# Build mentions config — enriches domain_suffix and local_or_domain_suffix for Twitter sources
@@ -446,7 +416,7 @@ module Orchestrator
 	# @return [String, nil] Mastodon status ID of parent
 	def resolve_thread_parent(source, post)
 	  # Bluesky: explicit reply_to with AT URI (platform-specific)
-	  if post.respond_to?(:reply_to) && post.reply_to
+	  if post.reply_to
 		parent_uri = extract_parent_uri_from_reply_to(post.reply_to)
 		if parent_uri
 		  mastodon_id = find_parent_mastodon_id(source.id, parent_uri)
@@ -485,7 +455,7 @@ module Orchestrator
 	  state = @state_manager.get_source_state(source.id)
 	  if state
 		log_info("[#{source.id}] Already has state, skipping")
-		@stats[:skipped] += 1
+		@stats.increment(:skipped)
 		return
 	  end
 
@@ -496,7 +466,7 @@ module Orchestrator
 
 		if posts.empty?
 		  log_info("[#{source.id}] No posts found")
-		  @stats[:skipped] += 1
+		  @stats.increment(:skipped)
 		  @state_manager.mark_check_success(source.id, posts_published: 0)
 		  return
 		end
@@ -512,7 +482,7 @@ module Orchestrator
 
 		if valid_post.nil?
 		  log_info("[#{source.id}] No valid posts found")
-		  @stats[:skipped] += 1
+		  @stats.increment(:skipped)
 		  @state_manager.mark_check_success(source.id, posts_published: 0)
 		  return
 		end
@@ -529,11 +499,11 @@ module Orchestrator
 
 		log_info("[#{source.id}] ✅ Initialized with post: #{post_id}")
 		@state_manager.mark_check_success(source.id, posts_published: 0)
-		@stats[:processed] += 1
+		@stats.increment(:processed)
 	  rescue StandardError => e
 		log_error("[#{source.id}] First run error: #{e.message}")
 		@state_manager.mark_check_error(source.id, e.message)
-		@stats[:errors] += 1
+		@stats.increment(:errors)
 	  end
 	end
 
@@ -541,15 +511,15 @@ module Orchestrator
 	def should_skip_for_first_run?(source, post)
 	  filtering = source.filtering
 
-	  if post.respond_to?(:is_reply) && post.is_reply
-		is_self_reply = post.respond_to?(:is_thread_post) && post.is_thread_post
+	  if post.is_reply
+		is_self_reply = post.is_thread_post
 		return 'is_self_reply_thread' if is_self_reply && filtering[:skip_self_replies]
 		return 'is_external_reply' if !is_self_reply && filtering[:skip_replies]
 	  end
 
-	  return 'is_retweet' if filtering[:skip_retweets] && post.respond_to?(:is_repost) && post.is_repost
+	  return 'is_retweet' if filtering[:skip_retweets] && post.is_repost
 
-	  return 'is_quote' if filtering[:skip_quotes] && post.respond_to?(:is_quote) && post.is_quote
+	  return 'is_quote' if filtering[:skip_quotes] && post.is_quote
 
 	  nil
 	end
@@ -620,15 +590,15 @@ module Orchestrator
 		Logging.info("🔍 [#{source_id}]   Quoted URL: #{qp[:url] || 'N/A'}")
 	  end
 
-	  Logging.info("🔍 [#{source_id}]   Has media: #{post.respond_to?(:has_media?) ? post.has_media? : 'N/A'}")
+	  Logging.info("🔍 [#{source_id}]   Has media: #{post.has_media?}")
 	  Logging.info("🔍 [#{source_id}]   Media count: #{post.media&.length || 0}")
-	  Logging.info("🔍 [#{source_id}]   Has video: #{post.respond_to?(:has_video?) ? post.has_video? : 'N/A'}")
+	  Logging.info("🔍 [#{source_id}]   Has video: #{post.has_video?}")
 
-	  if post.respond_to?(:title) && post.title
+	  if post.title
 		Logging.info("🔍 [#{source_id}]   Title: #{truncate_for_log(post.title, 100)}")
 	  end
 
-	  if post.respond_to?(:raw) && post.raw.is_a?(Hash)
+	  if post.raw.is_a?(Hash)
 		embed = post.raw[:embed] || post.raw['embed']
 		if embed
 		  embed_type = embed[:$type] || embed['$type'] || 'unknown'
@@ -674,8 +644,8 @@ module Orchestrator
 	  types = []
 	  types << 'REPOST' if post.is_repost
 	  types << 'QUOTE' if post.is_quote
-	  types << 'THREAD' if post.respond_to?(:is_thread_post) && post.is_thread_post
-	  types << 'VIDEO' if post.respond_to?(:has_video?) && post.has_video?
+	  types << 'THREAD' if post.is_thread_post
+	  types << 'VIDEO' if post.has_video?
 	  types << 'POST' if types.empty?
 	  types.join('+')
 	end

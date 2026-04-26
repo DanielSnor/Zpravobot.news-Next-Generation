@@ -443,7 +443,7 @@ dr_thread_cache2 = { 'ct24_twitter' => { 'ct24zive' => 'masto_parent_different' 
 dr_handler2 = Webhook::WebhookEditHandler.new(dr_detector2, dr_thread_cache2)
 dr_publisher2 = MockPublisherDR.new(publish_result: { 'id' => 'masto_new_456' })
 
-dr_result2 = quiet do
+_dr_result2 = quiet do
   dr_handler2.handle(
     dr_parsed,
     adapter: dr_adapter, payload: {}, force_tier2: false,
@@ -602,7 +602,7 @@ mock_tweet_proc_user.define_singleton_method(:process) do |**kwargs|
   :published
 end
 parsed_with_handle = Webhook::WebhookPayloadParser::ParsedPayload.new(
-  bot_id: 'drozd', post_id: '999', username: 'drozd',
+  bot_id: 'drozd', post_id: '999', username: 'drozd', text: 'test',
   bot_config: { id: 'drozd_twitter', source: { handle: 'mzvcr' } },
   source_id: 'drozd_twitter'
 )
@@ -683,7 +683,7 @@ result_fail = quiet { publisher_fail.publish(pub_parsed, mock_post, in_reply_to_
 test "webhook_publisher: failed → :failed", :failed, result_fail
 
 # With in_reply_to_id
-process_called_with = nil
+_process_called_with = nil
 class TrackingPostProcessor
   attr_reader :last_options
   def initialize(result)

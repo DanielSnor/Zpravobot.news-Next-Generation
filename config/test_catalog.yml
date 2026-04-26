@@ -189,6 +189,27 @@ tests:
     exit_code_reliable: false
     description: "ConfigLoader source enumeration and merging"
 
+  test_run_stats:
+    file: test/test_run_stats.rb
+    category: unit
+    tags: [offline, stats]
+    exit_code_reliable: true
+    description: "Stats::RunStats increment/fetch/to_h (REFACTOR-1)"
+
+  test_source_config_to_processor_hash:
+    file: test/test_source_config_to_processor_hash.rb
+    category: unit
+    tags: [offline, config]
+    exit_code_reliable: true
+    description: "SourceConfig#to_processor_hash field propagation (REFACTOR-2)"
+
+  test_post_model:
+    file: test/test_post_model.rb
+    category: unit
+    tags: [offline, model]
+    exit_code_reliable: true
+    description: "Post model attribute defaults and methods (MODEL-1)"
+
   test_yaml_quote:
     file: test/test_yaml_quote.rb
     category: unit

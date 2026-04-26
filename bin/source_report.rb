@@ -22,8 +22,9 @@ ACCOUNTS_FILE  = File.join(BASE_DIR, 'config', 'mastodon_accounts.yml')
 SNAPSHOT_PATH  = File.join(BASE_DIR, 'data', 'source_report_snapshot.yml')
 INSTANCE_URL   = 'https://zpravobot.news'
 
-dry_run  = ARGV.include?('--dry-run')
-init_mode = ARGV.include?('--init')
+dry_run    = ARGV.include?('--dry-run')
+init_mode  = ARGV.include?('--init')
+use_bluesky = ARGV.include?('--bluesky')
 
 # ── Validace prostředí ───────────────────────────────────────
 
@@ -51,14 +52,20 @@ publisher = if dry_run || init_mode
               )
             end
 
+bs_publisher = if use_bluesky && !dry_run && !init_mode
+                 require_relative '../lib/publishers/bluesky_publisher'
+                 Publishers::BlueskyPublisher.new(account_id: 'zpravobot')
+               end
+
 # ── Spuštění ─────────────────────────────────────────────────
 
 reporter = Reporting::SourceReporter.new(
-  accounts_file:    ACCOUNTS_FILE,
-  snapshot_path:    SNAPSHOT_PATH,
-  publisher:        publisher,
-  dry_run:          dry_run,
-  default_instance: 'zpravobot.news'
+  accounts_file:     ACCOUNTS_FILE,
+  snapshot_path:     SNAPSHOT_PATH,
+  publisher:         publisher,
+  bluesky_publisher: bs_publisher,
+  dry_run:           dry_run,
+  default_instance:  'zpravobot.news'
 )
 
 if init_mode

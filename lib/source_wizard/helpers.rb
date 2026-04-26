@@ -138,7 +138,7 @@ class SourceGenerator
       # Both quote types: double-quote with escaping
       escaped = s.gsub('\\') { '\\\\' }.gsub('"', '\\"')
       "\"#{escaped}\""
-    elsif s.match?(/[:\\#\[\]{}&*!|>%@`,\\\n\t]/) ||
+    elsif s.match?(/[:#\[\]{}&*!|>%@`,\\\n\t]/) ||
           s.match?(/\A[\s\-?]/) || s.match?(/\s\z/)
       # YAML-special chars or leading/trailing whitespace: double-quote with escaping
       escaped = s.gsub('\\') { '\\\\' }.gsub('"', '\\"')

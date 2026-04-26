@@ -304,9 +304,9 @@ class SourceManager
     sources_dir = File.join(@config_dir, 'sources')
     return [] unless Dir.exist?(sources_dir)
 
-    Dir.glob(File.join(sources_dir, '*.yml')).sort.map do |path|
+    Dir.glob(File.join(sources_dir, '*.yml')).sort.filter_map do |path|
       source_status(File.basename(path, '.yml'))
-    end.compact
+    end
   end
 
   private
@@ -357,7 +357,7 @@ class SourceManager
     sources_dir = File.join(@config_dir, 'sources')
     return [] unless Dir.exist?(sources_dir)
 
-    Dir.glob(File.join(sources_dir, '*.yml')).map do |path|
+    Dir.glob(File.join(sources_dir, '*.yml')).filter_map do |path|
       src_id = File.basename(path, '.yml')
       next if src_id == exclude_source_id
 
@@ -367,7 +367,7 @@ class SourceManager
         next
       end
       src_id if content.match?(/^\s*mastodon_account:\s*#{Regexp.escape(account_id)}\s*$/)
-    end.compact
+    end
   end
 
   # Po retire: zkontroluje, zda má účet jiné zdroje, a nabídne smazání z mastodon_accounts.yml.
