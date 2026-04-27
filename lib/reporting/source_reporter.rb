@@ -130,7 +130,7 @@ module Reporting
     # Vrátí pole postů (stringů) pro smazané účty.
     def format_deleted_posts(deleted_ids)
       intro = deleted_ids.size == 1 ? INTROS_DELETED_SINGULAR.sample : INTROS_DELETED_PLURAL.sample
-      lines = deleted_ids.map { |id| "• https://#{@default_instance}/@#{id}" }
+      lines = deleted_ids.map { |id| "• @#{id}@#{@default_instance}" }
       suffix = "\n\n#zpravobot #deletedbots"
       build_thread(intro, lines, suffix)
     end
@@ -201,7 +201,7 @@ module Reporting
     def mention_for(account_id, accounts)
       info     = accounts[account_id] || {}
       instance = info[:instance] || @default_instance
-      "https://#{instance}/@#{account_id}"
+      "@#{account_id}@#{instance}"
     end
 
     # Sestaví bloky pro nové účty ve FF stylu: "Název — @handle\nBio".
@@ -212,7 +212,7 @@ module Reporting
         info     = accounts[id] || {}
         profile  = fetch_account_profile(id, info)
         instance = info[:instance] || @default_instance
-        header   = "#{profile[:display_name]} \u2014 https://#{instance}/@#{id}"
+        header   = "#{profile[:display_name]} \u2014 @#{id}@#{instance}"
         blocks << (profile[:bio] ? "#{header}\n#{profile[:bio]}" : header)
       end
       blocks

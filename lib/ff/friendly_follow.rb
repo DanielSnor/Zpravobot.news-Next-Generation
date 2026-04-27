@@ -275,7 +275,7 @@ module FF
     def build_post_text(accounts_data, header, instance_host)
       parts = [header, '']
       accounts_data.each do |acc|
-        parts << "#{acc[:display_name]} \u2014 https://#{instance_host}/@#{acc[:id]}"
+        parts << "#{acc[:display_name]} \u2014 @#{acc[:id]}@#{instance_host}"
         parts << acc[:bio] if acc[:bio]
         parts << ''
       end
