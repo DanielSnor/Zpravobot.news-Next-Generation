@@ -300,7 +300,7 @@ module FF
         last   = idx == accounts_data.size - 1
         suffix = last ? "\n\n#{HASHTAGS}" : ''
 
-        handle_line = "#{acc[:display_name]} \u2014 https://#{instance_host}/@#{acc[:id]}"
+        handle_line = "#{acc[:display_name]} \u2014 @#{acc[:id]}@#{instance_host}"
         base        = first ? "#{header}\n\n#{handle_line}" : handle_line
 
         build_account_post(base, acc[:bio], suffix)
