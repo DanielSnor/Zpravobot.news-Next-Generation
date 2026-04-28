@@ -31,7 +31,8 @@ module Publishers
     OPEN_TIMEOUT     = 5
     READ_TIMEOUT     = 20
 
-    URL_PATTERN = %r{https?://[^\s]+}
+    URL_PATTERN            = %r{https?://[^\s]+}
+    MASTODON_HANDLE_PATTERN = /@([\w][\w.-]*)@([\w][\w.-]*\.[a-z]{2,})/
 
     def initialize(account_id: 'zpravobot')
       creds      = load_credentials(account_id.to_s)
@@ -135,6 +136,7 @@ module Publishers
     # ----------------------------------------------------------------
 
     def build_record(text)
+      text   = text.gsub(MASTODON_HANDLE_PATTERN) { "https://#{$2}/@#{$1}" }
       record = {
         '$type'     => 'app.bsky.feed.post',
         'text'      => text,
