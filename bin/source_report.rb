@@ -54,7 +54,7 @@ publisher = if dry_run || init_mode
 
 bs_publisher = if use_bluesky && !dry_run && !init_mode
                  require_relative '../lib/publishers/bluesky_publisher'
-                 Publishers::BlueskyPublisher.new(account_id: 'zpravobot')
+                 Publishers::BlueskyPublisher.try_create(account_id: 'zpravobot')
                end
 
 # ── Spuštění ─────────────────────────────────────────────────

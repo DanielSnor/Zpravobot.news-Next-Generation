@@ -298,7 +298,7 @@ publisher = Publishers::MastodonPublisher.new(
 bs_publisher = if options[:bluesky]
                  require 'publishers/bluesky_publisher'
                  require 'publishers/bluesky_text_splitter'
-                 Publishers::BlueskyPublisher.new(account_id: 'zpravobot')
+                 Publishers::BlueskyPublisher.try_create(account_id: 'zpravobot')
                end
 
 # Publish as thread: first post is root, subsequent posts reply to it
