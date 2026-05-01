@@ -23,6 +23,7 @@
 #   syncer.sync!
 
 require_relative 'base_profile_syncer'
+require_relative '../utils/tco_expander'
 
 module Syncers
   class TwitterProfileSyncer < BaseProfileSyncer
@@ -64,6 +65,11 @@ module Syncers
     # Twitter does not validate image content-type (Nitter proxied images)
     def validate_image_content_type?
       false
+    end
+
+    # Expand t.co short links (used in bio formatting)
+    def expand_short_urls(text)
+      Utils::TcoExpander.expand(text)
     end
 
     def fetch_platform_profile

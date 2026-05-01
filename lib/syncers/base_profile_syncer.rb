@@ -25,6 +25,7 @@
 
 require_relative '../utils/http_client'
 require_relative '../support/loggable'
+require_relative '../formatters/universal_formatter'
 require_relative 'image_cache_manager'
 require_relative 'mastodon_profile_updater'
 require_relative 'profile_fields_builder'
@@ -117,6 +118,14 @@ module Syncers
       false
     end
 
+    # Expand platform-specific short URLs in text (no-op by default).
+    # Overridden in TwitterProfileSyncer to expand t.co links.
+    # @param text [String, nil]
+    # @return [String, nil]
+    def expand_short_urls(text)
+      text
+    end
+
     # ============================================
     # Public API
     # ============================================
@@ -149,9 +158,9 @@ module Syncers
       files = {}
       changes = []
 
-      # Bio/description
+      # Bio/description (expand short URLs + rewrite mentions stejně jako v postech)
       if sync_bio && profile[:description]
-        params[:note] = profile[:description]
+        params[:note] = format_bio_text(profile[:description])
         changes << 'bio'
         log '  ✔ Will update bio'
       end
@@ -267,6 +276,31 @@ module Syncers
     end
 
     private
+
+    # ============================================
+    # Bio text formatting
+    # ============================================
+
+    # Apply short-URL expansion + mention rewriting to bio text.
+    # Mentions použijí stejnou config jako posty (přes @mentions_config),
+    # vlastní handle se přeskakuje stejně jako v postech.
+    # @param text [String, nil]
+    # @return [String, nil]
+    def format_bio_text(text)
+      return text if text.nil? || text.empty?
+
+      text = expand_short_urls(text)
+      apply_mentions(text)
+    end
+
+    def apply_mentions(text)
+      return text if text.nil? || text.empty?
+      return text if @mentions_config.nil?
+      return text if @mentions_config[:type].to_s == 'none'
+
+      Formatters::UniversalFormatter.new
+                                    .format_mentions(text, { mentions: @mentions_config }, skip: source_handle)
+    end
 
     # ============================================
     # Logging helpers

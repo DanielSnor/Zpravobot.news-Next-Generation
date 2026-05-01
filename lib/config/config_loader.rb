@@ -151,6 +151,32 @@ module Config
       @twitter_handle_map ||= build_twitter_handle_map
     end
 
+    # Enrich raw mentions config (z platform.yml / source override) o `local_handles`
+    # mapu pro Twitter zdroje. Pro ne-Twitter platformy vrací base beze změny.
+    # Sdíleno mezi orchestrátorem (posty) a sync_profiles (bio).
+    # @param raw_config [Hash, nil] mentions config
+    # @param platform [String, Symbol] platforma (twitter, bluesky, ...)
+    # @return [Hash] enriched config
+    def enrich_mentions_config(raw_config, platform:)
+      base = raw_config || {}
+      return base unless platform.to_s == 'twitter'
+
+      case base[:type].to_s
+      when 'domain_suffix'
+        # Legacy: obohatit na domain_suffix_with_local (zachovat zpětnou kompatibilitu)
+        base.merge(
+          type: 'domain_suffix_with_local',
+          local_instance: 'zpravobot.news',
+          local_handles: twitter_handle_to_mastodon_map
+        )
+      when 'local_or_domain_suffix'
+        # Nový typ: přidat local_handles mapu
+        base.merge(local_handles: twitter_handle_to_mastodon_map)
+      else
+        base
+      end
+    end
+
     private
     # Check if file is an example (should be skipped)
     # Matches: !example_*, _example_*, *_example.yml, example_*

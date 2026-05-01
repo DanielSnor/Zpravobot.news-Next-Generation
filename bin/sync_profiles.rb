@@ -249,9 +249,7 @@ class ProfileSyncRunner
   def sync_bluesky(source)
     sync_config = source.data.dig(:profile_sync) || {}
 
-    # Load platform config for mentions
-    platform_config = @config_loader.load_platform_config('bluesky')
-    mentions_config = platform_config[:mentions] || { type: 'prefix', value: 'https://bsky.app/profile/' }
+    mentions_config = load_mentions_config('bluesky', { type: 'prefix', value: 'https://bsky.app/profile/' })
 
     global = @config_loader.load_global_config
 
@@ -273,9 +271,7 @@ class ProfileSyncRunner
   def sync_twitter(source)
     sync_config = source.data.dig(:profile_sync) || {}
 
-    # Load platform config for mentions
-    platform_config = @config_loader.load_platform_config('twitter')
-    mentions_config = platform_config[:mentions] || { type: 'domain_suffix', value: 'twitter.com' }
+    mentions_config = load_mentions_config('twitter', { type: 'domain_suffix', value: 'twitter.com' })
 
     syncer = Syncers::TwitterProfileSyncer.new(
       twitter_handle: source.source_handle,
@@ -294,9 +290,9 @@ class ProfileSyncRunner
   def sync_facebook(source)
     sync_config = source.data.dig(:profile_sync) || {}
 
-    # Load platform config for mentions and Facebook-specific settings
+    # Load platform config for Facebook-specific settings (token, cookies)
     platform_config = @config_loader.load_platform_config('facebook')
-    mentions_config = platform_config[:mentions] || { type: 'domain_suffix', value: 'facebook.com' }
+    mentions_config = load_mentions_config('facebook', { type: 'domain_suffix', value: 'facebook.com' })
 
     # Get Browserless token from platform config or ENV
     raw_token = platform_config.dig(:source, :browserless_token)
@@ -342,7 +338,7 @@ class ProfileSyncRunner
     end
 
     platform_config = @config_loader.load_platform_config('instagram')
-    mentions_config = platform_config[:mentions] || { type: 'domain_suffix', value: 'instagram.com' }
+    mentions_config = load_mentions_config('instagram', { type: 'domain_suffix', value: 'instagram.com' })
 
     raw_token = platform_config.dig(:source, :browserless_token)
     browserless_token = resolve_env_value(raw_token) || ENV['BROWSERLESS_TOKEN']
@@ -392,7 +388,7 @@ class ProfileSyncRunner
     end
 
     platform_config = @config_loader.load_platform_config('youtube')
-    mentions_config = platform_config[:mentions] || { type: 'none', value: '' }
+    mentions_config = load_mentions_config('youtube', { type: 'none', value: '' })
 
     raw_token = platform_config.dig(:source, :browserless_token)
     browserless_token = resolve_env_value(raw_token) || ENV['BROWSERLESS_TOKEN']
@@ -446,8 +442,7 @@ class ProfileSyncRunner
   end
 
   def sync_twitter_for_rss(source, twitter_handle, sync_config)
-    platform_config = @config_loader.load_platform_config('twitter')
-    mentions_config = platform_config[:mentions] || { type: 'domain_suffix', value: 'twitter.com' }
+    mentions_config = load_mentions_config('twitter', { type: 'domain_suffix', value: 'twitter.com' })
 
     syncer = Syncers::TwitterProfileSyncer.new(
       twitter_handle: twitter_handle,
@@ -464,8 +459,7 @@ class ProfileSyncRunner
   end
 
   def sync_bluesky_for_rss(source, bluesky_handle, sync_config)
-    platform_config = @config_loader.load_platform_config('bluesky')
-    mentions_config = platform_config[:mentions] || { type: 'prefix', value: 'https://bsky.app/profile/' }
+    mentions_config = load_mentions_config('bluesky', { type: 'prefix', value: 'https://bsky.app/profile/' })
     global = @config_loader.load_global_config
 
     syncer = Syncers::BlueskyProfileSyncer.new(
@@ -485,7 +479,7 @@ class ProfileSyncRunner
 
   def sync_facebook_for_rss(source, facebook_handle, sync_config)
     platform_config = @config_loader.load_platform_config('facebook')
-    mentions_config = platform_config[:mentions] || { type: 'domain_suffix', value: 'facebook.com' }
+    mentions_config = load_mentions_config('facebook', { type: 'domain_suffix', value: 'facebook.com' })
 
     raw_token = platform_config.dig(:source, :browserless_token)
     browserless_token = resolve_env_value(raw_token) || ENV['BROWSERLESS_TOKEN']
@@ -514,7 +508,7 @@ class ProfileSyncRunner
 
   def sync_instagram_for_rss(source, instagram_handle, sync_config)
     platform_config = @config_loader.load_platform_config('instagram')
-    mentions_config = platform_config[:mentions] || { type: 'domain_suffix', value: 'instagram.com' }
+    mentions_config = load_mentions_config('instagram', { type: 'domain_suffix', value: 'instagram.com' })
 
     raw_token = platform_config.dig(:source, :browserless_token)
     browserless_token = resolve_env_value(raw_token) || ENV['BROWSERLESS_TOKEN']
@@ -543,7 +537,7 @@ class ProfileSyncRunner
 
   def sync_youtube_for_rss(source, youtube_handle, sync_config)
     platform_config = @config_loader.load_platform_config('youtube')
-    mentions_config = platform_config[:mentions] || { type: 'none', value: '' }
+    mentions_config = load_mentions_config('youtube', { type: 'none', value: '' })
 
     raw_token = platform_config.dig(:source, :browserless_token)
     browserless_token = resolve_env_value(raw_token) || ENV['BROWSERLESS_TOKEN']
@@ -564,6 +558,13 @@ class ProfileSyncRunner
     )
 
     run_syncer(source, syncer, sync_config)
+  end
+
+  # Load + enrich mentions config for a platform. Enrichment doplní `local_handles`
+  # / `local_instance` pro Twitter (zpravobot.news local mention transformace).
+  def load_mentions_config(platform, default)
+    raw = @config_loader.load_platform_config(platform)[:mentions] || default
+    @config_loader.enrich_mentions_config(raw, platform: platform)
   end
 
   def run_syncer(source, syncer, sync_config)

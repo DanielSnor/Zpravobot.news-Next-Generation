@@ -468,6 +468,8 @@ module Formatters
     # Mention Formatting
     # ===========================================
 
+    public
+
     def format_mentions(text, config, skip: nil)
       return '' if text.nil? || text.empty?
       
@@ -526,6 +528,8 @@ module Formatters
         "@#{username}"
       end
     end
+
+    private
 
     # ===========================================
     # URL Handling
