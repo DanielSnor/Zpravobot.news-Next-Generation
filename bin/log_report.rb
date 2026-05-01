@@ -129,48 +129,107 @@ HEALTH_ENTRY_LIMIT = 20  # max last_entries per problematický zdroj
 
 LOG_LINE_RE = /^\[\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\]\s*(?:INFO|ERROR|WARN|DEBUG|FATAL):\s*/
 
-# Pro daný source_id v rámci okna vrátí published count (jen runner — IFTTT
-# nelogguje per-source publish), počet ERROR/WARN, jejich agregaci po normalizované
-# zprávě a posledních N raw entries.
+# Source-less helpery, které sub-stepují publish a v jejichž log řádcích nefiguruje source_id.
+# Jejich chyby je třeba korelovat časem k source chybě (PostProcessor Publish failed).
+INFRA_LOGGERS = %w[MastodonPublisher SyndicationMediaFetcher].freeze
+
+# ERROR/WARN řádky z infra loggerů bez source_id.
+# - Standardní infra loggery: [MastodonPublisher], [SyndicationMediaFetcher]
+# - Speciál: [PostProcessor] následovaný 2+ mezerami = "Dummy image upload failed"
+#   (běžné PostProcessor řádky mají [PostProcessor] [source_id] s jednou mezerou).
+INFRA_LINE_RE = /\] (?:ERROR|WARN): (?:\[(?:#{INFRA_LOGGERS.join('|')})\]|\[PostProcessor\] {2,})/
+
+# Korelační okno: infra chyba předchází source chybě. MastodonPublisher retry sekvence
+# trvá ~20-25s, finální ERROR přijde ~10s před PostProcessor ERROR. Okno [-30s, 0s].
+INFRA_CORRELATION_WINDOW = 30
+
+# Pro daný source_id v rámci okna vrátí:
+# - published count (jen runner — IFTTT nelogguje per-source publish)
+# - source ERROR/WARN entries: count, agregaci po normalizované zprávě, posledních N raw
+# - korelované infra řádky per source chyba (heuristika, ±30s před, riziko false positive
+#   při paralelní publikaci více zdrojů)
+# - agregované infra chyby za celé okno (ground truth, bez vazby na zdroj)
 def source_log_detail(source_id, runner_files, ifttt_files, t_from, t_to, limit)
   source_pattern    = /\[#{Regexp.escape(source_id)}\]/
   published_pattern = /\] INFO: \[PostProcessor\] \[#{Regexp.escape(source_id)}\] Published:/
-  entries   = []
-  published = 0
+  source_entries = []
+  infra_entries  = []
+  published      = 0
 
   (runner_files + ifttt_files).each do |path|
     foreach_line(path) do |line|
       next unless in_window?(line, t_from, t_to)
-      next unless line.match?(source_pattern)
 
-      if line.match?(/\] (?:ERROR|WARN):/)
+      if line.match?(source_pattern)
+        if line.match?(/\] (?:ERROR|WARN):/)
+          ts = parse_ts(line)
+          next unless ts
+          level   = line.include?('] ERROR:') ? 'error' : 'warn'
+          message = line.sub(LOG_LINE_RE, '').strip
+          source_entries << { ts: ts, level: level, message: message }
+        elsif line.match?(published_pattern)
+          published += 1
+        end
+      elsif line.match?(INFRA_LINE_RE)
         ts = parse_ts(line)
         next unless ts
         level   = line.include?('] ERROR:') ? 'error' : 'warn'
         message = line.sub(LOG_LINE_RE, '').strip
-        entries << { ts: ts, level: level, message: message }
-      elsif line.match?(published_pattern)
-        published += 1
+        infra_entries << { ts: ts, level: level, message: message }
       end
     end
   end
 
-  agg = Hash.new { |h, k| h[k] = { count: 0, first: nil, last: nil } }
-  entries.each do |e|
+  # Agregace source chyb + per-error korelace s infra řádky v okně [-N, 0] sec
+  agg = Hash.new { |h, k| h[k] = { count: 0, first: nil, last: nil, _correlated: {} } }
+  source_entries.each do |e|
     a = agg[normalize_error(e[:message])]
     a[:count] += 1
     a[:first] ||= e[:ts].strftime('%H:%M:%S')
     a[:last]   = e[:ts].strftime('%H:%M:%S')
+
+    infra_entries.each do |i|
+      diff = e[:ts] - i[:ts]
+      next unless diff >= 0 && diff <= INFRA_CORRELATION_WINDOW
+      key = "#{i[:ts].to_i}|#{i[:level]}|#{i[:message]}"
+      a[:_correlated][key] ||= { ts: i[:ts].strftime('%H:%M:%S'),
+                                 level: i[:level], message: i[:message] }
+    end
   end
 
+  errors_aggregated = agg.sort_by { |_, v| -v[:count] }.map { |msg, v|
+    {
+      message:          msg,
+      count:            v[:count],
+      first:            v[:first],
+      last:             v[:last],
+      correlated_lines: v[:_correlated].values,
+    }
+  }
+
+  # Agregace infra chyb — ground truth, nezávisle na korelaci se source chybami
+  infra_agg = Hash.new { |h, k| h[k] = { count: 0, first: nil, last: nil, level: nil } }
+  infra_entries.each do |e|
+    a = infra_agg[normalize_error(e[:message])]
+    a[:count] += 1
+    a[:first] ||= e[:ts].strftime('%H:%M:%S')
+    a[:last]   = e[:ts].strftime('%H:%M:%S')
+    # ERROR vyhrává nad WARN, pokud spadnou pod stejnou normalizovanou zprávu
+    a[:level] = e[:level] if a[:level].nil? || e[:level] == 'error'
+  end
+  infra_aggregated = infra_agg.sort_by { |_, v| -v[:count] }.map { |msg, v|
+    { message: msg, level: v[:level], count: v[:count], first: v[:first], last: v[:last] }
+  }
+
   {
-    published:         published,
-    total_errors:      entries.size,
-    errors_aggregated: agg.sort_by { |_, v| -v[:count] }
-                          .map { |msg, v| { message: msg, **v } },
-    last_entries:      entries.last(limit)
-                              .map { |e| { ts: e[:ts].strftime('%H:%M:%S'),
-                                           level: e[:level], message: e[:message] } },
+    published:                       published,
+    total_errors:                    source_entries.size,
+    errors_aggregated:               errors_aggregated,
+    last_entries:                    source_entries.last(limit).map { |e|
+                                       { ts: e[:ts].strftime('%H:%M:%S'),
+                                         level: e[:level], message: e[:message] }
+                                     },
+    infrastructure_errors_in_window: infra_aggregated,
   }
 end
 
@@ -233,13 +292,14 @@ if options[:source]
       from: window_from.strftime('%Y-%m-%d %H:%M:%S'),
       to:   window_to.strftime('%Y-%m-%d %H:%M:%S'),
     },
-    source_id:          source_id,
-    platform:           platform_of(source_id),
-    published:          detail[:published],
-    errors_total:       detail[:total_errors],
-    errors_aggregated:  detail[:errors_aggregated],
-    last_entries:       detail[:last_entries],
-    health_appearances: health,
+    source_id:                       source_id,
+    platform:                        platform_of(source_id),
+    published:                       detail[:published],
+    errors_total:                    detail[:total_errors],
+    errors_aggregated:               detail[:errors_aggregated],
+    last_entries:                    detail[:last_entries],
+    infrastructure_errors_in_window: detail[:infrastructure_errors_in_window],
+    health_appearances:              health,
   }
 
   puts options[:pretty] ? JSON.pretty_generate(report) : report.to_json
