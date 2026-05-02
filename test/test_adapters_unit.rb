@@ -127,11 +127,7 @@ test("fix_media_url: nil returns nil", nil, tw_media.send(:fix_media_url, nil))
 # =============================================================================
 # TWITTER NITTER ADAPTER
 # =============================================================================
-section("TwitterNitterAdapter: expand_tco — ellipsis stripping")
-
-suppress_output
-tw_nitter = Adapters::TwitterNitterAdapter.new(nitter_instance: 'http://nitter:8080')
-restore_output
+section("Utils::TcoExpander: ellipsis stripping (used by TwitterNitterAdapter)")
 
 # Stub HttpClient.head to capture what URL it receives and return a redirect
 original_head = HttpClient.method(:head)
@@ -148,35 +144,35 @@ HttpClient.define_singleton_method(:head) do |url, **_kwargs|
 end
 
 fetched_urls.clear
-result = tw_nitter.send(:expand_tco, "https://t.co/mzcQPHZ4\u2026")
+result = Utils::TcoExpander.expand_one("https://t.co/mzcQPHZ4\u2026")
 test("expand_tco: unicode ellipsis stripped before fetch",
      'https://t.co/mzcQPHZ4', fetched_urls.first)
 test("expand_tco: unicode ellipsis — returns expanded URL",
      'https://example.com/article', result)
 
 fetched_urls.clear
-result = tw_nitter.send(:expand_tco, 'https://t.co/mzcQPHZ4...')
+result = Utils::TcoExpander.expand_one('https://t.co/mzcQPHZ4...')
 test("expand_tco: ascii ellipsis stripped before fetch",
      'https://t.co/mzcQPHZ4', fetched_urls.first)
 test("expand_tco: ascii ellipsis — returns expanded URL",
      'https://example.com/article', result)
 
 fetched_urls.clear
-result = tw_nitter.send(:expand_tco, 'https://t.co/AbCdEfGh')
+result = Utils::TcoExpander.expand_one('https://t.co/AbCdEfGh')
 test("expand_tco: clean URL — no stripping, fetched as-is",
      'https://t.co/AbCdEfGh', fetched_urls.first)
 test("expand_tco: clean URL — returns expanded URL",
      'https://example.com/article', result)
 
 fetched_urls.clear
-result = tw_nitter.send(:expand_tco, "https://t.co/\u2026")
+result = Utils::TcoExpander.expand_one("https://t.co/\u2026")
 test("expand_tco: only ellipsis after t.co/ — returns nil without fetching",
      nil, result)
 test("expand_tco: only ellipsis — no HTTP call made",
      0, fetched_urls.size)
 
-test("expand_tco: nil input returns nil", nil, tw_nitter.send(:expand_tco, nil))
-test("expand_tco: non-tco URL returns nil", nil, tw_nitter.send(:expand_tco, 'https://example.com/foo'))
+test("expand_tco: nil input returns nil", nil, Utils::TcoExpander.expand_one(nil))
+test("expand_tco: non-tco URL returns nil", nil, Utils::TcoExpander.expand_one('https://example.com/foo'))
 
 HttpClient.define_singleton_method(:head, original_head)
 

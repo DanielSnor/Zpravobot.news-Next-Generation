@@ -35,8 +35,7 @@ require_relative '../models/media'
 require_relative '../services/syndication_media_fetcher'
 require_relative '../utils/format_helpers'
 require_relative '../utils/html_cleaner'
-require_relative '../utils/http_client'
-require_relative '../utils/punycode'
+require_relative '../utils/tco_expander'
 
 module Adapters
   class TwitterNitterAdapter < BaseAdapter
@@ -883,40 +882,9 @@ module Adapters
     # @param text [String] Text containing t.co links
     # @return [String] Text with expanded URLs
     def expand_tco_links(text)
-      return text unless text
-
-      # Path charset is [A-Za-z0-9] only — using \S+ would greedily swallow trailing
-      # emoji or punctuation that the user typed immediately after the URL (IFTTT
-      # sometimes emits `https://t.co/abc👈` with no separating space). That broke
-      # URI.parse inside HttpClient.head and also caused the emoji to be lost when
-      # gsub replaced the full match with the expanded URL.
-      text.gsub(%r{https?://t\.co/[A-Za-z0-9]+}) do |tco_url|
-        expanded = expand_tco(tco_url)
-        expanded || tco_url
+      Utils::TcoExpander.expand(text) do |tco_url, e|
+        log "t.co expansion failed for #{tco_url}: #{e.message}", level: :warn
       end
-    end
-
-    # Expand single t.co URL to actual destination
-    # @param tco_url [String] t.co shortened URL
-    # @return [String, nil] Expanded URL or nil if failed
-    def expand_tco(tco_url)
-      return nil unless tco_url&.match?(%r{https?://t\.co/})
-
-      # Strip trailing ellipsis (unicode … or ascii ...) added by IFTTT when URL is truncated
-      tco_url = tco_url.gsub(/[\u2026\.]{1,3}\z/, '')
-      return nil unless tco_url.match?(%r{https?://t\.co/\w})
-
-      response = HttpClient.head(tco_url, open_timeout: 3, read_timeout: 3)
-
-      case response
-      when Net::HTTPRedirection
-        PunycodeDecoder.decode_url(response['location'])
-      else
-        nil
-      end
-    rescue StandardError => e
-      log "t.co expansion failed for #{tco_url}: #{e.message}", level: :warn
-      nil
     end
 
     # ===========================================

@@ -48,7 +48,7 @@ require_relative '../models/author'
 require_relative '../models/media'
 require_relative '../utils/format_helpers'
 require_relative '../utils/http_client'
-require_relative '../utils/punycode'
+require_relative '../utils/tco_expander'
 require_relative 'twitter_thread_processor'
 require_relative 'post_processor'
 
@@ -316,7 +316,7 @@ module Processors
 
       # Text cleanup: expand t.co links, strip media URLs, normalize whitespace
       raw_text = syndication[:text] || ''
-      expanded = expand_tco_links(raw_text)
+      expanded = Utils::TcoExpander.expand(raw_text)
       expanded = expanded.gsub(%r{https?://[^\s]+/(?:photo|video)/\d+}, '').strip
       expanded = expanded.gsub(%r{https?://[^\s]+/status/\d+[^\s]*}, '').strip
       final_text = FormatHelpers.clean_text(expanded)
@@ -497,31 +497,6 @@ module Processors
       post.media.replace([Media.new(type: 'video', url: result[:video_url], alt_text: alt, url_variants: result[:video_url_variants])])
     rescue StandardError => e
       log_warn("[#{source_id}] Syndication video enrichment failed: #{e.message}")
-    end
-
-    # Expanduj všechny t.co linky v textu na jejich skutečné cílové URL
-    def expand_tco_links(text)
-      return text unless text
-
-      # Path charset is [A-Za-z0-9] only — \S+ would swallow trailing emoji/punctuation
-      # that IFTTT sometimes emits with no separating space (e.g. https://t.co/abc👈),
-      # breaking URI.parse in HttpClient.head and dropping the emoji from the output.
-      text.gsub(%r{https?://t\.co/[A-Za-z0-9]+}) do |tco_url|
-        expand_tco(tco_url) || tco_url
-      end
-    end
-
-    # Expanduj jedno t.co na jeho cílové URL (HTTP HEAD follow-redirect)
-    def expand_tco(tco_url)
-      return nil unless tco_url&.match?(%r{https?://t\.co/})
-
-      response = HttpClient.head(tco_url, open_timeout: 3, read_timeout: 3)
-      case response
-      when Net::HTTPRedirection
-        PunycodeDecoder.decode_url(response['location'])
-      end
-    rescue StandardError
-      nil
     end
 
     # Oprav is_repost metadata z fallback_post pokud Nitter HTML toto nezachytil.
