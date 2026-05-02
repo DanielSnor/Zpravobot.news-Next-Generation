@@ -29,9 +29,21 @@ puts "=" * 60
 puts
 
 # ------------------------------------------------------------------
-# Heuristika 1+2: Emoji odstavce
+# Heuristika 1: Emoji odstavce
 # ------------------------------------------------------------------
 puts "## Emoji jako oddělovač odstavců"
+
+test(
+  "Emoji na začátku textu (titulek) → nerozdělovat, druhé emoji → odstavec",
+  "\u{1F4AC} VYJADRENIE M. VERSTAPPENA \u{1F4AC}\n\nText za titulkem.",
+  processor.process("\u{1F4AC} VYJADRENIE M. VERSTAPPENA \u{1F4AC} Text za titulkem.")
+)
+
+test(
+  "Emoji na začátku řádku po \n\n → nerozdělovat",
+  "Predchozi odstavec.\n\n\u{1F4AC} NOVY TITULEK \u{1F4AC}\n\nText.",
+  processor.process("Predchozi odstavec.\n\n\u{1F4AC} NOVY TITULEK \u{1F4AC} Text.")
+)
 
 test(
   "Emoji na konci věty + velké písmeno → odstavec",
@@ -99,6 +111,37 @@ test(
   "Hashtag uprostřed textu (ne na konci řádku) → beze změny",
   "Téma #f1academy je zajímavé pro mnoho lidí.",
   processor.process("Téma #f1academy je zajímavé pro mnoho lidí.")
+)
+
+puts
+
+# ------------------------------------------------------------------
+# Heuristika 4: Citace v uvozovkách
+# ------------------------------------------------------------------
+puts "## Citace v uvozovkách"
+
+test(
+  "Tečka + straight quote + velké písmeno → odstavec",
+  "Verí v posun v sezóne.\n\n\"Od fanúšikov, pre fanúšikov!\" \u{1F3CE}",
+  processor.process("Verí v posun v sezóne. \"Od fanúšikov, pre fanúšikov!\" \u{1F3CE}")
+)
+
+test(
+  "Tečka + curly quote (\\u201C) + velké písmeno → odstavec",
+  "Verí v posun v sezóne.\n\n\u{201C}Od fanúšikov, pre fanúšikov!\u{201D} \u{1F3CE}",
+  processor.process("Verí v posun v sezóne. \u{201C}Od fanúšikov, pre fanúšikov!\u{201D} \u{1F3CE}")
+)
+
+test(
+  "Vykřičník + quote → odstavec",
+  "Skvelé výsledky!\n\n\"Makáme na tom každý deň.\"",
+  processor.process("Skvelé výsledky! \"Makáme na tom každý deň.\"")
+)
+
+test(
+  "Citace uprostřed věty (bez předchozí interpunkce) → beze změny",
+  "Povedal \"nie\" a odišiel.",
+  processor.process("Povedal \"nie\" a odišiel.")
 )
 
 puts
