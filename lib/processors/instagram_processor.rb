@@ -8,9 +8,9 @@ module Processors
   #
   # Heuristiky (v pořadí aplikace):
   #   1. Emoji + velké písmeno → odstavec (nejsilnější signál)
-  #   2. Emoji na začátku věty (po textu) → odstavec před ním
-  #   3. Seznam (- položka) → oddělit od okolního textu
-  #   4. Hashtag blok na konci → vlastní odstavec
+  #   2. Seznam (- položka) → oddělit od okolního textu
+  #   3. Hashtag blok na konci → vlastní odstavec
+  #   4. Příliš dlouhý blok → rozdělit na větné hranici po 250 znacích
   #
   # Usage:
   #   processor = Processors::InstagramProcessor.new
@@ -32,6 +32,7 @@ module Processors
       result = restore_paragraph_breaks(result)
       result = restore_list_breaks(result)
       result = restore_hashtag_block(result)
+      result = restore_long_paragraph_breaks(result)
       result = cleanup_whitespace(result)
       result.strip
     end
@@ -95,6 +96,45 @@ module Processors
       text.gsub(/([^\n])\s+(#\w+(?:[\s|]+#\w+)*)$/) do
         "#{$1}\n\n#{$2}"
       end
+    end
+
+    # ---------------------------------------------------------------------------
+    # Heuristika 4: Příliš dlouhý blok textu → rozdělení na větné hranici
+    #
+    # Pokud odstavec přesáhne LONG_PARAGRAPH_THRESHOLD znaků, hledá první
+    # větnou hranici (. ? !) následovanou mezerou a velkým písmenem za prahem
+    # a vloží \n\n. Aplikuje se rekurzivně dokud délka klesne pod práh.
+    #
+    # Záměrně toleruje false positives (zkratky jako "M. Verstappen") —
+    # lepší občasné špatné rozdělení než jeden masivní blok textu.
+    #
+    # Příklad:
+    #   "Věta jedna, která je dost dlouhá. Věta dvě pokračuje dál." (>250 znaků)
+    #   → "Věta jedna, která je dost dlouhá.\n\nVěta dvě pokračuje dál."
+    # ---------------------------------------------------------------------------
+    LONG_PARAGRAPH_THRESHOLD = 250
+
+    def restore_long_paragraph_breaks(text)
+      # Zpracuj každý existující odstavec zvlášť
+      text.split(/\n\n/).flat_map do |para|
+        split_long_paragraph(para)
+      end.join("\n\n")
+    end
+
+    def split_long_paragraph(text)
+      return [text] if text.length <= LONG_PARAGRAPH_THRESHOLD
+
+      # Hledej větnou hranici v části textu za prahem
+      tail = text[LONG_PARAGRAPH_THRESHOLD..]
+      match = tail.match(/[.!?]\s+(?=[[:upper:]])/)
+      return [text] unless match
+
+      # Rozděl za interpunkcí (velké písmeno začne nový odstavec)
+      split_at = LONG_PARAGRAPH_THRESHOLD + match.begin(0) + 1
+      first = text[0...split_at].strip
+      rest  = text[split_at..].strip
+
+      [first] + split_long_paragraph(rest)
     end
 
     # ---------------------------------------------------------------------------

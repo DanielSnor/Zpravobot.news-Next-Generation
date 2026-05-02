@@ -104,6 +104,49 @@ test(
 puts
 
 # ------------------------------------------------------------------
+# Heuristika 5: Příliš dlouhý blok textu
+# ------------------------------------------------------------------
+puts "## Dlouhý blok textu"
+
+# Věta delší než 250 znaků — hranice ". V" je AŽ po prahové pozici
+long_s1 = "Podla najnovsich sprav z prostredia FIA a AMuS sa pre rok 2031 vazne uvazuje o prechode na novu generaciu turbomotorov s hybridnym systemom. Tato motorizacia bude podla dostupnych informacii radikalne odlisna od sucasnych pohonov a prinesie fanusikom ocakavane zvukove zazitky."
+long_s2 = "Viac informacii zakratko."
+
+test(
+  "Blok >250 znaků se větnou hranicí po prahové pozici → rozdělení",
+  "#{long_s1}\n\n#{long_s2}",
+  processor.process("#{long_s1} #{long_s2}")
+)
+
+test(
+  "Blok <250 znaků → beze změny",
+  "Kratky text bez signalu, ktery neprekracuje prah.",
+  processor.process("Kratky text bez signalu, ktery neprekracuje prah.")
+)
+
+# Větné hranice PŘED prahem 250 — algoritmus nesplituje (správné chování)
+long_under = "Podla najnovsich sprav sa pre rok 2031 uvazuje o V8 motoroch. Cielom je znizit naklady. Jan Monchaux potvrdil navrh."
+test(
+  "Větné hranice pouze před prahem 250 → beze změny",
+  long_under,
+  processor.process(long_under)
+)
+
+test(
+  "Blok >250 znaků bez větné hranice → beze změny (jen strip)",
+  ("slovo " * 50).strip,
+  processor.process("slovo " * 50)
+)
+
+test(
+  "Hashtag blok za dlouhým textem → správně odděleno",
+  "#{long_s1}\n\n#{long_s2}\n\n#f1",
+  processor.process("#{long_s1} #{long_s2} #f1")
+)
+
+puts
+
+# ------------------------------------------------------------------
 # Edge cases
 # ------------------------------------------------------------------
 puts "## Edge cases"
