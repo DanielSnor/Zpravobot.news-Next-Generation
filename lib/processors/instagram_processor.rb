@@ -52,19 +52,28 @@ module Processors
     # Ochrana 1: velké písmeno — emoji uprostřed věty před vlastním jménem
     #   malým písmenem (např. "navštívil 🇨🇿 prahu") se nerozdělí.
     #
-    # Ochrana 2: zachytáváme znak PŘED emoji do $1 — musí to být alfanum/interpunkce.
-    #   Emoji na začátku řádku/textu nemá před sebou takový znak → nerozdělí se.
-    #   "🗓️ TITULEK 🗓️ Text" → první 🗓️ bez předchůdce = dekorace, druhé 🗓️
-    #   předchází "K" (alnum) → rozdělí → "🗓️ TITULEK 🗓️\n\nText".
+    # Ochrana 2: lookbehind (?<=[^\n]) — emoji na začátku řádku/textu nemá
+    #   před sebou non-newline znak → nerozdělí se.
+    #   "🗓️ TITULEK 🗓️ Text" → první 🗓️ je na začátku = nerozdělí, druhé 🗓️
+    #   má před sebou "K" → rozdělí → "🗓️ TITULEK 🗓️\n\nText".
+    #
+    # Ochrana 3: negative lookahead (?!var_sel) — variační selektor U+FE0x
+    #   NENÍ začátek emoji, ale finalizátor předchozího znaku. Bez ochrany by
+    #   lookbehind zachytil i "🗓" (base) + FE0F (selektor) jako dvě emoji,
+    #   přičemž druhý match by začínal na FE0F → false split.
+    #   "☀️ ➡️ ⛈️ Ve hře" → jen ⛈️ před "Ve" → rozdělí správně.
     # ---------------------------------------------------------------------------
     def restore_paragraph_breaks(text)
       emoji_pattern = /[\u{1F300}-\u{1F9FF}\u{2600}-\u{27BF}\u{1F1E0}-\u{1F1FF}\u{FE00}-\u{FE0F}]/
+      var_sel       = /[\u{FE00}-\u{FE0F}]/
 
-      # Zachytíme poslední alnum/punct před emoji — tím zajistíme, že emoji
-      # není na začátku řádku (kde by $1 chybělo).
-      # [^\S\n]* = mezery/tabulátory, ale NE newline — nepřeskakujeme odstavce.
-      text.gsub(/([[:alnum:][:punct:]])[^\S\n]*(#{emoji_pattern}+)[^\S\n]+(?=[[:upper:]])/) do
-        "#{$1} #{$2}\n\n"
+      # (?<=[^\n])      — předchází non-newline znak (= nejsme na začátku řádku)
+      # (?!var_sel)     — match nezačíná variačním selektorem
+      # (emoji_pattern+) — jedna nebo více emoji (včetně selektorů v těle sekvence)
+      # \s+             — mezery za poslední emoji
+      # (?=[[:upper:]]) — následuje velké písmeno
+      text.gsub(/(?<=[^\n])(?!#{var_sel})(#{emoji_pattern}+)\s+(?=[[:upper:]])/) do
+        "#{$1}\n\n"
       end
     end
 
