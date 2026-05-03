@@ -72,7 +72,38 @@ test(
 puts
 
 # ------------------------------------------------------------------
-# Heuristika 3: Seznamy
+# Heuristika 2: První věta zakončená vykřičníkem = nadpis
+# ------------------------------------------------------------------
+puts "## Nadpis zakončený vykřičníkem"
+
+test(
+  "První věta s ! → odstavec za ní",
+  "Kimi Antonelli získává pole position pro VC Miami!\n\nMax Verstappen hlásí comeback a do závodu vystartuje z P2.",
+  processor.process("Kimi Antonelli získává pole position pro VC Miami! Max Verstappen hlásí comeback a do závodu vystartuje z P2.")
+)
+
+test(
+  "! uprostřed textu (ne první věta) → beze změny",
+  "Tohle je první věta. Druhá věta! Třetí věta.",
+  processor.process("Tohle je první věta. Druhá věta! Třetí věta.")
+)
+
+test(
+  "Text bez ! → beze změny",
+  "Prostý text bez vykřičníku na konci.",
+  processor.process("Prostý text bez vykřičníku na konci.")
+)
+
+test(
+  "Emoji titulek + text s ! uvnitř → emoji split, ne ! split",
+  "\u{1F4AC} TITULEK \u{1F4AC}\n\nText s vykřičníkem! Pokračování.",
+  processor.process("\u{1F4AC} TITULEK \u{1F4AC} Text s vykřičníkem! Pokračování.")
+)
+
+puts
+
+# ------------------------------------------------------------------
+# Heuristika 4: Seznamy
 # ------------------------------------------------------------------
 puts "## Rekonstrukce seznamu"
 

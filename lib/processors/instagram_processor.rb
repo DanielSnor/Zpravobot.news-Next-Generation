@@ -8,11 +8,12 @@ module Processors
   #
   # Heuristiky (v pořadí aplikace):
   #   1. Emoji + velké písmeno → odstavec (jen když emoji předchází text, ne začátek řádku)
-  #   2. Vlajkový seznam → oddělit od textu, položky na vlastních řádcích
-  #   3. Seznam (- položka) → oddělit od okolního textu
-  #   4. Hashtag blok na konci → vlastní odstavec
-  #   5. Citace v uvozovkách → vlastní odstavec
-  #   6. Příliš dlouhý blok → rozdělit na větné hranici po 250 znacích
+  #   2. První věta zakončená ! → nadpis, \n\n za ní
+  #   3. Vlajkový seznam → oddělit od textu, položky na vlastních řádcích
+  #   4. Seznam (- položka) → oddělit od okolního textu
+  #   5. Hashtag blok na konci → vlastní odstavec
+  #   6. Citace v uvozovkách → vlastní odstavec
+  #   7. Příliš dlouhý blok → rozdělit na větné hranici po 250 znacích
   #
   # Usage:
   #   processor = Processors::InstagramProcessor.new
@@ -32,6 +33,7 @@ module Processors
 
       result = text.dup
       result = restore_paragraph_breaks(result)
+      result = restore_exclamation_title(result)
       result = restore_flag_list(result)
       result = restore_list_breaks(result)
       result = restore_hashtag_block(result)
@@ -86,7 +88,28 @@ module Processors
     end
 
     # ---------------------------------------------------------------------------
-    # Heuristika 2: Vlajkový seznam
+    # Heuristika 2: První věta zakončená vykřičníkem = nadpis
+    #
+    # Pokud první věta celého textu (před jakýmkoli \n\n) končí !, je to nadpis
+    # a za ní patří \n\n.
+    #   "Kimi získává pole position! Max hlásí comeback..." →
+    #   "Kimi získává pole position!\n\nMax hlásí comeback..."
+    #
+    # Implementováno přes sub (ne gsub) s \A — matchuje výhradně od začátku
+    # celého textu, takže se neuplatní na ! uvnitř odstavců ani na texty,
+    # které začínají emoji titulkem (ten neobsahuje ! před \n).
+    # ---------------------------------------------------------------------------
+    def restore_exclamation_title(text)
+      # \A([^.!?\n]+!) — od začátku textu, žádná .!?\n před !, pak !
+      #   Tím zajistíme, že jde opravdu o PRVNÍ větu — kdyby před ! byla
+      #   tečka nebo otazník, šlo by o druhou/třetí větu, ne o nadpis.
+      # \s+             — mezera(y) za !
+      # (?=[[:upper:]]) — následuje velké písmeno (= pokračuje další věta)
+      text.sub(/\A([^.!?\n]+!)\s+(?=[[:upper:]])/) { "#{$1}\n\n" }
+    end
+
+    # ---------------------------------------------------------------------------
+    # Heuristika 3: Vlajkový seznam
     #
     # IG posty často obsahují výčet míst/závodů s vlajkovými emoji jako bulety.
     # RSS.app předá celý výčet jako jeden blok.
