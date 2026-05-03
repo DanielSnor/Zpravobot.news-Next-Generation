@@ -145,14 +145,14 @@ test(
 )
 
 test(
-  "Mix hashtag + @mention → hashtags první řádek, mentions druhý řádek s \u{FF20}",
-  "Back on top - an untouchable pole lap from Kimi Antonelli \u{23F1}\u{FE0F}\n\n#F1 #Formula1 #MiamiGP\n\u{FF20}kimi.antonelli \u{FF20}mercedesamgf1",
+  "Mix hashtag + @mention → hashtags první řádek, mentions druhý řádek",
+  "Back on top - an untouchable pole lap from Kimi Antonelli \u{23F1}\u{FE0F}\n\n#F1 #Formula1 #MiamiGP\n@kimi.antonelli @mercedesamgf1",
   processor.process("Back on top - an untouchable pole lap from Kimi Antonelli \u{23F1}\u{FE0F} #F1 #Formula1 #MiamiGP @kimi.antonelli @mercedesamgf1")
 )
 
 test(
-  "Pouze @mentions bez hashtags → mentions s \u{FF20}",
-  "Foto od \u{1F4F7}\n\n\u{FF20}photographer.name",
+  "Pouze @mentions bez hashtags → vlastni odstavec",
+  "Foto od \u{1F4F7}\n\n@photographer.name",
   processor.process("Foto od \u{1F4F7} @photographer.name")
 )
 

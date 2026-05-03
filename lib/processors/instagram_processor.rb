@@ -177,14 +177,7 @@ module Processors
     # Podporuje | jako oddělovač (#NovaSport | #NHL).
     #
     # Výstup: hashtags na prvním řádku, mentions na druhém řádku (pokud jsou).
-    #
-    # @mentions: @ nahrazeno za ＠ (U+FF20, full-width) — vizuálně identické,
-    # ale Mastodon to nelinkuje jako mention. Bez toho by Mastodon interpretoval
-    # "@kimi.antonelli" jako "@kimi" (Mastodon user) + ".antonelli" (doménová
-    # přípona) a vložil nechtěný odkaz.
     # ---------------------------------------------------------------------------
-    FULLWIDTH_AT = "\u{FF20}"  # ＠
-
     def restore_hashtag_block(text)
       tag = /[#@][\w.]+/
       text.gsub(/([^\n])\s+(#{tag}(?:[\s|]+#{tag})*)$/) do
@@ -192,7 +185,7 @@ module Processors
         block = $2
 
         hashtags = block.scan(/#[\w.]+/).join(' ')
-        mentions = block.scan(/@[\w.]+/).map { |m| "#{FULLWIDTH_AT}#{m[1..]}" }.join(' ')
+        mentions = block.scan(/@[\w.]+/).join(' ')
 
         tag_lines = [hashtags, mentions].reject(&:empty?).join("\n")
         "#{pre}\n\n#{tag_lines}"
