@@ -144,10 +144,16 @@ test(
   processor.process("Téma #f1academy je zajímavé pro mnoho lidí.")
 )
 
+test(
+  "Mix hashtag + @mention na konci → odstavec",
+  "Back on top - an untouchable pole lap from Kimi Antonelli \u{23F1}\u{FE0F}\n\n#F1 #Formula1 #MiamiGP @kimi.antonelli @mercedesamgf1",
+  processor.process("Back on top - an untouchable pole lap from Kimi Antonelli \u{23F1}\u{FE0F} #F1 #Formula1 #MiamiGP @kimi.antonelli @mercedesamgf1")
+)
+
 puts
 
 # ------------------------------------------------------------------
-# Heuristika 4: Citace v uvozovkách
+# Heuristika 5: Citace v uvozovkách
 # ------------------------------------------------------------------
 puts "## Citace v uvozovkách"
 

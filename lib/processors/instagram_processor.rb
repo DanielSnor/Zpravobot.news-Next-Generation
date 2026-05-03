@@ -169,13 +169,17 @@ module Processors
     end
 
     # ---------------------------------------------------------------------------
-    # Heuristika 4: Hashtag blok na konci
+    # Heuristika 4: Tag blok na konci (hashtags + @mentions)
     #
-    # IG captions typicky končí blokem hashtagů odděleným od textu.
-    # Podporuje | jako oddělovač mezi hashtagy (#NovaSport | #NHL).
+    # IG captions typicky končí blokem tagů odděleným od textu.
+    # Blok může obsahovat kombinaci #hashtag a @mention tokenů.
+    #   "#F1 #Formula1 #MiamiGP @kimi.antonelli @mercedesamgf1"
+    # Podporuje | jako oddělovač (#NovaSport | #NHL).
+    # @mentions mohou mít tečku (@kimi.antonelli).
     # ---------------------------------------------------------------------------
     def restore_hashtag_block(text)
-      text.gsub(/([^\n])\s+(#\w+(?:[\s|]+#\w+)*)$/) { "#{$1}\n\n#{$2}" }
+      tag = /[#@][\w.]+/
+      text.gsub(/([^\n])\s+(#{tag}(?:[\s|]+#{tag})*)$/) { "#{$1}\n\n#{$2}" }
     end
 
     # ---------------------------------------------------------------------------
