@@ -62,17 +62,25 @@ module Processors
     #   lookbehind zachytil i "🗓" (base) + FE0F (selektor) jako dvě emoji,
     #   přičemž druhý match by začínal na FE0F → false split.
     #   "☀️ ➡️ ⛈️ Ve hře" → jen ⛈️ před "Ve" → rozdělí správně.
+    #
+    # Ochrana 4: negative lookbehind (?<!regional) — vlajkové emoji jsou PÁRY
+    #   regional indicatorů (U+1F1E0–U+1F1FF). Bez ochrany by regex začal matchovat
+    #   od DRUHÉHO regional indicatoru (předchází mu první, který je non-newline),
+    #   čímž by 🇺🇸 POLE rozsekal na 🇺🇸 + \n\n + POLE.
     # ---------------------------------------------------------------------------
     def restore_paragraph_breaks(text)
       emoji_pattern = /[\u{1F300}-\u{1F9FF}\u{2600}-\u{27BF}\u{1F1E0}-\u{1F1FF}\u{FE00}-\u{FE0F}]/
       var_sel       = /[\u{FE00}-\u{FE0F}]/
+      regional      = /[\u{1F1E0}-\u{1F1FF}]/
 
-      # (?<=[^\n])      — předchází non-newline znak (= nejsme na začátku řádku)
-      # (?!var_sel)     — match nezačíná variačním selektorem
+      # (?<=[^\n])       — předchází non-newline znak (= nejsme na začátku řádku)
+      # (?<!regional)    — předchozí znak NENÍ regional indicator (= nezačínáme
+      #                    uprostřed vlajkového páru)
+      # (?!var_sel)      — match nezačíná variačním selektorem
       # (emoji_pattern+) — jedna nebo více emoji (včetně selektorů v těle sekvence)
-      # \s+             — mezery za poslední emoji
-      # (?=[[:upper:]]) — následuje velké písmeno
-      text.gsub(/(?<=[^\n])(?!#{var_sel})(#{emoji_pattern}+)\s+(?=[[:upper:]])/) do
+      # \s+              — mezery za poslední emoji
+      # (?=[[:upper:]])  — následuje velké písmeno
+      text.gsub(/(?<=[^\n])(?<!#{regional})(?!#{var_sel})(#{emoji_pattern}+)\s+(?=[[:upper:]])/) do
         "#{$1}\n\n"
       end
     end
@@ -113,9 +121,17 @@ module Processors
     #
     # RSS.app někdy zachová "- " odrážky ale odstraní prázdné řádky mezi nimi.
     # Výsledek: "Mezi změny patří: - Bod 1 - Bod 2 - Bod 3"
+    #
+    # Podmínka: odstavec musí mít 2+ výskytů "\s+-\s+" — jinak jde o dash
+    # v nadpisu nebo textu (např. "🇺🇸 POLE POSITION - 4/22 🇺🇸"), ne o seznam.
     # ---------------------------------------------------------------------------
     def restore_list_breaks(text)
-      text = text.gsub(/([^\n])\s+-\s+/, "\\1\n- ")
+      text = text.split(/\n\n/).map do |para|
+        next para if para.scan(/\s+-\s+/).length < 2
+
+        para.gsub(/([^\n])\s+-\s+/, "\\1\n- ")
+      end.join("\n\n")
+
       text = text.gsub(/((?:^|\n)-[^\n]+)(\n)(?!-)/) { "#{$1}\n\n" }
       text
     end
