@@ -7,13 +7,19 @@ module Processors
   # RSS.app vrací caption jako jeden plochý blok textu bez \n.
   #
   # Heuristiky (v pořadí aplikace):
-  #   1. Emoji + velké písmeno → odstavec (jen když emoji předchází text, ne začátek řádku)
+  #
+  #   Začátek / nadpis:
+  #   1. Emoji titulek → odstavec za uzavíracím emoji
   #   2. První věta zakončená ! → nadpis, \n\n za ní
+  #
+  #   Struktura těla:
   #   3. Vlajkový seznam → oddělit od textu, položky na vlastních řádcích
   #   4. Seznam (- položka) → oddělit od okolního textu
-  #   5. Hashtag blok na konci → vlastní odstavec
-  #   6. Citace v uvozovkách → vlastní odstavec
-  #   7. Příliš dlouhý blok → rozdělit na větné hranici po 250 znacích
+  #   5. Citace v uvozovkách → vlastní odstavec
+  #   6. Příliš dlouhý blok → rozdělit na větné hranici po 250 znacích
+  #
+  #   Konec:
+  #   7. Hashtag blok → vlastní odstavec (až nakonec, aby H6 neprocházel hashtage)
   #
   # Usage:
   #   processor = Processors::InstagramProcessor.new
@@ -32,13 +38,16 @@ module Processors
       return '' if text.nil? || text.empty?
 
       result = text.dup
+      # Začátek / nadpis
       result = restore_paragraph_breaks(result)
       result = restore_exclamation_title(result)
+      # Struktura těla
       result = restore_flag_list(result)
       result = restore_list_breaks(result)
-      result = restore_hashtag_block(result)
       result = restore_quote_breaks(result)
       result = restore_long_paragraph_breaks(result)
+      # Konec
+      result = restore_hashtag_block(result)
       result = cleanup_whitespace(result)
       result.strip
     end
