@@ -495,6 +495,7 @@ module Processors
       # post.media je attr_reader (Array) → nelze přiřadit post.media = [...],
       # ale lze mutovat in-place přes replace.
       post.media.replace([Media.new(type: 'video', url: result[:video_url], alt_text: alt, url_variants: result[:video_url_variants])])
+      post.raw[:video_thumbnail_url] = result[:video_thumbnail] if result[:video_thumbnail]
     rescue StandardError => e
       log_warn("[#{source_id}] Syndication video enrichment failed: #{e.message}")
     end
