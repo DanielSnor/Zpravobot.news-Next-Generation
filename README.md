@@ -12,10 +12,13 @@ Zatímco původní projekt [Zpravobot.news](https://github.com/danielsnor/zpravo
 
 **🌉 BlueSky Bridge**: Od září 2025 je většina botů dostupná i na BlueSky přes [Brid.gy](https://fed.brid.gy/), takže se český obsah šíří napříč federovanými platformami.
 
-> **Recent highlights (duben 2026):**
-> - **Security hardening** — SEC-1..4: 1 MB payload limit, SSRF blocklist v OGP fetcheru, length validation, filename sanitization
-> - **Performance** — PERF-1..7: prefetch Nitter HTML, DB/HTTP connection pooling, non-blocking rate limit handling
-> - **Reliability** — atomic file writes (RELIABILITY-1), 103 registrovaných testů (77 unit + 18 network + 2 db + 6 e2e)
+> **Recent highlights (květen 2026):**
+> - **Bluesky cross-posting** — nový `BlueskyPublisher` publikuje paralelně s Mastodonem ze 4 doplňkových skriptů (stats, trending, FF, source report); na FF Bluesky vlákno per účet
+> - **InstagramProcessor** — heuristická rekonstrukce odstavců, hashtag/mention bloků a struktury captionů z RSS.app feedů
+> - **YouTube Browserless** — YT profile sync přepnut na Browserless.io (EU consent redirect bypass) + `playlist_id` support
+> - **Security hardening** — 1 MB payload limit, SSRF blocklist v OGP fetcheru, length validation, filename sanitization
+> - **Performance** — prefetch Nitter HTML, DB/HTTP connection pooling, non-blocking rate limit handling, LRU eviction cap thread cache
+> - **Reliability** — atomic file writes, 103 registrovaných testů (77 unit + 18 network + 2 db + 6 e2e)
 > - **Feature** — Týdeník `#ZpravobotTOP10` (neděle 20:15), profile card blocker (bílý proužek), OGP image fetcher
 
 ## Obsah
@@ -453,7 +456,7 @@ ruby bin/run_tests.rb --list       # Výpis testů bez spuštění
 
 **Registr testů:** `config/test_catalog.yml` — kategorie (unit/network/e2e/db), tagy, timeouty.
 
-**Aktuální stav:** 68/68 unit testů PASS, 2 032 assertů.
+**Aktuální stav:** 79/79 unit testů PASS, 2 493 assertů.
 
 ## Monitoring (Údržbot)
 
@@ -730,7 +733,7 @@ ruby bin/run_tests.rb --tag bluesky # Tests by tag
 ruby bin/run_tests.rb --file edit  # Tests matching "edit"
 ```
 
-- 68 unit tests PASS, 2 032 assertions
+- 79 unit tests PASS, 2 493 assertions
 - Test catalog: registered by category (unit/network/e2e/db), tags, timeouts
 
 ## Project Structure
@@ -775,4 +778,4 @@ docs/         9 documentation files
 - Twitter/X: [@zpravobot](https://twitter.com/zpravobot)
 - GitHub: [github.com/danielsnor](https://github.com/danielsnor)
 
-*Last updated: April 4, 2026*
+*Last updated: May 4, 2026*

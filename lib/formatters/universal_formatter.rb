@@ -468,6 +468,8 @@ module Formatters
     # Mention Formatting
     # ===========================================
 
+    public
+
     def format_mentions(text, config, skip: nil)
       return '' if text.nil? || text.empty?
       
@@ -476,7 +478,7 @@ module Formatters
       
       skip_normalized = skip&.to_s&.gsub(/^@/, '')&.downcase
       
-      text.gsub(/(?<![.\w\/])@(\w+)/) do |match|
+      text.gsub(/(?<![.\w\/])@([\w](?:[\w.]*[\w])?)/) do |match|
         username = $1
         if skip_normalized && username.downcase == skip_normalized
           match
@@ -526,6 +528,8 @@ module Formatters
         "@#{username}"
       end
     end
+
+    private
 
     # ===========================================
     # URL Handling

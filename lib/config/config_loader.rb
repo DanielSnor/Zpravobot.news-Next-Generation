@@ -15,7 +15,11 @@ module Config
   # Hierarchy (later overrides earlier):
   #   1. global.yml
   #   2. platforms/{platform}.yml
-  #   3. sources/{source_id}.yml
+  #   3. platforms/{rss_source_type}.yml  (only for platform: rss
+  #      + rss_source_type ∈ {facebook, instagram, threads, ...} —
+  #      lets RSS-fed sociální feedy zdědit platformové defaulty
+  #      jako max_length z dedikované platformové YAML)
+  #   4. sources/{source_id}.yml
   #
   # Usage:
   #   loader = Config::ConfigLoader.new('config')
@@ -53,8 +57,19 @@ module Config
       raise "Source not found: #{source_id}" unless source_config
       platform = source_config[:platform]
       raise "Platform not specified for: #{source_id}" unless platform
-      # Merge hierarchy: global → platform → source
-      merged = @merger.merge(load_global, load_platform(platform), source_config)
+      # Auto-infer rss_source_type ze suffixu source ID pro RSS feedy ze sociálních
+      # sítí (např. `vedatorcz_facebook` → 'facebook'). Sjednocuje zacházení
+      # s FB/IG/Threads zdroji bez nutnosti přidávat explicitní pole do každého
+      # YAMLu. Match pattern používá i bin/sync_profiles.rb.
+      source_config = infer_rss_source_type(source_config)
+
+      # Merge hierarchy: global → platform → [rss_source_type overlay] → source
+      configs = [load_global, load_platform(platform)]
+      if (overlay = rss_source_type_overlay(source_config, platform))
+        configs << overlay
+      end
+      configs << source_config
+      merged = @merger.merge(*configs)
       # Resolve Mastodon credentials
       credentials_loader = method(:mastodon_credentials)
       @credentials_resolver.resolve(merged, credentials_loader, load_global)
@@ -151,6 +166,32 @@ module Config
       @twitter_handle_map ||= build_twitter_handle_map
     end
 
+    # Enrich raw mentions config (z platform.yml / source override) o `local_handles`
+    # mapu pro Twitter zdroje. Pro ne-Twitter platformy vrací base beze změny.
+    # Sdíleno mezi orchestrátorem (posty) a sync_profiles (bio).
+    # @param raw_config [Hash, nil] mentions config
+    # @param platform [String, Symbol] platforma (twitter, bluesky, ...)
+    # @return [Hash] enriched config
+    def enrich_mentions_config(raw_config, platform:)
+      base = raw_config || {}
+      return base unless platform.to_s == 'twitter'
+
+      case base[:type].to_s
+      when 'domain_suffix'
+        # Legacy: obohatit na domain_suffix_with_local (zachovat zpětnou kompatibilitu)
+        base.merge(
+          type: 'domain_suffix_with_local',
+          local_instance: 'zpravobot.news',
+          local_handles: twitter_handle_to_mastodon_map
+        )
+      when 'local_or_domain_suffix'
+        # Nový typ: přidat local_handles mapu
+        base.merge(local_handles: twitter_handle_to_mastodon_map)
+      else
+        base
+      end
+    end
+
     private
     # Check if file is an example (should be skipped)
     # Matches: !example_*, _example_*, *_example.yml, example_*
@@ -165,6 +206,41 @@ module Config
     def load_platform(platform)
       return @platforms[platform] if @platforms.key?(platform)
       @platforms[platform] = load_yaml("platforms/#{platform}.yml") || {}
+    end
+
+    # Sociální feedy přicházející přes RSS.app (platform: rss + rss_source_type:
+    # facebook|instagram|threads|...) zdědí defaulty z příslušné platformové YAML
+    # navíc nad rss.yml. Mentions zůstávají řízené RssFormatter::MENTIONS_BY_SOURCE_TYPE,
+    # který má přednost před overlayem (viz RssFormatter#setup_mentions_config).
+    SOCIAL_RSS_OVERLAY_TYPES = %w[facebook instagram threads].freeze
+
+    def rss_source_type_overlay(source_config, platform)
+      return nil unless platform.to_s == 'rss'
+      type = source_config[:rss_source_type].to_s
+      return nil unless SOCIAL_RSS_OVERLAY_TYPES.include?(type)
+
+      overlay = load_platform(type)
+      return nil if overlay.nil? || overlay.empty?
+
+      overlay
+    end
+
+    # Doplní `rss_source_type` ze suffixu source ID, pokud chybí explicitně
+    # v YAML. Aktivní pouze pro `platform: rss`. Vrací nový hash (neduplikuje
+    # vstup, pokud není potřeba).
+    #   `vedatorcz_facebook`         → 'facebook'
+    #   `andreas_ppdp_rss_instagram` → 'instagram'
+    #   `tvta3_rss`                  → není match, nezasahuje
+    RSS_SOURCE_TYPE_FROM_ID = /_(#{SOCIAL_RSS_OVERLAY_TYPES.join('|')})\z/.freeze
+
+    def infer_rss_source_type(source_config)
+      return source_config if source_config[:rss_source_type] && !source_config[:rss_source_type].to_s.empty?
+      return source_config unless source_config[:platform].to_s == 'rss'
+
+      match = source_config[:id].to_s.match(RSS_SOURCE_TYPE_FROM_ID)
+      return source_config unless match
+
+      source_config.merge(rss_source_type: match[1])
     end
     # Build Twitter handle → Mastodon account map for local mention transformation
     # Build map: Twitter handle (or Mastodon account name) → Mastodon account ID

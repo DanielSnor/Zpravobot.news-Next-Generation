@@ -1,11 +1,14 @@
 # YouTube platforma v ZBNW-NG
 
-> **Poslední aktualizace:** 2026-04-11
+> **Poslední aktualizace:** 2026-05-04
 > **Stav:** Produkční
 
-> **Recent changes:**
+> **Recent changes (2026-04 → 2026-05):**
+> - **2026-04-21 (CHANGE):** `YoutubeProfileSyncer` přepnut z plain HTTP na **Browserless.io**. YouTube od dubna 2026 EU requesty redirectuje na `consent.youtube.com`, což blokovalo extrakci `ytInitialData`. Browserless s `CONSENT=YES+1` cookie consent obchází. Sdílí `BROWSERLESS_TOKEN` s FB/IG syncery.
+> - **2026-04-24 (NEW):** YouTube `social_profile` fallback — pro zdroje bez `source.handle` lze handle nadefinovat v `profile_sync.social_profile`, čímž se profile sync aktivuje i tam.
+> - **2026-04-15 (NEW):** Podpora `playlist_id` v `source.playlist_id` — sledování konkrétního playlistu místo automaticky odvozeného `UULF` (videa kanálu bez Shorts). Použitelné např. pro tematické playlisty.
 > - **2026-04-11 (TEST-1):** `test_profile_syncer_subclasses.rb` — 15 unit testů pro `YoutubeProfileSyncer` (parse ytInitialData, meta tag fallback, channel_url, fetch error paths)
-> - **2026-03-01:** Přidán `YoutubeProfileSyncer` — plain HTTP scraping `ytInitialData` (bez API klíče, bez Browserless). **Opt-in**: jen zdroje s `source.handle` v YAML se synchronizují. Cron: neděle 02:00.
+> - **2026-03-01:** Přidán `YoutubeProfileSyncer`. **Opt-in**: jen zdroje s `source.handle` (nebo `profile_sync.social_profile.handle`, viz výše) v YAML se synchronizují. Cron: neděle 02:00.
 
 ---
 

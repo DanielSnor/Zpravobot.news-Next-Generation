@@ -1,7 +1,13 @@
 # RSS.app platformy v ZBNW-NG
 
-> **Poslední aktualizace:** 2026-04-11
+> **Poslední aktualizace:** 2026-05-04
 > **Stav:** Produkční
+
+> **Recent changes (2026-04 → 2026-05):**
+> - **2026-04-24 (NEW):** `InstagramProcessor` — heuristická rekonstrukce odstavců, hashtag/mention bloků a struktury captionů, které RSS.app vrací jako plochý jednořádkový text. Aktivuje se v `RssFormatter` pro `rss_source_type: instagram`. Detail v sekci [InstagramProcessor](#instagramprocessor).
+> - **2026-04-23 (FIX):** FacebookProfileSyncer — oprava extrakce `description` z FB profilu.
+> - **2026-04-14 (FIX):** `InstagramProfileSyncer` rozeznává placeholder avatar IG loga (`rsrc.php` URL) a nesynchronizuje ho.
+> - **2026-04-27 (FIX):** Browser-like User-Agent pro RSS HTTP requesty (některé feedy odmítaly default Net::HTTP UA).
 
 ---
 
@@ -12,11 +18,12 @@
 3. [Společné vzory všech RSS.app zdrojů](#společné-vzory-všech-rssapp-zdrojů)
 4. [FacebookProcessor](#facebookprocessor)
 5. [Facebook via RSS.app](#facebook-via-rssapp)
-6. [Instagram via RSS.app](#instagram-via-rssapp)
-7. [Profile sync](#profile-sync)
-8. [create_source.rb podpora](#create_sourcerb-podpora)
-9. [Rozšíření na další platformy](#rozšíření-na-další-platformy)
-10. [Časté problémy](#časté-problémy)
+6. [InstagramProcessor](#instagramprocessor)
+7. [Instagram via RSS.app](#instagram-via-rssapp)
+8. [Profile sync](#profile-sync)
+9. [create_source.rb podpora](#create_sourcerb-podpora)
+10. [Rozšíření na další platformy](#rozšíření-na-další-platformy)
+11. [Časté problémy](#časté-problémy)
 
 ---
 
@@ -53,8 +60,8 @@ https://rss.app/feeds/xxx.xml
         ▼
   RssFormatter.format()
         │
-        ├── rss_source_type: facebook → FacebookProcessor (em-dash dedup)
-        └── rss_source_type: instagram → bez extra procesoru
+        ├── rss_source_type: facebook  → FacebookProcessor  (em-dash dedup)
+        └── rss_source_type: instagram → InstagramProcessor (rekonstrukce odstavců, tag bloků)
         │
         ▼
   PostProcessor pipeline          dedup, filter, media upload, publish
@@ -296,6 +303,48 @@ profile_sync:
 - `<media:content>` — obrázek nebo thumbnail videa
 - Reels: title = description (em-dash duplikát problém)
 - Živé přenosy: "was live" → filtrovat
+
+---
+
+## InstagramProcessor
+
+### Umístění
+`lib/processors/instagram_processor.rb`
+
+### Účel
+
+RSS.app vrací Instagram caption jako **jeden plochý blok textu** bez `\n` — všechny odstavce, hashtagy a emoji titulky stojí na jednom řádku. `InstagramProcessor` heuristicky rekonstruuje původní formátování, aby výsledný Mastodon post nebyl zeď textu.
+
+### Pipeline heuristik
+
+Heuristiky se aplikují v pevně daném pořadí (`process` metoda):
+
+| # | Heuristika | Co dělá |
+|---|------------|---------|
+| 1 | `restore_paragraph_breaks` | Emoji + mezera + velké písmeno → `\n\n` za emoji (např. `realita 😁 Ella` → `realita 😁\n\nElla`). Chrání vlajkové páry, variační selektory, začátky řádků. |
+| 2 | `restore_exclamation_title` | První věta zakončená `!` na začátku textu → nadpis, `\n\n` za ní. |
+| 3 | `restore_flag_list` | Vlajkový seznam (`🇧🇭 Bahrajn 🇸🇦 Saudi`) → každá vlajka na vlastním řádku. Aktivní jen v odstavcích s 2+ vlajkami. |
+| 4 | `restore_list_breaks` | Bullet seznam s `- ` odrážkami slepený do jednoho řádku → každá položka na vlastní řádek. Vyžaduje 2+ výskytů `\s+-\s+` (jinak by chytalo dashe v nadpisech). |
+| 5 | `restore_quote_breaks` | Citace v uvozovkách (`"`, `"`, `„`) → vlastní odstavec. |
+| 6 | `restore_long_paragraph_breaks` | Bloky >250 znaků bez `\n\n` → split na nejbližší větné hranici. |
+| 7 | `restore_hashtag_block` | Tag blok na konci (mix `#hashtag` a `@mention`) → vlastní odstavec; hashtagy na prvním řádku, mentions na druhém. Podporuje `\|` jako separátor (`#NovaSport \| #NHL`). |
+
+### Aktivace
+
+Procesor se aktivuje automaticky v `RssFormatter` když `rss_source_type == 'instagram'`:
+
+```ruby
+def format(post)
+  post = apply_instagram_preprocessing(post) if @config[:rss_source_type] == 'instagram'
+  @universal.format(post, runtime_config)
+end
+```
+
+### Speciální detaily
+
+- **Tag blok jako poslední** — `restore_hashtag_block` běží až nakonec, aby heuristika 6 (long paragraph) neprocházela hashtagy.
+- **Vlajková ochrana** — vlajkové emoji jsou páry regional indicatorů (`U+1F1E0–U+1F1FF`); regex pro split odstavců používá negative lookbehind, aby se vlajka nerozsekala uprostřed.
+- **Mention transformace** — pro Mastodon kompatibilitu se `@handle` z Instagramu přepisuje na **plný profile URL** (`https://www.instagram.com/handle/`) a `@` v textu se nahrazuje za fullwidth `＠`, aby Mastodon nezaměnil IG handle za federovanou mention. Handles s tečkou (`@kimi.antonelli`) jsou ošetřené samostatně.
 
 ---
 

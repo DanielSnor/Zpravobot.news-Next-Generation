@@ -101,7 +101,7 @@ end
 
 bs_publisher = if options[:bluesky] && !options[:dry_run]
                  require 'publishers/bluesky_publisher'
-                 Publishers::BlueskyPublisher.new(account_id: 'zpravobot')
+                 Publishers::BlueskyPublisher.try_create(account_id: 'zpravobot')
                end
 
 puts "[#{Time.now.iso8601}] 📈 Trending check start#{options[:dry_run] ? ' (dry run)' : ''}"

@@ -20,7 +20,7 @@ require_relative '../utils/http_client'
 
 module Adapters
   class RssAdapter < BaseAdapter
-    USER_AGENT = 'Zpravobot/1.0 (+https://zpravobot.news)'
+    USER_AGENT = 'Mozilla/5.0 (compatible; zpravobot/1.0; +https://zpravobot.news)'
     MAX_REDIRECTS = 5
     REDIRECT_CODES = %w[301 302 307 308].freeze
 
@@ -97,7 +97,8 @@ module Adapters
         visited << current_url
 
         response = HttpClient.get(current_url,
-          headers: { 'Accept' => 'application/rss+xml, application/xml, text/xml, */*' })
+          headers: { 'Accept' => 'application/rss+xml, application/xml, text/xml, */*' },
+          user_agent: USER_AGENT)
 
         if REDIRECT_CODES.include?(response.code)
           location = response['location']

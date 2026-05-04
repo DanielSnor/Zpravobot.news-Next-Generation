@@ -2,8 +2,19 @@
 
 Dokumentace helper aplikací a monitoring systému pro ZBNW-NG.
 
-> **Poslední aktualizace:** 2026-04-17
-> **Změny (2026-04):** Test katalog rozšířen na 103 registrovaných testů (77 unit + 18 network + 2 db + 6 e2e) po dokončení TEST-1 (profile syncer unit testy). Přidán `log_report.rb` — strukturovaný JSON report z logů prod serveru pro on-demand analýzu.
+> **Poslední aktualizace:** 2026-05-04
+
+> **Recent changes (2026-04 → 2026-05):**
+> - **2026-04-21 (NEW):** `bin/instance_status.rb` — one-shot JSON snapshot stavu instance (disk, runner log tail, queue size, Nitter, schema). Spustitelné přes SSH pipe pro out-of-band health check. Detail v sekci [instance_status.rb](#instance_statusrb).
+> - **2026-05-01 (NEW):** `log_report.rb` — `MastodonPublisher` infra chyby se nyní korelují k source chybám (rozliší se infra-level rate limit od reálné chyby zdroje).
+> - **2026-04-29 (NEW):** `log_report.rb` — `--source SOURCE_ID` slim report pro jeden zdroj (užitečné při ladění konkrétního problémového účtu).
+> - **2026-04-22 (NEW):** `log_report.rb` — health agregace + per-source log detail.
+> - **2026-04-17 (NEW):** `log_report.rb` — `ifttt_skips` (deleted_original, duplicate_post v DEBUG módu); `profile_sync` rozšířen na pole per platformu; fix detekce `log/` vs `logs/` adresáře.
+> - **2026-04-25 (FF):** `friendly_follow.rb` — Mastodon publikuje jeden post se 3 účty, Bluesky publikuje vlákno (každý účet samostatný post ≤300 grafémů). Detail v `bluesky_platform.md` v sekci BlueskyPublisher.
+> - **2026-04-25 (chore):** Odkomentován cron 15:15 pro `friendly_follow`.
+> - **2026-04-23 (FIX):** FB profile syncer — oprava extrakce `description`.
+> - **2026-04-15 (chore):** `hrubot` upgrade na `claude-sonnet-4-6` (komentátor pro `trending_post.rb`).
+> - **2026-04-11:** Test katalog rozšířen na 103 registrovaných testů (77 unit + 18 network + 2 db + 6 e2e) po dokončení TEST-1 (profile syncer unit testy).
 
 ---
 
@@ -22,6 +33,7 @@ Dokumentace helper aplikací a monitoring systému pro ZBNW-NG.
 - [zpravobot_stats.rb](#zpravobot_statsrb) - Týdenní hitparáda #ZpravobotTOP10 (CZ+SK thread)
 - [trending_post.rb](#trending_postrb) - Automatické quote posty pro trendující statusy
 - [log_report.rb](#log_reportrb) - Strukturovaný JSON report z logů prod serveru
+- [instance_status.rb](#instance_statusrb) - One-shot JSON snapshot stavu instance (disk, queue, runner, Nitter)
 
 ---
 
@@ -2119,8 +2131,11 @@ ruby bin/log_report.rb                                          # včera 07:00 �
 ruby bin/log_report.rb --date 2026-04-16                        # konkrétní den (07:00 → +1 07:00)
 ruby bin/log_report.rb --hours 12                               # posledních 12 hodin
 ruby bin/log_report.rb --from "2026-04-16 08:00" --to "2026-04-16 20:00"
+ruby bin/log_report.rb --source enkocz                          # slim report jen pro daný source_id
 ruby bin/log_report.rb --pretty                                 # odsazený JSON
 ```
+
+`--source` produkuje zúžený výstup pro jeden zdroj — užitečné při debugu konkrétního problémového účtu (publish errors, profile sync failures).
 
 ### Výstupní struktura JSON
 
@@ -2155,6 +2170,53 @@ ruby bin/log_report.rb --pretty                                 # odsazený JSON
 
 ---
 
+## instance_status.rb
+
+### Umístění
+`bin/instance_status.rb`
+
+### Účel
+
+Vrací **JSON snapshot** aktuálního stavu instance — disk, runner log tail, queue size, Nitter dostupnost, schema. Bez závislosti na DB ani `lib/`, takže běží i když má hlavní pipeline problém.
+
+Určen jako **out-of-band health check** přes SSH pipe — klient si výstup stáhne a vyhodnotí lokálně.
+
+### Použití
+
+```sh
+# Lokálně (v ZBNW-NG dir)
+ruby bin/instance_status.rb
+
+# Přes SSH (typický use case)
+ssh user@host "cd /app/data/zbnw-ng && ruby bin/instance_status.rb"
+```
+
+### Výstupní struktura JSON
+
+| Klíč | Popis |
+|------|-------|
+| `disk` | `used_gb`, `total_gb`, `percent` (df pro `BASE_DIR`) |
+| `runner` | `last_run` (ISO timestamp), `status` (`ok` / `stale` / `no_run_today` / `no_log`), `errors_last_hour` |
+| `queue` | Počet souborů v `pending/`, `failed/` (a pod-adresářích) |
+| `nitter` | HTTP probe na `NITTER_INSTANCE` — status code, response time |
+| `schema` | Detekované schema (`zpravobot` default, lze přepsat `ZPRAVOBOT_SCHEMA` env) |
+
+### Konfigurace
+
+Vše je řízené přes ENV proměnné s rozumnými defaulty:
+
+| ENV | Default | Účel |
+|-----|---------|------|
+| `ZBNW_DIR` | `..` (od bin/) | Root ZBNW-NG instance |
+| `ZBNW_CONFIG_DIR` | `$ZBNW_DIR/config` | Config directory |
+| `IFTTT_QUEUE_DIR` | `$ZBNW_DIR/queue/ifttt` | Queue directory pro count |
+| `NITTER_INSTANCE` | čte z `config/platforms/twitter.yml` nebo fallback | Nitter URL pro probe |
+| `ZPRAVOBOT_SCHEMA` | `zpravobot` | Schema name v reportu |
+
+LOG_DIR: auto-detekce `logs/` vs `log/` (preferuje `logs/`).
+
+---
+
 ## Shrnutí
 
 | Nástroj | Účel | Spouštění |
@@ -2177,6 +2239,7 @@ ruby bin/log_report.rb --pretty                                 # odsazený JSON
 | `cleanup_orphaned_accounts.rb` | Detekce osiřelých účtů bez aktivního zdroje | Manuálně |
 | `cleanup_duplicate_posts.rb` | Odstranění duplicitních postů (schema migrace) | Manuálně (jednorázově) |
 | `log_report.rb` | Strukturovaný JSON report z logů prod serveru | Manuálně (on-demand) |
+| `instance_status.rb` | One-shot JSON snapshot stavu instance (disk, queue, runner, Nitter) | Manuálně přes SSH (on-demand) |
 
 ### Health Check Přehled
 
@@ -2214,6 +2277,7 @@ ruby bin/log_report.rb --pretty                                 # odsazený JSON
 - **cleanup_orphaned_accounts.rb** prochází `mastodon_accounts.yml` a ověřuje existenci aktivního zdroje v `config/sources/`; `--fix` nabídne interaktivní smazání
 - **cleanup_duplicate_posts.rb** jednorázový cleanup po schema migraci `zpravobot_test → zpravobot` (2026-03-27); `--delete` skutečně maže, `--since` filtruje rozsah
 - **log_report.rb** parsuje `logs/runner_YYYYMMDD.log`, `logs/ifttt_processor_YYYYMMDD.log` a `logs/profile_sync_*.log`; výstup jde čistě na stdout jako JSON; žádné závislosti na DB ani lib/
+- **instance_status.rb** čte disk usage (`df`), tail runner logu (last 10 000 řádků), queue size (Dir.glob), HTTP probe na Nitter instance; bez závislosti na DB ani lib/, určen pro SSH out-of-band health check
 
 ---
 

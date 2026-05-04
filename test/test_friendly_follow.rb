@@ -395,7 +395,7 @@ post = ff_fmt.build_post_text(accounts_data, header, 'zpravobot.news')
 
 test_includes 'header #FF 🇨🇿',              '#FF 🇨🇿',                  post
 test_includes 'header day/date',              'tip na středu, 8. dubna 2026:', post
-test_includes 'ct24 handle',                  '@ct24@zpravobot.news',     post
+test_includes 'ct24 handle',                  '@ct24@zpravobot.news', post
 test_includes 'ct24 display name',            'ČT24',                     post
 test_includes 'ct24 bio',                     'Zpravodajský kanál České televize.', post
 test_includes 'aktualne handle',              '@aktualne@zpravobot.news', post

@@ -31,7 +31,8 @@ module Publishers
     OPEN_TIMEOUT     = 5
     READ_TIMEOUT     = 20
 
-    URL_PATTERN = %r{https?://[^\s]+}
+    URL_PATTERN            = %r{https?://[^\s]+}
+    MASTODON_HANDLE_PATTERN = /@([\w][\w.-]*)@([\w][\w.-]*\.[a-z]{2,})/
 
     def initialize(account_id: 'zpravobot')
       creds      = load_credentials(account_id.to_s)
@@ -41,6 +42,16 @@ module Publishers
       @did        = session['did']
       @handle     = session['handle']
       log_info("[BS] Authenticated as #{@handle}")
+    end
+
+    # Safe constructor: returns a publisher on success, or nil if init/auth
+    # fails. Use from cron entry points so a Bluesky outage does not abort
+    # the primary Mastodon publish path.
+    def self.try_create(account_id: 'zpravobot')
+      new(account_id: account_id)
+    rescue StandardError => e
+      warn "[BS] Init failed for '#{account_id}' (#{e.class}: #{e.message}) — Bluesky publishing skipped"
+      nil
     end
 
     # Publish a single post.
@@ -135,6 +146,7 @@ module Publishers
     # ----------------------------------------------------------------
 
     def build_record(text)
+      text   = text.gsub(MASTODON_HANDLE_PATTERN) { "https://#{$2}/@#{$1}" }
       record = {
         '$type'     => 'app.bsky.feed.post',
         'text'      => text,

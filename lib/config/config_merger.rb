@@ -8,15 +8,16 @@ module Config
   # Hierarchy (later overrides earlier):
   #   1. global.yml
   #   2. platforms/{platform}.yml
-  #   3. sources/{source_id}.yml
+  #   3. platforms/{rss_source_type}.yml  (volitelný overlay pro RSS-fed
+  #      sociální feedy: facebook/instagram/threads — viz ConfigLoader)
+  #   4. sources/{source_id}.yml
   class ConfigMerger
     # Merge config hierarchy for a source
-    # @param global [Hash] Global configuration
-    # @param platform_config [Hash] Platform configuration
-    # @param source_config [Hash] Source configuration
+    # @param configs [Array<Hash>] Configs in priority order (later overrides earlier).
+    #   Typicky: [global, platform, [rss_source_type_overlay], source]
     # @return [Hash] Merged configuration
-    def merge(global, platform_config, source_config)
-      HashHelpers.deep_merge_all(global, platform_config, source_config)
+    def merge(*configs)
+      HashHelpers.deep_merge_all(*configs)
     end
   end
 end

@@ -354,25 +354,7 @@ module Orchestrator
 	# Build mentions config — enriches domain_suffix and local_or_domain_suffix for Twitter sources
 	# with local instance handles for zpravobot.news mention transformation
 	def build_mentions_config(source)
-	  base = source.mentions || {}
-	  return base unless source.platform.to_s == 'twitter'
-
-	  case base[:type].to_s
-	  when 'domain_suffix'
-	    # Legacy: obohatit na domain_suffix_with_local (zachovat zpětnou kompatibilitu)
-	    base.merge(
-	      type: 'domain_suffix_with_local',
-	      local_instance: 'zpravobot.news',
-	      local_handles: @config_loader.twitter_handle_to_mastodon_map
-	    )
-	  when 'local_or_domain_suffix'
-	    # Nový typ: přidat local_handles mapu
-	    base.merge(
-	      local_handles: @config_loader.twitter_handle_to_mastodon_map
-	    )
-	  else
-	    base
-	  end
+	  @config_loader.enrich_mentions_config(source.mentions, platform: source.platform)
 	end
 
 	# ============================================

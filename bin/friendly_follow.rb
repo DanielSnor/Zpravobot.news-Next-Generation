@@ -95,7 +95,7 @@ log "Friendly Follow#{options[:dry_run] ? ' [DRY RUN]' : ''}#{options[:bluesky] 
 
 bs_publisher = if options[:bluesky] && !options[:dry_run]
                  require 'publishers/bluesky_publisher'
-                 Publishers::BlueskyPublisher.new(account_id: 'zpravobot')
+                 Publishers::BlueskyPublisher.try_create(account_id: 'zpravobot')
                end
 
 ff = FF::FriendlyFollow.new(

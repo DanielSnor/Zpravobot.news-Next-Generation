@@ -13,6 +13,7 @@
 #   ruby bin/log_report.rb --date 2026-04-16             # 2026-04-16 07:00 → 2026-04-17 07:00
 #   ruby bin/log_report.rb --hours 12                    # posledních 12 hodin
 #   ruby bin/log_report.rb --from "2026-04-16 08:00" --to "2026-04-16 20:00"
+#   ruby bin/log_report.rb --source 12345_bluesky        # slim report jen pro daný source_id
 #   ruby bin/log_report.rb --pretty                      # odsazený JSON
 # ============================================================
 
@@ -35,6 +36,7 @@ OptionParser.new do |opts|
   opts.on('--hours N', Integer, 'Okno: posledních N hodin')           { |v| options[:hours] = v }
   opts.on('--from FROM',        'Začátek okna: "YYYY-MM-DD HH:MM"')   { |v| options[:from] = v }
   opts.on('--to TO',            'Konec okna: "YYYY-MM-DD HH:MM"')     { |v| options[:to] = v }
+  opts.on('--source SOURCE_ID', 'Slim report jen pro daný source_id') { |v| options[:source] = v }
   opts.on('--pretty',           'Odsazený JSON výstup')               { options[:pretty] = true }
   opts.on('-h', '--help')       { puts opts; exit }
 end.parse!
@@ -116,6 +118,192 @@ def normalize_error(msg)
      .gsub(/\b\d{7,}\b/, '<ID>')
      .gsub(/\b\d{1,3}(?:\.\d{1,3}){3}\b(?::\d+)?/, '<IP>')
      .strip
+end
+
+# ── Per-source helpery ───────────────────────────────────────
+#
+# Sdíleno problematic_sources sekcí (běží pro zdroje vyplavané z health
+# snapshotů) a slim --source větví (běží pro jeden explicitně zadaný zdroj).
+
+HEALTH_ENTRY_LIMIT = 20  # max last_entries per problematický zdroj
+
+LOG_LINE_RE = /^\[\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\]\s*(?:INFO|ERROR|WARN|DEBUG|FATAL):\s*/
+
+# Source-less helpery, které sub-stepují publish a v jejichž log řádcích nefiguruje source_id.
+# Jejich chyby je třeba korelovat časem k source chybě (PostProcessor Publish failed).
+INFRA_LOGGERS = %w[MastodonPublisher SyndicationMediaFetcher].freeze
+
+# ERROR/WARN řádky z infra loggerů bez source_id.
+# - Standardní infra loggery: [MastodonPublisher], [SyndicationMediaFetcher]
+# - Speciál: [PostProcessor] následovaný 2+ mezerami = "Dummy image upload failed"
+#   (běžné PostProcessor řádky mají [PostProcessor] [source_id] s jednou mezerou).
+INFRA_LINE_RE = /\] (?:ERROR|WARN): (?:\[(?:#{INFRA_LOGGERS.join('|')})\]|\[PostProcessor\] {2,})/
+
+# Korelační okno: infra chyba předchází source chybě. MastodonPublisher retry sekvence
+# trvá ~20-25s, finální ERROR přijde ~10s před PostProcessor ERROR. Okno [-30s, 0s].
+INFRA_CORRELATION_WINDOW = 30
+
+# Pro daný source_id v rámci okna vrátí:
+# - published count (jen runner — IFTTT nelogguje per-source publish)
+# - source ERROR/WARN entries: count, agregaci po normalizované zprávě, posledních N raw
+# - korelované infra řádky per source chyba (heuristika, ±30s před, riziko false positive
+#   při paralelní publikaci více zdrojů)
+# - agregované infra chyby za celé okno (ground truth, bez vazby na zdroj)
+def source_log_detail(source_id, runner_files, ifttt_files, t_from, t_to, limit)
+  source_pattern    = /\[#{Regexp.escape(source_id)}\]/
+  published_pattern = /\] INFO: \[PostProcessor\] \[#{Regexp.escape(source_id)}\] Published:/
+  source_entries = []
+  infra_entries  = []
+  published      = 0
+
+  (runner_files + ifttt_files).each do |path|
+    foreach_line(path) do |line|
+      next unless in_window?(line, t_from, t_to)
+
+      if line.match?(source_pattern)
+        if line.match?(/\] (?:ERROR|WARN):/)
+          ts = parse_ts(line)
+          next unless ts
+          level   = line.include?('] ERROR:') ? 'error' : 'warn'
+          message = line.sub(LOG_LINE_RE, '').strip
+          source_entries << { ts: ts, level: level, message: message }
+        elsif line.match?(published_pattern)
+          published += 1
+        end
+      elsif line.match?(INFRA_LINE_RE)
+        ts = parse_ts(line)
+        next unless ts
+        level   = line.include?('] ERROR:') ? 'error' : 'warn'
+        message = line.sub(LOG_LINE_RE, '').strip
+        infra_entries << { ts: ts, level: level, message: message }
+      end
+    end
+  end
+
+  # Agregace source chyb + per-error korelace s infra řádky v okně [-N, 0] sec
+  agg = Hash.new { |h, k| h[k] = { count: 0, first: nil, last: nil, _correlated: {} } }
+  source_entries.each do |e|
+    a = agg[normalize_error(e[:message])]
+    a[:count] += 1
+    a[:first] ||= e[:ts].strftime('%H:%M:%S')
+    a[:last]   = e[:ts].strftime('%H:%M:%S')
+
+    infra_entries.each do |i|
+      diff = e[:ts] - i[:ts]
+      next unless diff >= 0 && diff <= INFRA_CORRELATION_WINDOW
+      key = "#{i[:ts].to_i}|#{i[:level]}|#{i[:message]}"
+      a[:_correlated][key] ||= { ts: i[:ts].strftime('%H:%M:%S'),
+                                 level: i[:level], message: i[:message] }
+    end
+  end
+
+  errors_aggregated = agg.sort_by { |_, v| -v[:count] }.map { |msg, v|
+    {
+      message:          msg,
+      count:            v[:count],
+      first:            v[:first],
+      last:             v[:last],
+      correlated_lines: v[:_correlated].values,
+    }
+  }
+
+  # Agregace infra chyb — ground truth, nezávisle na korelaci se source chybami
+  infra_agg = Hash.new { |h, k| h[k] = { count: 0, first: nil, last: nil, level: nil } }
+  infra_entries.each do |e|
+    a = infra_agg[normalize_error(e[:message])]
+    a[:count] += 1
+    a[:first] ||= e[:ts].strftime('%H:%M:%S')
+    a[:last]   = e[:ts].strftime('%H:%M:%S')
+    # ERROR vyhrává nad WARN, pokud spadnou pod stejnou normalizovanou zprávu
+    a[:level] = e[:level] if a[:level].nil? || e[:level] == 'error'
+  end
+  infra_aggregated = infra_agg.sort_by { |_, v| -v[:count] }.map { |msg, v|
+    { message: msg, level: v[:level], count: v[:count], first: v[:first], last: v[:last] }
+  }
+
+  {
+    published:                       published,
+    total_errors:                    source_entries.size,
+    errors_aggregated:               errors_aggregated,
+    last_entries:                    source_entries.last(limit).map { |e|
+                                       { ts: e[:ts].strftime('%H:%M:%S'),
+                                         level: e[:level], message: e[:message] }
+                                     },
+    infrastructure_errors_in_window: infra_aggregated,
+  }
+end
+
+# V kolika health snapshotech v okně se daný source_id objevil v Processing → Error Sources.
+def source_health_appearances(source_id, health_dir, t_from, t_to)
+  result = { count: 0, first: nil, last: nil }
+  return result unless health_dir && Dir.exist?(health_dir)
+
+  date_from_s = t_from.strftime('%Y%m%d')
+  date_to_s   = t_to.strftime('%Y%m%d')
+
+  Dir.glob(File.join(health_dir, 'health_*.json')).sort.each do |path|
+    fname = File.basename(path)
+    next unless (m = fname.match(/health_(\d{8})_\d{6}\.json/))
+    next unless m[1] >= date_from_s && m[1] <= date_to_s
+
+    begin
+      data = JSON.parse(File.read(path, encoding: 'UTF-8'))
+      ts   = Time.parse(data['timestamp'])
+    rescue JSON::ParserError, ArgumentError, Errno::ENOENT
+      next
+    end
+    next unless ts >= t_from && ts < t_to
+
+    found = (data['checks'] || []).any? do |check|
+      next false unless check['name'] == 'Processing' && check['level'] != 'ok'
+      (check['details'] || []).any? do |sub|
+        next false unless sub.is_a?(Hash) && sub['name'] == 'Error Sources' && sub['level'] != 'ok'
+        (sub['details'] || []).any? do |src|
+          src.is_a?(Hash) && src['source_id'] == source_id
+        end
+      end
+    end
+
+    next unless found
+    result[:count] += 1
+    result[:first] ||= ts.strftime('%Y-%m-%d %H:%M')
+    result[:last]   = ts.strftime('%Y-%m-%d %H:%M')
+  end
+
+  result
+end
+
+# ── Slim --source režim ──────────────────────────────────────
+# Když je zadán --source, vrátíme fokusovaný JSON jen pro ten jeden zdroj
+# a přeskočíme veškerou globální agregaci.
+
+if options[:source]
+  source_id    = options[:source]
+  runner_files = log_files_for('runner', window_from, window_to)
+  ifttt_files  = log_files_for('ifttt_processor', window_from, window_to)
+  detail       = source_log_detail(source_id, runner_files, ifttt_files,
+                                   window_from, window_to, HEALTH_ENTRY_LIMIT)
+  health_dir   = LOG_DIR ? File.join(LOG_DIR, 'health') : nil
+  health       = source_health_appearances(source_id, health_dir, window_from, window_to)
+
+  report = {
+    mode: 'single_source',
+    window: {
+      from: window_from.strftime('%Y-%m-%d %H:%M:%S'),
+      to:   window_to.strftime('%Y-%m-%d %H:%M:%S'),
+    },
+    source_id:                       source_id,
+    platform:                        platform_of(source_id),
+    published:                       detail[:published],
+    errors_total:                    detail[:total_errors],
+    errors_aggregated:               detail[:errors_aggregated],
+    last_entries:                    detail[:last_entries],
+    infrastructure_errors_in_window: detail[:infrastructure_errors_in_window],
+    health_appearances:              health,
+  }
+
+  puts options[:pretty] ? JSON.pretty_generate(report) : report.to_json
+  exit
 end
 
 # ── Countery ──────────────────────────────────────────────────
@@ -295,48 +483,6 @@ end
 # Z "Processing → Error Sources" sub-checku extrahuje source_id se strukturovanými
 # daty (SQL výsledek). "Problematic Sources" details jsou plain stringy — ignorujeme,
 # source_id bereme ze Error Sources.
-
-HEALTH_ENTRY_LIMIT = 20  # max last_entries per problematický zdroj
-
-LOG_LINE_RE = /^\[\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\]\s*(?:INFO|ERROR|WARN|DEBUG|FATAL):\s*/
-
-# Extrahuje ERROR/WARN log řádky pro daný source_id v rámci okna.
-# Vrací { total_errors:, errors_aggregated: [...], last_entries: [...] }
-def source_log_detail(source_id, runner_files, ifttt_files, t_from, t_to, limit)
-  pattern = /\[#{Regexp.escape(source_id)}\]/
-  entries = []
-
-  (runner_files + ifttt_files).each do |path|
-    foreach_line(path) do |line|
-      next unless in_window?(line, t_from, t_to)
-      next unless line.match?(/\] (?:ERROR|WARN):/)
-      next unless line.match?(pattern)
-      ts = parse_ts(line)
-      next unless ts
-      level   = line.include?('] ERROR:') ? 'error' : 'warn'
-      message = line.sub(LOG_LINE_RE, '').strip
-      entries << { ts: ts, level: level, message: message }
-    end
-  end
-
-  # Agregace po normalizované zprávě
-  agg = Hash.new { |h, k| h[k] = { count: 0, first: nil, last: nil } }
-  entries.each do |e|
-    a = agg[normalize_error(e[:message])]
-    a[:count] += 1
-    a[:first] ||= e[:ts].strftime('%H:%M:%S')
-    a[:last]   = e[:ts].strftime('%H:%M:%S')
-  end
-
-  {
-    total_errors:      entries.size,
-    errors_aggregated: agg.sort_by { |_, v| -v[:count] }
-                          .map { |msg, v| { message: msg, **v } },
-    last_entries:      entries.last(limit)
-                              .map { |e| { ts: e[:ts].strftime('%H:%M:%S'),
-                                           level: e[:level], message: e[:message] } },
-  }
-end
 
 health_dir            = LOG_DIR ? File.join(LOG_DIR, 'health') : nil
 health_snaps_total    = 0
