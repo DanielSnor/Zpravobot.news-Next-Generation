@@ -151,9 +151,23 @@ test(
 )
 
 test(
-  "Pouze @mentions bez hashtags → vlastni odstavec",
-  "Foto od \u{1F4F7}\n\n@photographer.name",
+  "Pouze @mention na konci → zůstává v prose (NE tag block)",
+  # Tag block musí začínat #hashtagem; samotný @mention je atribuce v prose,
+  # ne tag, takže se nesplituje. Fixuje regresi item 26: "photos by @user".
+  "Foto od \u{1F4F7} @photographer.name",
   processor.process("Foto od \u{1F4F7} @photographer.name")
+)
+
+test(
+  "Atribuce '@author' v prose se NEsplituje (regression: item 26)",
+  "This is how Sundays should feel. Owner and photos by @mr.20max\n\n#MINIClassic #classiccar #minifan",
+  processor.process("This is how Sundays should feel. Owner and photos by @mr.20max #MINIClassic #classiccar #minifan")
+)
+
+test(
+  "Tag block s @mentions ZA hashtagy se rozsekne (regression: item 14)",
+  "The moment that makes it all worth it \u{1F62E}\u{200D}\u{1F4A8}\n\n#F1 #Formula1 #MiamiGP\n@kimi.antonelli @mercedesamgf1",
+  processor.process("The moment that makes it all worth it \u{1F62E}\u{200D}\u{1F4A8} #F1 #Formula1 #MiamiGP @kimi.antonelli @mercedesamgf1")
 )
 
 puts
@@ -245,6 +259,25 @@ test(
   "Cleanup: více než 2 newlines → max 2",
   "Věta jedna.\n\nVěta dvě.",
   processor.process("Věta jedna.\n\n\n\nVěta dvě.")
+)
+
+puts
+
+# ------------------------------------------------------------------
+# RSS.app encoding artefakty (�)
+# ------------------------------------------------------------------
+puts "## RSS.app encoding artefakty"
+
+test(
+  "U+FFFD + en-dash → newline + dash (regression: item 38 IG)",
+  "Mimo jiné:\n– stažení sil\n– konec blokády\n– uvolnění aktiv",
+  processor.process("Mimo jiné:�– stažení sil�– konec blokády�– uvolnění aktiv")
+)
+
+test(
+  "Osamocený U+FFFD → odstraněn",
+  "Text bez chyby.",
+  processor.process("Text� bez chyby.")
 )
 
 puts

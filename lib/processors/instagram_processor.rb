@@ -1,12 +1,22 @@
 # frozen_string_literal: true
 
+require_relative 'social_text_heuristics'
+
 module Processors
   # Instagram Content Processor for Zpravobot Next Generation
   #
   # Rekonstruuje formátování Instagram captionů ztracené při RSS.app konverzi.
   # RSS.app vrací caption jako jeden plochý blok textu bez \n.
   #
-  # Heuristiky (v pořadí aplikace):
+  # Sdílené heuristiky (paragraph breaks, hashtag block, long paragraph,
+  # whitespace cleanup, RSS.app artefakty) jsou v Processors::SocialTextHeuristics.
+  # IG-specific heuristiky (exclamation title, flag list, dash list, quote breaks)
+  # zůstávají tady.
+  #
+  # Pořadí aplikace:
+  #
+  #   Sanity:
+  #   0. RSS.app encoding artefakty (�– → \n–)
   #
   #   Začátek / nadpis:
   #   1. Emoji titulek → odstavec za uzavíracím emoji
@@ -27,6 +37,8 @@ module Processors
   #   # => "Text. 😁\n\nDalší věta.\n\n#hashtag"
   #
   class InstagramProcessor
+    include SocialTextHeuristics
+
     def initialize(config = {})
       @config = config
     end
@@ -38,6 +50,8 @@ module Processors
       return '' if text.nil? || text.empty?
 
       result = text.dup
+      # Sanity
+      result = decode_rss_app_artifacts(result)
       # Začátek / nadpis
       result = restore_paragraph_breaks(result)
       result = restore_exclamation_title(result)
@@ -55,49 +69,7 @@ module Processors
     private
 
     # ---------------------------------------------------------------------------
-    # Heuristika 1: Emoji jako oddělovač odstavců
-    #
-    # Emoji + mezera + velké písmeno → \n\n za emoji
-    #   "...realita 😁 Ella..." → "...realita 😁\n\nElla..."
-    #
-    # Ochrana 1: velké písmeno — emoji uprostřed věty před vlastním jménem
-    #   malým písmenem (např. "navštívil 🇨🇿 prahu") se nerozdělí.
-    #
-    # Ochrana 2: lookbehind (?<=[^\n]) — emoji na začátku řádku/textu nemá
-    #   před sebou non-newline znak → nerozdělí se.
-    #   "🗓️ TITULEK 🗓️ Text" → první 🗓️ je na začátku = nerozdělí, druhé 🗓️
-    #   má před sebou "K" → rozdělí → "🗓️ TITULEK 🗓️\n\nText".
-    #
-    # Ochrana 3: negative lookahead (?!var_sel) — variační selektor U+FE0x
-    #   NENÍ začátek emoji, ale finalizátor předchozího znaku. Bez ochrany by
-    #   lookbehind zachytil i "🗓" (base) + FE0F (selektor) jako dvě emoji,
-    #   přičemž druhý match by začínal na FE0F → false split.
-    #   "☀️ ➡️ ⛈️ Ve hře" → jen ⛈️ před "Ve" → rozdělí správně.
-    #
-    # Ochrana 4: negative lookbehind (?<!regional) — vlajkové emoji jsou PÁRY
-    #   regional indicatorů (U+1F1E0–U+1F1FF). Bez ochrany by regex začal matchovat
-    #   od DRUHÉHO regional indicatoru (předchází mu první, který je non-newline),
-    #   čímž by 🇺🇸 POLE rozsekal na 🇺🇸 + \n\n + POLE.
-    # ---------------------------------------------------------------------------
-    def restore_paragraph_breaks(text)
-      emoji_pattern = /[\u{1F300}-\u{1F9FF}\u{2600}-\u{27BF}\u{1F1E0}-\u{1F1FF}\u{FE00}-\u{FE0F}]/
-      var_sel       = /[\u{FE00}-\u{FE0F}]/
-      regional      = /[\u{1F1E0}-\u{1F1FF}]/
-
-      # (?<=[^\n])       — předchází non-newline znak (= nejsme na začátku řádku)
-      # (?<!regional)    — předchozí znak NENÍ regional indicator (= nezačínáme
-      #                    uprostřed vlajkového páru)
-      # (?!var_sel)      — match nezačíná variačním selektorem
-      # (emoji_pattern+) — jedna nebo více emoji (včetně selektorů v těle sekvence)
-      # \s+              — mezery za poslední emoji
-      # (?=[[:upper:]])  — následuje velké písmeno
-      text.gsub(/(?<=[^\n])(?<!#{regional})(?!#{var_sel})(#{emoji_pattern}+)\s+(?=[[:upper:]])/) do
-        "#{$1}\n\n"
-      end
-    end
-
-    # ---------------------------------------------------------------------------
-    # Heuristika 2: První věta zakončená vykřičníkem = nadpis
+    # Heuristika: První věta zakončená vykřičníkem = nadpis
     #
     # Pokud první věta celého textu (před jakýmkoli \n\n) končí !, je to nadpis
     # a za ní patří \n\n.
@@ -105,20 +77,14 @@ module Processors
     #   "Kimi získává pole position!\n\nMax hlásí comeback..."
     #
     # Implementováno přes sub (ne gsub) s \A — matchuje výhradně od začátku
-    # celého textu, takže se neuplatní na ! uvnitř odstavců ani na texty,
-    # které začínají emoji titulkem (ten neobsahuje ! před \n).
+    # celého textu, takže se neuplatní na ! uvnitř odstavců.
     # ---------------------------------------------------------------------------
     def restore_exclamation_title(text)
-      # \A([^.!?\n]+!) — od začátku textu, žádná .!?\n před !, pak !
-      #   Tím zajistíme, že jde opravdu o PRVNÍ větu — kdyby před ! byla
-      #   tečka nebo otazník, šlo by o druhou/třetí větu, ne o nadpis.
-      # \s+             — mezera(y) za !
-      # (?=[[:upper:]]) — následuje velké písmeno (= pokračuje další věta)
       text.sub(/\A([^.!?\n]+!)\s+(?=[[:upper:]])/) { "#{$1}\n\n" }
     end
 
     # ---------------------------------------------------------------------------
-    # Heuristika 3: Vlajkový seznam
+    # Heuristika: Vlajkový seznam
     #
     # IG posty často obsahují výčet míst/závodů s vlajkovými emoji jako bulety.
     # RSS.app předá celý výčet jako jeden blok.
@@ -138,18 +104,16 @@ module Processors
       # Pravidlo B: separovat vlajkové položky pomocí \n — ale POUZE v odstavcích
       # s 2+ vlajkami (jinak se plete s emoji uprostřed věty nebo emoji-separátory).
       # Navíc vyžadujeme písmeno (ne interpunkci) těsně před vlajkou — tím se
-      # vyhneme false positivu pro vzor "příměří. 🇱🇧🇮🇱" (o to se stará heuristika 1).
-      text = text.split(/\n\n/).map do |para|
+      # vyhneme false positivu pro vzor "příměří. 🇱🇧🇮🇱" (o to se stará paragraph_breaks).
+      text.split(/\n\n/).map do |para|
         next para if para.scan(FLAG_EMOJI).length < 2
 
         para.gsub(/([[:alpha:]])[^\S\n]+(#{FLAG_EMOJI})/) { "#{$1}\n#{$2}" }
       end.join("\n\n")
-
-      text
     end
 
     # ---------------------------------------------------------------------------
-    # Heuristika 3: Rekonstrukce seznamu
+    # Heuristika: Rekonstrukce dash-seznamu
     #
     # RSS.app někdy zachová "- " odrážky ale odstraní prázdné řádky mezi nimi.
     # Výsledek: "Mezi změny patří: - Bod 1 - Bod 2 - Bod 3"
@@ -164,36 +128,11 @@ module Processors
         para.gsub(/([^\n])\s+-\s+/, "\\1\n- ")
       end.join("\n\n")
 
-      text = text.gsub(/((?:^|\n)-[^\n]+)(\n)(?!-)/) { "#{$1}\n\n" }
-      text
+      text.gsub(/((?:^|\n)-[^\n]+)(\n)(?!-)/) { "#{$1}\n\n" }
     end
 
     # ---------------------------------------------------------------------------
-    # Heuristika 4: Tag blok na konci (hashtags + @mentions)
-    #
-    # IG captions typicky končí blokem tagů odděleným od textu.
-    # Blok může obsahovat kombinaci #hashtag a @mention tokenů.
-    #   "#F1 #Formula1 #MiamiGP @kimi.antonelli @mercedesamgf1"
-    # Podporuje | jako oddělovač (#NovaSport | #NHL).
-    #
-    # Výstup: hashtags na prvním řádku, mentions na druhém řádku (pokud jsou).
-    # ---------------------------------------------------------------------------
-    def restore_hashtag_block(text)
-      tag = /[#@][\w.]+/
-      text.gsub(/([^\n])\s+(#{tag}(?:[\s|]+#{tag})*)$/) do
-        pre   = $1
-        block = $2
-
-        hashtags = block.scan(/#[\w.]+/).join(' ')
-        mentions = block.scan(/@[\w.]+/).join(' ')
-
-        tag_lines = [hashtags, mentions].reject(&:empty?).join("\n")
-        "#{pre}\n\n#{tag_lines}"
-      end
-    end
-
-    # ---------------------------------------------------------------------------
-    # Heuristika 5: Citace v uvozovkách → vlastní odstavec
+    # Heuristika: Citace v uvozovkách → vlastní odstavec
     #
     # Signál: interpunkce + mezera + otevírací uvozovka + velké písmeno.
     # Podporované uvozovky: " (straight U+0022), " (U+201C), „ (U+201E)
@@ -202,40 +141,6 @@ module Processors
     # ---------------------------------------------------------------------------
     def restore_quote_breaks(text)
       text.gsub(/([.!?])\s+(?=[\x22“„][[:upper:]])/) { "#{$1}\n\n" }
-    end
-
-    # ---------------------------------------------------------------------------
-    # Heuristika 6: Příliš dlouhý blok textu → rozdělení na větné hranici
-    #
-    # Pokud odstavec přesáhne LONG_PARAGRAPH_THRESHOLD znaků, hledá první
-    # větnou hranici (. ? !) za prahem a vloží \n\n. Rekurzivní.
-    # ---------------------------------------------------------------------------
-    LONG_PARAGRAPH_THRESHOLD = 250
-
-    def restore_long_paragraph_breaks(text)
-      text.split(/\n\n/).flat_map { |para| split_long_paragraph(para) }.join("\n\n")
-    end
-
-    def split_long_paragraph(text)
-      return [text] if text.length <= LONG_PARAGRAPH_THRESHOLD
-
-      tail  = text[LONG_PARAGRAPH_THRESHOLD..]
-      match = tail.match(/[.!?]\s+(?=[[:upper:]])/)
-      return [text] unless match
-
-      split_at = LONG_PARAGRAPH_THRESHOLD + match.begin(0) + 1
-      first    = text[0...split_at].strip
-      rest     = text[split_at..].strip
-
-      [first] + split_long_paragraph(rest)
-    end
-
-    # ---------------------------------------------------------------------------
-    # Cleanup: normalizovat whitespace
-    # ---------------------------------------------------------------------------
-    def cleanup_whitespace(text)
-      text.gsub(/[ \t]*\n[ \t]*/, "\n")
-          .gsub(/\n{3,}/, "\n\n")
     end
   end
 end

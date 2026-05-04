@@ -1,59 +1,100 @@
 # frozen_string_literal: true
 
 require 'set'
+require_relative 'social_text_heuristics'
 
 module Processors
   # Facebook Content Processor for Zpravobot Next Generation
   #
-  # Handles Facebook-specific content issues from RSS.app feeds:
-  # - Em-dash duplicate removal (Reels often have "Text… ”” Text…")
-  # - Can be extended for other FB-specific cleanup
+  # Stejně jako IG procesor rekonstruuje formátování ztracené při RSS.app
+  # konverzi: emoji jako oddělovač odstavců, hashtag blok na konci, dlouhé
+  # stěny textu. Plus FB-specific:
+  #   - em-dash duplikáty (Reels: "Text… — Text…")
+  #   - rozdělení před hashtagem v "tag-line" smíchané s názvy stránek
+  #     (FB konvence: "...na Beksu! #MaxaNBL Sršni Photomate Písek BK Pardubice")
+  #
+  # Sdílené heuristiky jsou v Processors::SocialTextHeuristics.
+  #
+  # Pořadí aplikace:
+  #
+  #   Sanity:
+  #   0. RSS.app encoding artefakty (�– → \n–)
+  #
+  #   Struktura odstavců:
+  #   1. Emoji jako oddělovač odstavců
+  #   2. Split před hashtagem v tag-line (FB-specific)
+  #   3. Hashtag blok na konci
+  #   4. Příliš dlouhý odstavec
+  #
+  #   FB-specific cleanup:
+  #   5. Em-dash duplikát (Reels)
+  #
+  #   Konec:
+  #   6. Whitespace cleanup
   #
   # Usage:
   #   processor = Processors::FacebookProcessor.new
-  #   cleaned = processor.process("Čo ďalšie odznelo? bit.ly/xxx ”” Čo ďalšie odznelo? bit.ly/xxx")
-  #   # => "Čo ďalšie odznelo? bit.ly/xxx"
-  #
-  # Called from ContentFormatter when rss_source_type is 'facebook'
+  #   cleaned = processor.process("…na Beksu! #MaxaNBL Sršni Photomate")
   #
   class FacebookProcessor
+    include SocialTextHeuristics
+
     # Em-dash separator used by RSS.app to join title and description
     EM_DASH_SEPARATOR = ' — '
 
     # Minimum similarity ratio to consider as duplicate (0.0-1.0)
-    # Lower value = more aggressive deduplication
     SIMILARITY_THRESHOLD = 0.6
 
     def initialize(config = {})
       @config = config
     end
 
-    # Process Facebook content - main entry point
-    # @param text [String] Text to process
-    # @return [String] Processed text
+    # Hlavní vstupní bod
+    # @param text [String] Plochý text z RSS.app (z FB feedu)
+    # @return [String] Text s rekonstruovanými odstavci
     def process(text)
       return '' if text.nil? || text.empty?
 
       result = text.dup
-
-      # 1. Remove em-dash duplicates (Reels: "Text… ”” Text…")
+      # Sanity
+      result = decode_rss_app_artifacts(result)
+      # Struktura odstavců
+      result = restore_paragraph_breaks(result)
+      result = split_before_hashtag_line(result)
+      result = restore_hashtag_block(result)
+      result = restore_long_paragraph_breaks(result)
+      # FB-specific
       result = remove_emdash_duplicate(result)
-
-      # 2. Future: other FB-specific cleanup can be added here
-
+      # Konec
+      result = cleanup_whitespace(result)
       result.strip
     end
 
+    # ---------------------------------------------------------------------------
+    # Heuristika: split před hashtag-line (FB-specific)
+    #
+    # FB feedy často končí "tag-line", kde po sentence-ending punct následuje
+    # první #hashtag, ale pak pokračuje běžný text (názvy FB stránek bez @):
+    #   "...na Beksu! #MaxaNBL Sršni Photomate Písek BK Pardubice ČT sport"
+    #
+    # `restore_hashtag_block` z modulu nezachytí (vyžaduje, aby celý zbytek byl
+    # tagy). Tahle heuristika je volnější — split před prvním #-tagem, který
+    # následuje po `.!?` + mezera. Tag pak může pokračovat čímkoli.
+    #
+    # Idempotentní vůči `restore_hashtag_block` (pokud zbytek jsou jen tagy,
+    # block heuristika to formatuje finálně; tahle jen vloží \n\n).
+    # ---------------------------------------------------------------------------
+    def split_before_hashtag_line(text)
+      text.gsub(/([.!?])\s+(?=#\w)/) { "#{$1}\n\n" }
+    end
+
     # Detect and remove duplicate content after em-dash separator
-    # RSS.app often combines title and description with " ”” "
-    # For Reels, both contain the same (or similar) content
+    # RSS.app často spojuje title a description s " — "
+    # U Reels obě části obsahují stejný (nebo podobný) obsah.
     #
     # Examples:
-    #   "Čo ďalšie odznelo? bit.ly/xxx ”” Čo ďalšie odznelo? bit.ly/xxx"
+    #   "Čo ďalšie odznelo? bit.ly/xxx — Čo ďalšie odznelo? bit.ly/xxx"
     #   => "Čo ďalšie odznelo? bit.ly/xxx"
-    #
-    #   "Full post text here… ”” Shorter version…"
-    #   => "Full post text here…"
     #
     # @param text [String] Text with potential em-dash duplicate
     # @return [String] Text with duplicate removed (if detected)
@@ -66,76 +107,45 @@ module Processors
       first_part = parts[0].strip
       second_part = parts[1].strip
 
-      # Skip if either part is empty
       return text if first_part.empty? || second_part.empty?
 
-      # Check if parts are duplicates or near-duplicates
       if duplicate_content?(first_part, second_part)
-        # Return the longer part (more complete content)
         longer_part = first_part.length >= second_part.length ? first_part : second_part
-        
-        # Recursively check for more duplicates (handles "A ”” A ”” A")
         return remove_emdash_duplicate(longer_part)
       end
 
-      # Not a duplicate - keep original
       text
     end
 
     # Check if two parts are duplicates or near-duplicates
-    # Handles cases where one part is truncated version of the other
-    #
-    # @param first [String] First part
-    # @param second [String] Second part
-    # @return [Boolean] True if parts are duplicates
     def duplicate_content?(first, second)
-      # Normalize for comparison
       first_norm = normalize_for_comparison(first)
       second_norm = normalize_for_comparison(second)
 
-      # Exact match
       return true if first_norm == second_norm
-
-      # One is prefix of the other (truncated duplicate)
       return true if prefix_match?(first_norm, second_norm)
-
-      # High similarity score
       return true if similarity_score(first_norm, second_norm) >= SIMILARITY_THRESHOLD
 
       false
     end
 
-    # Check if one string is a prefix of the other
-    # Handles truncated content where one part ends with ellipsis
-    #
-    # @param first [String] First normalized string
-    # @param second [String] Second normalized string
-    # @return [Boolean] True if prefix match
+    # Check if one string is a prefix of the other (truncated duplicate)
     def prefix_match?(first, second)
-      # Determine shorter and longer strings
       shorter, longer = [first, second].sort_by(&:length)
 
-      # Check if shorter is prefix of longer
-      # Use 80% of shorter length to handle minor differences
       min_match_length = (shorter.length * 0.8).to_i
-      return false if min_match_length < 10  # Too short to reliably compare
+      return false if min_match_length < 10
 
       longer.start_with?(shorter[0...min_match_length])
     end
 
-    # Calculate similarity score between two strings (0.0-1.0)
-    # Uses word overlap for simplicity and speed
-    #
-    # @param first [String] First normalized string
-    # @param second [String] Second normalized string
-    # @return [Float] Similarity score
+    # Calculate similarity score (Jaccard) between two strings (0.0-1.0)
     def similarity_score(first, second)
       first_words = first.split(/\s+/).to_set
       second_words = second.split(/\s+/).to_set
 
       return 0.0 if first_words.empty? || second_words.empty?
 
-      # Jaccard similarity: intersection / union
       intersection = (first_words & second_words).size
       union = (first_words | second_words).size
 
@@ -146,28 +156,15 @@ module Processors
 
     private
 
-    # Normalize text for comparison
-    # Removes ellipsis, punctuation, lowercases
-    #
-    # @param text [String] Text to normalize
-    # @return [String] Normalized text
+    # Normalize text for em-dash duplicate comparison
     def normalize_for_comparison(text)
       normalized = text.dup
-
-      # Remove ellipsis (both Unicode and ASCII)
       normalized = normalized.gsub(/[…]|\.{2,}/, '')
-
-      # Remove common URL patterns (they're often duplicated too)
       normalized = normalized.gsub(%r{https?://\S+}, '')
       normalized = normalized.gsub(/bit\.ly\/\S+/, '')
-
-      # Remove hashtags for comparison (they're often the same)
       normalized = normalized.gsub(/#\S+/, '')
-
-      # Lowercase and normalize whitespace
       normalized = normalized.downcase
       normalized = normalized.gsub(/\s+/, ' ')
-
       normalized.strip
     end
   end

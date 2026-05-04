@@ -133,8 +133,8 @@ puts
 puts "## Full Process Method"
 
 results << test(
-  "Processes Reels duplicate",
-  "Viac tu 👉bit.ly/4qCYAvi #tvnoviny #tvmarkiza #raketa #artemis",
+  "Processes Reels duplicate + odděluje hashtag block",
+  "Viac tu 👉bit.ly/4qCYAvi\n\n#tvnoviny #tvmarkiza #raketa #artemis",
   processor.process("Viac tu 👉bit.ly/4qCYAvi #tvnoviny #tvmarkiza #raketa #artemis — Viac tu 👉bit.ly/4qCYAvi #tvnoviny #tvmarkiza #raketa #artemis")
 )
 
@@ -210,6 +210,56 @@ results << test(
   "Only em-dash",
   " — ",
   processor.remove_emdash_duplicate(" — ")
+)
+
+puts
+
+# ============================================================
+# Test 6: Heuristiky sdílené s IG (paragraph break, hashtag block, long para)
+# ============================================================
+puts "## Heuristiky sdílené s IG"
+
+results << test(
+  "Emoji jako oddělovač odstavce (regression: VedatorCZ item 27)",
+  "Srnci jsou SAVCI \u{1F98C}\n\nJejich předek sahá daleko.",
+  processor.process("Srnci jsou SAVCI \u{1F98C} Jejich předek sahá daleko.")
+)
+
+results << test(
+  "Hashtag blok na konci po sentence-end (regression: tvnoviny posty)",
+  "Systém má diery.\n\n#domace #zdravie #tvnoviny",
+  processor.process("Systém má diery. #domace #zdravie #tvnoviny")
+)
+
+results << test(
+  "Mix hashtag + @mention v tag bloku",
+  "Bewley on another level \u{1F525}\n\n#SGP #SpeedwayGP",
+  processor.process("Bewley on another level \u{1F525} #SGP #SpeedwayGP")
+)
+
+results << test(
+  "U+FFFD encoding artefakt → newline + dash list",
+  "Mimo jiné:\n– A\n– B\n– C",
+  processor.process("Mimo jiné:�– A�– B�– C")
+)
+
+puts
+
+# ============================================================
+# Test 7: FB-specific heuristika — split_before_hashtag_line
+# ============================================================
+puts "## FB-specific: split before hashtag-line"
+
+results << test(
+  "Sentence-end + #hashtag mixed s page mentions (item 22 NBL)",
+  "\u{1F4FA} PLAY-OFF NBL DNES VEČER NA ČT SPORT \u{1F3C0}\n\nMatěj Burda na zimáku na Beksu!\n\n#MaxaNBL Sršni Photomate Písek BK Pardubice ČT sport",
+  processor.process("\u{1F4FA} PLAY-OFF NBL DNES VEČER NA ČT SPORT \u{1F3C0} Matěj Burda na zimáku na Beksu! #MaxaNBL Sršni Photomate Písek BK Pardubice ČT sport")
+)
+
+results << test(
+  "Hashtag uprostřed věty (NE začátek nové věty) → beze změny",
+  "Sledujte #raketa naživo zde.",
+  processor.process("Sledujte #raketa naživo zde.")
 )
 
 puts
