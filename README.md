@@ -12,9 +12,12 @@ Zatímco původní projekt [Zpravobot.news](https://github.com/danielsnor/zpravo
 
 **🌉 BlueSky Bridge**: Od září 2025 je většina botů dostupná i na BlueSky přes [Brid.gy](https://fed.brid.gy/), takže se český obsah šíří napříč federovanými platformami.
 
-> **Recent highlights (duben 2026):**
+> **Recent highlights (duben–květen 2026):**
+> - **Bluesky cross-posting** — nový `BlueskyPublisher` publikuje paralelně s Mastodonem ze 4 doplňkových skriptů (stats, trending, FF, source report); na FF Bluesky vlákno per účet
+> - **InstagramProcessor** — heuristická rekonstrukce odstavců, hashtag/mention bloků a struktury captionů z RSS.app feedů
+> - **YouTube Browserless** — YT profile sync přepnut na Browserless.io (EU consent redirect bypass) + `playlist_id` support
 > - **Security hardening** — SEC-1..4: 1 MB payload limit, SSRF blocklist v OGP fetcheru, length validation, filename sanitization
-> - **Performance** — PERF-1..7: prefetch Nitter HTML, DB/HTTP connection pooling, non-blocking rate limit handling
+> - **Performance** — PERF-1..8: prefetch Nitter HTML, DB/HTTP connection pooling, non-blocking rate limit handling, LRU eviction cap thread cache
 > - **Reliability** — atomic file writes (RELIABILITY-1), 103 registrovaných testů (77 unit + 18 network + 2 db + 6 e2e)
 > - **Feature** — Týdeník `#ZpravobotTOP10` (neděle 20:15), profile card blocker (bílý proužek), OGP image fetcher
 

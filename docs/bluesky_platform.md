@@ -1,9 +1,14 @@
 # Bluesky platforma v ZBNW-NG
 
-> **Poslední aktualizace:** 2026-04-11
+> **Poslední aktualizace:** 2026-05-04
 > **Stav:** Produkční
 
-> **Recent changes:**
+> **Recent changes (2026-04 → 2026-05):**
+> - **2026-04-24 (NEW):** `BlueskyPublisher` — Bluesky není už jen ZDROJ postů, ale i CÍL. Publisher publikuje na Bluesky paralelně s Mastodonem ze 4 cron skriptů (`zpravobot_stats.rb`, `trending_post.rb`, `friendly_follow.rb`, `source_report.rb`). Detail v sekci [BlueskyPublisher (cross-posting)](#blueskypublisher-cross-posting).
+> - **2026-04-25 (NEW):** `BlueskyTextSplitter` — line-aware splitting Mastodon textu na chunks ≤300 grafémů s "pokračování" hlavičkami pro vlákna.
+> - **2026-04-25 (FF):** `friendly_follow` na Bluesky publikuje vlákno s každým účtem jako samostatný post (≤300 grafémů), na Mastodonu zůstává jeden post.
+> - **2026-04-28 (FIX):** `BlueskyPublisher.try_create` — Bluesky auth selhání nezhatí Mastodon publikační cestu (vrátí `nil`, BS publish se přeskočí).
+> - **2026-04-28 (FIX):** `build_record` převádí `@handle@instance` (Mastodon mention) na plný profile URL `https://instance/@handle` — Bluesky federovaným handles nerozumí.
 > - **2026-04-11 (TEST-1):** Přidán `test/test_profile_syncer_subclasses.rb` — 9 unit testů pro `BlueskyProfileSyncer` (template methods, parse, fetch happy-path + errors)
 > - **2026-04-09 (PERF-7):** `BlueskyProfileSyncer.fetch_display_name` měl tichý rescue — přidán `warn` log
 > - **2026-03-13:** Profile card blocker — při mention v textu bez jiných médií se nahraje `white_strip_1280x1.png` (dříve transparent), aby Mastodon nezobrazoval profile card místo link card
@@ -17,11 +22,12 @@
 3. [BlueskyAdapter](#blueskyadapter)
 4. [BlueskyFormatter](#blueskyformatter)
 5. [BlueskyProfileSyncer](#blueskyprofilesyncer)
-6. [Konfigurace](#konfigurace)
-7. [Threading (vlákna)](#threading-vlákna)
-8. [Cron a scheduling](#cron-a-scheduling)
-9. [Časté problémy](#časté-problémy)
-10. [API reference](#api-reference)
+6. [BlueskyPublisher (cross-posting)](#blueskypublisher-cross-posting)
+7. [Konfigurace](#konfigurace)
+8. [Threading (vlákna)](#threading-vlákna)
+9. [Cron a scheduling](#cron-a-scheduling)
+10. [Časté problémy](#časté-problémy)
+11. [API reference](#api-reference)
 
 ---
 
@@ -29,10 +35,11 @@
 
 Bluesky integrace v ZBNW-NG umožňuje:
 
-- **Stahování postů** z uživatelských profilů a custom feedů
+- **Stahování postů** z uživatelských profilů a custom feedů (Bluesky jako zdroj)
 - **Formátování** pro Mastodon (reposty, citace, vlákna)
 - **Synchronizaci profilů** (avatar, banner, bio, metadata)
-- **Threading** - publikace vláken jako nativní Mastodon threads
+- **Threading** — publikace vláken jako nativní Mastodon threads
+- **Cross-posting** (od 2026-04-24) — publikace na Bluesky paralelně s Mastodonem ze 4 doplňkových skriptů (statistiky, trending, FF, source report)
 
 ### Klíčové vlastnosti
 
@@ -342,6 +349,78 @@ profile_sync:
   language: cs            # Jazyk pro metadata (cs/sk/en)
   retention_days: 90      # Retence postů (7/30/90/180)
 ```
+
+---
+
+## BlueskyPublisher (cross-posting)
+
+> Sekce přidaná **2026-05-04**. Publisher byl přidán **2026-04-24**.
+
+### Umístění
+
+| Soubor | Účel |
+|--------|------|
+| `lib/publishers/bluesky_publisher.rb` | Publish přes AT Protocol XRPC (auth, build_record, facets, retries) |
+| `lib/publishers/bluesky_text_splitter.rb` | Line-aware split textu na chunks ≤300 grafémů |
+| `config/bluesky_accounts.yml` | Identifier + jméno ENV proměnné s app passwordem |
+
+### Účel
+
+Bluesky se v ZBNW-NG používá ve dvou rolích:
+
+1. **Zdroj postů** (`BlueskyAdapter`, `BlueskyFormatter`, `BlueskyProfileSyncer`) — popsáno výše.
+2. **Cíl publikace** (`BlueskyPublisher`) — od 2026-04-24 paralelní cross-posting s Mastodonem.
+
+`BlueskyPublisher` **není** napojený na hlavní `Orchestrator` pipeline (která publikuje obsah ze zdrojových platforem na Mastodon). Cross-posting běží jen v doplňkových cron skriptech, kde má smysl mít stejný výstup na obou sítích:
+
+| Cron skript | Co publikuje | Mastodon | Bluesky |
+|-------------|--------------|----------|---------|
+| `bin/zpravobot_stats.rb` | Týdenní statistiky účtů | jeden post | jeden post |
+| `bin/trending_post.rb` | Trending posty + komentář od hrubota | jeden post | jeden post |
+| `bin/friendly_follow.rb` | Friendly Follow doporučení | **jeden post** | **vlákno per účet** ≤300 grafémů |
+| `bin/source_report.rb` | Reporting přidaných/odebraných zdrojů | jeden post | vlákno (chunked) |
+
+### API
+
+```ruby
+publisher = Publishers::BlueskyPublisher.try_create(account_id: 'zpravobot')
+# → publisher (na success) nebo nil (na auth/init failure)
+
+publisher.publish("Hello Bluesky!")
+#   => { uri: "at://...", cid: "..." }
+
+publisher.publish_thread(["Post 1", "Post 2", "Post 3"])
+#   => [{ uri:, cid: }, …]   # reply chain
+```
+
+### Klíčová pravidla
+
+- **`try_create` namísto `new`** — při auth/init selhání vrátí `nil` a logne warn. Volání míst (`zpravobot_stats.rb` atd.) testují `bs_publisher.nil?` a Bluesky publish přeskočí. Tím Bluesky výpadek **nezhatí Mastodon publikaci** (fix z 2026-04-28).
+- **`@handle@instance` → URL** — v `build_record` se Mastodon mention převádí na `https://instance/@handle`, protože Bluesky federovaným handles nerozumí (fix z 2026-04-28).
+- **URL facety** — URLs v textu dostávají AT Protocol facety (`app.bsky.richtext.facet#link`) s byte offsety, aby Bluesky vykreslil clickable link.
+- **Throttle 1 s** mezi posty ve vlákně, **3 retries**, character limit **300 grafémů** (ne bytes).
+
+### BlueskyTextSplitter
+
+Když je text delší než 300 grafémů, `BlueskyTextSplitter` ho rozdělí:
+
+1. **Strip trailing hashtag-only lines** — Bluesky posty hashtagy nepoužívají (na rozdíl od Mastodonu).
+2. **Split podle odstavců** (`\n\n`); odstavce, které samy nepřesahují limit, zůstávají vcelku.
+3. **Když odstavec přesahuje limit** — split po **celých řádcích** (nikdy uprostřed slova/řádku).
+4. **Continuation header** — pokud se odstavec rozdělí, do dalšího chunku se prependuje jeho první řádek + `- pokračování:`, aby čtenář věděl, kde pokračuje.
+
+### Konfigurace účtů
+
+`config/bluesky_accounts.yml`:
+
+```yaml
+zpravobot:
+  identifier: zpravobot.bsky.social
+  app_password_env: BLUESKY_APP_PASSWORD_ZPRAVOBOT
+  pds_url: https://bsky.social  # default
+```
+
+App password se načte z ENV proměnné jmenované v `app_password_env`.
 
 ---
 

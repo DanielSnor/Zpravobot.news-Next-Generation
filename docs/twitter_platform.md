@@ -2,9 +2,18 @@
 
 > **Verze exportu:** 2026-02-04  
 > **Status:** Produkční  
-> **Poslední aktualizace:** 2026-04-11
+> **Poslední aktualizace:** 2026-05-04
 
 > **Recent changes:**
+> - **2026-05-04 (FIX):** Syndication video enrichment ukládá `video_thumbnail_url` do `post.raw` — návazná oprava na 2026-04-21 (chybějící odkaz na originál u video postů s thumbnailem). Thumbnail tak zůstává dostupný i v dalších krocích pipeline.
+> - **2026-05-03 (FIX):** Mention URL pro handles s tečkou (`@kimi.antonelli`) — předchozí regex je rozbíjel.
+> - **2026-04-27/28 (FIX):** Obnoven `@handle@instance` formát v Mastodon postech (regrese z dřívější změny).
+> - **2026-04-27 (FIX):** Browser-like User-Agent pro RSS HTTP requesty Twitter zdrojů (Nitter fallback).
+> - **2026-04-25 (FIX):** `URLProcessor` zachovává URL s 2-znakovým TLD a subdoménou na konci věty (např. `bit.ly` před tečkou nebyly chybně osekány).
+> - **2026-04-22 (FIX):** `PostProcessor` shazuje obrázky, pokud post obsahuje video — Mastodon API odmítá mixed-media (422).
+> - **2026-04-21 (FIX):** Tier 1.5/3.5 video posty s `video_thumbnail` (bez přímého mp4) — chyběl odkaz na originální tweet, doplněno.
+> - **2026-04-12 (FIX):** Thread-safe HTTP connection cache — frozen `SSLContext` při paralelním uploadu.
+> - **2026-04-11 (FIX):** URL domain fixes (`ceskatelevize.cz`, `ct24.cz`) doplnily `https://` až po truncation, čímž text přerůstal 500 znaků a Mastodon vracel 422. Pořadí kroků v pipeline opraveno.
 > - **2026-04-10 (PERF-3):** Non-blocking rate limit handling. 429 na Mastodonu už neblokuje pipeline sleepem — `AccountRateLimitedError` se propaguje, Orchestrator/IFTTT queue přeskočí dotčený účet a pokračuje.
 > - **2026-04-09 (PERF-1):** Prefetch Nitter HTML pro threadované tweety — eliminuje dvojí Nitter fetch.
 > - **2026-04-09 (SEC-2):** OGP fetcher nyní odmítá private IP ranges (SSRF ochrana).

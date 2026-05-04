@@ -1,10 +1,18 @@
 # ZBNW-NG (Zpravobot Next Generation) – Systémová dokumentace
 
-> **Poslední aktualizace:** 2026-04-11
+> **Poslední aktualizace:** 2026-05-04
 > **Stav:** Produkční
 > **Umístění:** `/app/data/zbnw-ng/` (produkce), `/app/data/zbnw-ng-test/` (test)
 
 > **Recent highlights (2026-04):** Security hardening (SEC-1..4), performance (PERF-1..7: prefetch, DB/HTTP pooling, non-blocking rate-limit handling), atomic file writes (RELIABILITY-1), profile syncer test suite (TEST-1). Detail v sekcích [Security & Hardening](#security--hardening) a [Performance & Reliability](#performance--reliability).
+
+> **Recent highlights (2026-04 → 2026-05):**
+> - **Bluesky jako cíl (cross-posting):** Nový `BlueskyPublisher` publikuje na Bluesky paralelně s Mastodonem ze 4 doplňkových skriptů (stats, trending, FF, source report). Detail v `docs/bluesky_platform.md`.
+> - **InstagramProcessor:** Heuristická rekonstrukce odstavců, hashtag/mention bloků a struktury Instagram captionů, které RSS.app vrací jako plochý text. Detail v `docs/rss.app_platform.md`.
+> - **YouTube Browserless:** YT profile sync přepnut z plain HTTP na Browserless.io kvůli EU consent redirectu. Detail v `docs/youtube_platform.md`.
+> - **Profile sync v bio:** Mention rewrite + t.co expanze v profile bio (sjednoceno v `Utils::TcoExpander`).
+> - **Refactor wave (2026-04-23):** REFACTOR-1..3 (Stats::RunStats, MediaEnrichmentStep, source_config), MODERNIZE-1..4 (filter_map, Data.define, YAML.safe_load, Ruby warnings), CLEANUP-7..8 (hash dispatch, LoadError rescue), MODEL-1 (cargo-cult respond_to? removal). Interní refactor bez funkční změny — viz `docs/technical_debt.private.md`.
+> - **Helper tooling:** `bin/instance_status.rb` (nový, SSH JSON snapshot), `bin/log_report.rb` rozšíření (`--source` flag, infra error correlation, ifttt_skips, health aggregace). Detail v `docs/helper_tools.md`.
 
 ---
 
