@@ -1,5 +1,7 @@
 # Private documentation (contains real IPs, tokens, credentials)
-docs/*.private.md
+docs-private/
+docs - OLD/
+*.private.md
 
 # Secrets and credentials
 env.sh
