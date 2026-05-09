@@ -18,8 +18,8 @@ Neobsahuje:
 Nitter je externí komponenta používaná pro ingest dat z Twitter/X.
 
 Viz architektura:
-- `../40-tools/nitter.md`
-- `../40-tools/integration.md`
+- [`../40-tools/nitter.md`](../40-tools/nitter.md)
+- [`../40-tools/integration.md`](../40-tools/integration.md)
 
 ---
 

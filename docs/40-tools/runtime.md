@@ -152,9 +152,10 @@ Scheduler neobsahuje business logiku — pouze spouští jednotlivé běhy ve sp
 | IFTTT queue processor | 2 min | Rychlé zpracování Twitter webhooků |
 | IFTTT failed queue retry | 1× za hod | Opakování selhavších webhooků (mimo `DEAD_` permanentní chyby) |
 | Content sync (Bluesky, RSS, YouTube) | 10 min | Polling zdrojů; Twitter jde přes IFTTT pipeline |
-| Profile sync — Bluesky | 1× denně | Nativní API, stabilní |
-| Profile sync — Facebook | 1× za 3 dny | Scraping, šetření rate limitů |
-| Profile sync — Twitter | 2× týdně na skupinu | Nitter scraping; 3 skupiny rotující po dnech týdne |
+| Profile sync — Bluesky | 1× týdně | Nativní API |
+| Profile sync — Facebook + Instagram | 1× týdně | Browserless scraping |
+| Profile sync — Twitter | 1× týdně na skupinu | Nitter scraping; 3 skupiny rotující po dnech týdne |
+| Profile sync — YouTube | 1× týdně | Browserless scraping |
 | Profile sync — RSS | 1× týdně | Deleguje na BS/FB/TW syncery |
 | Health check + alerting | 10 min | Monitoring s podmíněnými alerty |
 | Command listener + broadcast queue | 5 min | Polling Mastodon mentions + broadcast fronta |

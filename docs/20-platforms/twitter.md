@@ -46,7 +46,7 @@ Základní principy:
 - **po vstupu do systému je zpracování obou cest identické** — Tier logika, pipeline, publikování
 - downstream zpracování je sjednoceno na úrovni `Post`
 
-Podrobné odůvodnění tohoto modelu je v `decisions.md` (ADR‑015, ADR‑017, ADR‑021).
+Podrobné odůvodnění tohoto modelu je v [`decisions.md`](../90-meta/decisions.md) (ADR‑015, ADR‑017, ADR‑021).
 
 ---
 
@@ -156,7 +156,7 @@ zdrojem dat, dostupností médií a počtem HTTP požadavků.
 | **3.5** | Syndication API | ✅ mp4/foto | ⚠️ možná zkrácený | fallback po selhání Nitteru |
 | **3** | IFTTT | ❌ | ⚠️ zkrácený | finální fallback (Nitter i Syndication selhaly) |
 
-> Detailní zdůvodnění fallback modelu a volby jednotlivých Tierů viz `decisions.md` (ADR‑015, ADR‑021).
+> Detailní zdůvodnění fallback modelu a volby jednotlivých Tierů viz [`decisions.md`](../90-meta/decisions.md) (ADR‑015, ADR‑021).
 
 ### Rozhodovací logika (pro `nitter_processing: true`)
 
@@ -281,7 +281,7 @@ Strategie aktualizace závisí na přítomnosti médií:
 | Editace s médii | `DELETE` + `PUBLISH` — Mastodon Update API neumožňuje změnu médií |
 
 Detekce editací probíhá v rámci queue pipeline a je oddělena od běžné deduplikace.
-Konkrétní prahy a TTL bufferu jsou popsány v `decisions.md` (ADR‑012, ADR‑013).
+Konkrétní prahy a TTL bufferu jsou popsány v [`decisions.md`](../90-meta/decisions.md) (ADR‑012, ADR‑013).
 
 ---
 
@@ -379,7 +379,7 @@ Charakteristiky:
 - synchronizace probíhá periodicky, nezávisle na hlavní pipeline
 - profily jsou rozděleny do **3 skupin** rotujících po dnech týdne
 - přiřazení do skupiny je deterministické (z `source_id`)
-- každá skupina se synchronizuje přibližně 1× za 3 dny — rozložení zátěže na Nitter
+- každá skupina se synchronizuje **1× týdně** — rozložení zátěže na Nitter
 
 Metadata pole Mastodon profilu obsahují odkaz na originální Twitter profil,
 příznak správy systémem (`spravuje:`) a nastavení retence (`retence:`).

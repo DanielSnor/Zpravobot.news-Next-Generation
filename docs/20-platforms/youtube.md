@@ -195,6 +195,8 @@ YouTube profily jsou synchronizovány přes **Browserless.io** (headless browser
 
 Synchronizuje se: avatar, banner, bio, metadata pole.
 
+Frekvence: 1× týdně — viz [`../40-tools/runtime.md`](../40-tools/runtime.md).
+
 ---
 
 ## 10. Konfigurace
