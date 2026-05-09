@@ -28,25 +28,31 @@ bez oficiálního API a nutnost fallback chování.
 
 ## 2. Integrační model
 
-Z pohledu platformy je Twitter/X integrován kombinací **trigger a enrichment vrstvy**:
+Z pohledu platformy je Twitter/X integrován kombinací **trigger a enrichment vrstvy**.
+
+Trigger vrstva má **dva alternativní vstupní kanály**:
 
 | Vrstva | Komponenta | Role | Kdy se použije |
 |---|---|---|---|
-| Trigger | IFTTT | Push notifikace o novém obsahu | Vždy; vstupní bod |
+| Trigger (push) | IFTTT | Push notifikace o novém obsahu | Zdroje s IFTTT appletem |
+| Trigger (pull) | Nitter RSS | Periodický polling RSS feedu | Zdroje bez IFTTT; menší projekty |
 | Enrichment | Nitter (integrační nástroj) | Kompletní data — plný text, vlákna, média | Pokud `nitter_processing: true` |
 | Enrichment | Syndication API | Média bez vlastní infrastruktury | Alternativa nebo fallback |
 
 Základní principy:
 
 - platforma negarantuje plnohodnotný přístup k datům bez oficiálního API
-- každý tweet dorazí přes trigger vrstvu, obohacení proběhne podle konfigurace a dostupnosti
+- každý tweet dorazí přes jeden z trigger kanálů, obohacení proběhne podle konfigurace a dostupnosti
+- **po vstupu do systému je zpracování obou cest identické** — Tier logika, pipeline, publikování
 - downstream zpracování je sjednoceno na úrovni `Post`
 
 Podrobné odůvodnění tohoto modelu je v `decisions.md` (ADR‑015, ADR‑017, ADR‑021).
 
 ---
 
-## 3. Vstupní kanál: IFTTT webhook a fronta
+## 3. Vstupní kanály
+
+### 3.1 IFTTT webhook a fronta
 
 Twitter/X data přicházejí do systému přes **IFTTT webhook**.
 
@@ -81,6 +87,31 @@ hodnotě `id:` ve zdrojovém YAML.
 
 Tato architektura se označuje jako **queue-based webhook pipeline** — viz
 [`../40-tools/integration.md`](../40-tools/integration.md).
+
+### 3.2 Nitter RSS polling
+
+Alternativní vstupní kanál bez IFTTT — systém **periodicky polluje Nitter RSS feed** zdroje.
+
+```
+Nitter instance
+    │  (RSS feed)
+    ▼
+TwitterNitterAdapter
+    │
+    ▼
+TwitterTweetProcessor
+(Tier logika + pipeline)
+```
+
+Charakteristiky:
+
+- funguje jako pull model — stejně jako ostatní RSS‑based platformy
+- vhodné pro menší projekty (desítky zdrojů) nebo zdroje bez IFTTT appletu
+- žádná závislost na IFTTT infrastruktuře
+- mírně vyšší latence oproti IFTTT push (dáno intervalem pollingu)
+
+**Po vstupu do systému je zpracování identické s IFTTT cestou** — volba Tieru,
+enrichment, Tier logika, pipeline, publikování.
 
 ### IFTTT payload struktura
 

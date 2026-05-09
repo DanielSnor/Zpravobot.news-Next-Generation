@@ -64,7 +64,10 @@ class LightweightWebhookServer
   end
   
   def start
-    server = TCPServer.new(BIND_ADDRESS, @port)
+    server = Socket.new(:INET, :STREAM)
+    server.setsockopt(Socket::SOL_SOCKET, Socket::SO_REUSEADDR, true)
+    server.bind(Socket.sockaddr_in(@port, BIND_ADDRESS))
+    server.listen(Socket::SOMAXCONN)
     log "IFTTT Webhook server listening on #{BIND_ADDRESS}:#{@port}"
     log "Queue directories:"
     log "  IFTTT PROD: #{QUEUE_DIRS['prod']}"
@@ -87,7 +90,7 @@ class LightweightWebhookServer
         ready = IO.select([server], nil, nil, 1)
         next unless ready
         
-        client = server.accept
+        client, = server.accept
         handle_request(client)
       rescue IOError, Errno::EBADF
         break unless @running
