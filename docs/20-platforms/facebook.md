@@ -166,7 +166,7 @@ Facebook profily jsou synchronizovány přes **Browserless.io** (headless browse
 
 Synchronizuje se: avatar (profilový obrázek), banner (cover photo), bio, metadata pole.
 
-Frekvence: 1× za 3 dny (scraping, šetření rate limitů) — viz [`../40-tools/runtime.md`](../40-tools/runtime.md).
+Frekvence: 1× týdně — viz [`../40-tools/runtime.md`](../40-tools/runtime.md).
 
 ---
 

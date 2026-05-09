@@ -214,7 +214,7 @@ Tato architektura odpovídá ADR‑031 (Bluesky mimo hlavní pipeline).
 
 ## 10. Profile sync
 
-Bluesky profily jsou synchronizovány **4× denně** (00:00, 06:00, 12:00, 18:00) přes nativní AT Protocol API.
+Bluesky profily jsou synchronizovány **1× týdně** přes nativní AT Protocol API.
 
 Synchronizuje se: avatar, banner, bio a metadata pole Mastodon profilu.
 

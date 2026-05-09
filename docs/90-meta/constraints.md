@@ -10,8 +10,8 @@ Na rozdíl od limitací (co zatím neumíme) jsou constraints:
 - **stabilní v čase**
 - **důležité pro udržení jednoduchosti systému**
 
-> Konkrétní rozhodnutí jsou v `decisions.md`.
-> Principy návrhu jsou v `principles.md`.
+> Konkrétní rozhodnutí jsou v [`decisions.md`](decisions.md).
+> Principy návrhu jsou v [`principles.md`](principles.md).
 
 ---
 

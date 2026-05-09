@@ -95,7 +95,7 @@ Heuristiky se aplikují v pevném pořadí:
 | 7 | Hashtag blok | Tag blok na konci (hashtagy + mentions) → vlastní odstavec; hashtagy na prvním řádku, mentions na druhém |
 
 Heuristiky jsou best‑effort — navrženy tak, aby nezpůsobily selhání pipeline.
-Detailní zdůvodnění viz `decisions.md` (ADR‑023).
+Detailní zdůvodnění viz [`decisions.md`](../90-meta/decisions.md) (ADR‑023).
 
 ### Mention handling
 
@@ -174,6 +174,8 @@ Cílem je publikovat konzistentní a validní výstup na cílovou platformu.
 Instagram profily jsou synchronizovány přes **Browserless.io** (headless browser) s autentizací přes Instagram cookies (`IG_COOKIE_*` z ENV).
 
 Synchronizuje se: avatar, bio, metadata pole. Banner Instagram neposkytuje.
+
+Frekvence: 1× týdně — viz [`../40-tools/runtime.md`](../40-tools/runtime.md).
 
 Aktivace je opt-in per source (`profile_sync.enabled: true`).
 

@@ -77,7 +77,7 @@ Zkontroluj:
 
 # 🔍 2. Diagnostika problémů (quick triage)
 
-Identifikuj symptom a přejdi na `troubleshooting.md` pro detailní postup řešení.
+Identifikuj symptom a přejdi na [`troubleshooting.md`](troubleshooting.md) pro detailní postup řešení.
 
 | Symptom | Pravděpodobná příčina |
 |---------|----------------------|

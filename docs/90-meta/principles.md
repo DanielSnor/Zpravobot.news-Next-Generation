@@ -7,8 +7,8 @@ Principy jsou:
 - **obecné** (nejsou to konkrétní rozhodnutí),
 - **normativní** (nové změny by s nimi neměly být v rozporu bez vědomé výjimky).
 
-> Konkrétní rozhodnutí a trade‑offy jsou v `decisions.md`.
-> Význam pojmů je v `../00-overview/terminologie.md`.
+> Konkrétní rozhodnutí a trade‑offy jsou v [`decisions.md`](decisions.md).
+> Význam pojmů je v [`../00-overview/terminologie.md`](../00-overview/terminologie.md).
 
 ---
 
@@ -18,7 +18,7 @@ Používej principy jako kontrolní seznam při návrhu změn:
 
 - „Je tento návrh v souladu s principy?“
 - „Který princip tento návrh zlepšuje a který zhoršuje?“
-- „Je porušení principu vědomé a zdokumentované v `decisions.md`?“
+- „Je porušení principu vědomé a zdokumentované v [`decisions.md`](decisions.md)?”
 
 Pokud je potřeba udělat výjimku, zdokumentuj ji jako ADR.
 
@@ -209,4 +209,4 @@ Nový princip přidej jen pokud:
 - bude platit napříč více částmi systému
 - pomůže rozhodovat v budoucnu
 
-Pokud jde o jednorázovou volbu, patří to do `decisions.md`.
+Pokud jde o jednorázovou volbu, patří to do [`decisions.md`](decisions.md).
