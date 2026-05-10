@@ -227,6 +227,7 @@ scheduling:
 | `source.playlist_id` | Konkrétní playlist místo celého kanálu |
 | `content.no_shorts` | `true` = použít UULF playlist (filtruje Shorts) |
 | `content.description_lines` | Max počet řádků popisu videa |
+| `monitoring.ok_if_idle` | `true` = nealertovat na idle (pro příležitostné zdroje); chyby se stále reportují |
 
 ---
 

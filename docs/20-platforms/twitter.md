@@ -438,6 +438,7 @@ Klíčové per-source přepisy:
 | `profile_sync.language` | Jazyk metadata polí (`cs`, `sk`, `en`) |
 | `profile_sync.retention_days` | Retence dat v Mastodon profilu (7/30/90/180 dní) |
 | `thread_handling.enabled` | Zapnutí/vypnutí rekonstrukce vláken |
+| `monitoring.ok_if_idle` | `true` = nealertovat na idle (pro příležitostné zdroje); chyby se stále reportují |
 
 ---
 
