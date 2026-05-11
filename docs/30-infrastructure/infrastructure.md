@@ -1,5 +1,16 @@
 # Infrastruktura ZBNW‑NG
 
+## Infrastruktura (orientace)
+
+Infrastruktura poskytuje:
+
+- běhové prostředí (compute)
+- perzistenci (database + storage)
+- plánování (cron)
+- konektivitu (network)
+
+---
+
 Tento dokument popisuje **veřejně sdělitelný přehled infrastruktury**, na které je systém **ZBNW‑NG** provozován.
 
 Cílem je vysvětlit:
@@ -24,6 +35,12 @@ ZBNW‑NG je **aplikační systém**. Infrastruktura poskytuje:
 - síťovou konektivitu pro outbound HTTP(S),
 - perzistenci stavu (databáze + úložiště),
 - plánování dávkových běhů.
+
+### Hranice odpovědnosti
+
+**Infrastruktura** zajišťuje: compute, storage, DB engine, síťovou konektivitu, plánování úloh.
+
+**Aplikace** zajišťuje: business logiku, pipeline zpracování, konfiguraci zdrojů, publikaci na cílové platformy.
 
 ---
 
@@ -52,6 +69,13 @@ ZBNW‑NG je dávkový systém:
 - každý běh je samostatný proces
 - dlouhodobý stav se ukládá mimo proces (DB, soubory)
 
+Důsledky pro infrastrukturu:
+
+- žádný in-memory stav mezi běhy
+- potřeba persistentní DB
+- jednoduché restartování (stateless runtime)
+- žádné long-running workers (kromě webhook serveru)
+
 ---
 
 ## 4. Perzistence
@@ -65,6 +89,8 @@ Infrastruktura musí zajistit dlouhodobou perzistenci pro:
 - stavové soubory doplňkových subsystémů — perzistentní úložiště
 - logy běhů — perzistentní úložiště s rotací
 
+> Použití file-based queue je implementační volba. Alternativy (Redis, SQS…) jsou možné bez změny architektury.
+
 ---
 
 ## 5. Síťová konektivita
@@ -74,6 +100,12 @@ Systém vyžaduje především **odchozí** konektivitu k externím platformám 
 Výchozí batch běh příchozí konektivitu nevyžaduje — veškerá komunikace je odchozí.
 
 **Webhook server** je doplňkový komponent, nikoli součást core pipeline. Přijímá příchozí HTTP požadavky od externích systémů a vyžaduje příchozí konektivitu alespoň na interní nebo chráněné síťové úrovni. Jeho absence neovlivní batch zpracování.
+
+Důsledky pro nasazení:
+
+- systém lze provozovat za NAT bez veřejné IP
+- webhook server lze izolovat na interní síti nebo za reverse proxy
+- batch pipeline nevyžaduje příchozí port
 
 ---
 

@@ -1,27 +1,61 @@
 # ZBNW-NG — Dokumentace
 
-ZBNW-NG je batch systém, který agreguje obsah z externích platforem (Twitter/X, Bluesky, Facebook, Instagram, YouTube, RSS) a publikuje ho na Mastodon instanci [zpravobot.news](https://zpravobot.news). Systém sjednocuje data přes jednotný model `Post` a zpracovává je pomocí deterministické pipeline. Je navržen jako jednoduchý, robustní systém, který preferuje konzistenci a toleranci k chybám před perfektními daty.
+ZBNW-NG je batch systém, který agreguje obsah z externích platforem (Twitter/X, Bluesky, Facebook, Instagram, YouTube, RSS) a publikuje ho na Mastodon instanci [zpravobot.news](https://zpravobot.news).
+
+Systém sjednocuje data přes jednotný model `Post` a zpracovává je deterministickou pipeline. Je navržen jako jednoduchý, robustní systém, který preferuje konzistenci a toleranci k chybám před perfektními daty.
+
+## Systém jednou větou
 
 ```
 Platform → Adapter → Post → Pipeline → Publisher → Mastodon
+                         ↑
+                   Orchestrator (cron)
 ```
 
 ---
 
-## Jak číst dokumentaci
+## Dokumentace je strukturována do vrstev
 
-Doporučené pořadí při onboardingu:
+Každá vrstva odpovídá na jinou otázku:
+
+| Vrstva | Odpovídá na |
+|---|---|
+| [`00-overview`](#00--overview) | Co systém je? |
+| [`10-system`](#10--system) | Jak systém funguje interně? |
+| [`20-platforms`](#20--platforms) | Odkud přichází data? |
+| [`30-infrastructure`](#30--infrastructure) | Kde systém běží? |
+| [`40-tools`](#40--tools) | Jak systém ovládat? |
+| [`50-operations`](#50--operations) | Jak systém provozovat? |
+| [`90-meta`](#90--meta) | Proč je systém navržen tak, jak je? |
+
+---
+
+## Jak číst podle situace
+
+| Situace | Kde začít |
+|---|---|
+| Chci pochopit projekt | [`00-overview`](#00--overview) → [`10-system`](#10--system) |
+| Přidávám nebo ladím platformu | [`20-platforms`](#20--platforms) → [`10-system`](#10--system) |
+| Něco nefunguje | [`50-operations`](#50--operations) → [`40-tools`](#40--tools) |
+| Navrhuji architektonickou změnu | [`90-meta`](#90--meta) → [`00-overview`](#00--overview) |
+| Hledám pojem nebo termín | [`00-overview/terminologie.md`](00-overview/terminologie.md) |
+
+---
+
+## Jak číst lineárně (onboarding)
 
 1. [architecture.md](00-overview/architecture.md) — co systém obsahuje a jak jsou komponenty propojené
 2. [zbnw-ng-system.md](10-system/zbnw-ng-system.md) — jak systém funguje za běhu (pipeline, scheduling, state)
 3. [`20-platforms/`](#20--platforms) — jak se chovají jednotlivé zdroje dat
 4. [`40-tools/`](#40--tools) — jak systém běží (cron, CLI, monitoring)
 5. [`50-operations/`](#50--operations) — jak systém provozovat (deploy, troubleshooting)
-6. [`90-meta/`](#90--meta) — proč je navržený takto (ADR, principy, scope)
+6. [`90-meta/`](#90--meta) — proč je navržený takto (ADR, principy, scope, design rules)
 
 ---
 
 ## 00 — Overview
+
+*Základní orientace: co systém je, jak je pojmenován a jak jsou komponenty propojené.*
 
 | Soubor | Obsah |
 |---|---|
@@ -32,6 +66,8 @@ Doporučené pořadí při onboardingu:
 
 ## 10 — System
 
+*Jak systém funguje interně: pipeline, orchestrace, stavový model, lifecycle postu.*
+
 | Soubor | Obsah |
 |---|---|
 | [zbnw-ng-system.md](10-system/zbnw-ng-system.md) | Systémový přehled — orchestrátor, PostProcessor pipeline (9 kroků), StateManager, adaptery, formattery |
@@ -40,7 +76,7 @@ Doporučené pořadí při onboardingu:
 
 ## 20 — Platforms
 
-Každá platforma má vlastní doc popisující specifika sběru dat, mapování na Post model a omezení.
+*Odkud přichází data: specifika každé zdrojové platformy, integrační model, omezení.*
 
 | Soubor | Obsah |
 |---|---|
@@ -55,6 +91,8 @@ Každá platforma má vlastní doc popisující specifika sběru dat, mapování
 
 ## 30 — Infrastructure
 
+*Kde systém běží: compute, databáze, storage, network — normativní požadavky a Cloudron implementace.*
+
 | Soubor | Obsah |
 |---|---|
 | [infrastructure.md](30-infrastructure/infrastructure.md) | Přehled infrastruktury — Cloudron server, Nitter VPS, síťová topologie |
@@ -63,6 +101,8 @@ Každá platforma má vlastní doc popisující specifika sběru dat, mapování
 ---
 
 ## 40 — Tools
+
+*Jak systém ovládat: runtime, CLI, monitoring, testování, integrace s externími nástroji.*
 
 | Soubor | Obsah |
 |---|---|
@@ -77,6 +117,8 @@ Každá platforma má vlastní doc popisující specifika sběru dat, mapování
 
 ## 50 — Operations
 
+*Jak systém provozovat: deployment, troubleshooting, maintenance, incident workflow.*
+
 | Soubor | Obsah |
 |---|---|
 | [runbook.md](50-operations/runbook.md) | Každodenní provoz — manuální spuštění pipeline, diagnostika, restart komponent |
@@ -88,6 +130,8 @@ Každá platforma má vlastní doc popisující specifika sběru dat, mapování
 ---
 
 ## 90 — Meta
+
+*Proč je systém navržen tak, jak je: principy, design rules, omezení, scope, ADR záznamy.*
 
 | Soubor | Obsah |
 |---|---|

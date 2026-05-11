@@ -1,5 +1,18 @@
 # RSS
 
+## Platforma (orientace)
+
+RSS v kontextu ZBNW‑NG představuje:
+
+- **Zdroj dat** – RSS 2.0 / Atom feedy (přímé i jako transport pro Facebook a Instagram)
+- **Integrační vrstvu** – `RssAdapter` s volitelným platformovým procesorem (`FacebookProcessor`, `InstagramProcessor`)
+- **Platform-specific chování** – různé content modes (`text`, `title`, `combined`), URL processing, `rss_source_type` rozlišení
+- **Konfigurační jednotku** – definovanou v YAML (`config/sources/*.yml`)
+
+Platforma je vždy vstupní bod systému, izolovaná adapterem a sjednocená do modelu `Post`.
+
+---
+
 Tento dokument popisuje **RSS jako platformu pro získávání obsahu** v systému ZBNW‑NG.
 Na rozdíl od jiných dokumentů v této sekci se RSS nechápe jako sociální síť,
 ale jako **standardizovaný publikační kanál**, který funguje napříč různými zdroji.

@@ -1,5 +1,18 @@
 # Twitter / X
 
+## Platforma (orientace)
+
+Twitter/X v kontextu ZBNW‑NG představuje:
+
+- **Zdroj dat** – tweety přes IFTTT webhook nebo Nitter RSS polling
+- **Integrační vrstvu** – `TwitterAdapter` / `TwitterNitterAdapter` s 5-tierovým fallbackem
+- **Platform-specific chování** – vlákna, editace, retweets, quotes, hybridní enrichment (Nitter + Syndication API)
+- **Konfigurační jednotku** – definovanou v YAML (`config/sources/*.yml`)
+
+Platforma je vždy vstupní bod systému, izolovaná adapterem a sjednocená do modelu `Post`.
+
+---
+
 Tento dokument popisuje **integraci platformy Twitter/X** do systému ZBNW‑NG.
 Zaměřuje se na technický model integrace, specifika dat a chování systému při
 zpracování obsahu z této platformy.

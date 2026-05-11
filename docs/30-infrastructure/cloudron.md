@@ -79,17 +79,34 @@ Citlivé části konfigurace (tokeny, cookies, secrets) **nesmí být commitnuty
 
 ### ENV proměnné (přehled)
 
+**Core infra**
+
 | Proměnná | Zdroj | Popis |
 |---|---|---|
 | `CLOUDRON_POSTGRESQL_URL` | Cloudron (auto) | PostgreSQL connection string |
 | `ZPRAVOBOT_SCHEMA` | `env.sh` | DB schéma (`zpravobot` / `zpravobot_test`) |
 | `ZBNW_DIR` | `env.sh` | Kořenový adresář aplikace |
+
+**Integrace**
+
+| Proměnná | Zdroj | Popis |
+|---|---|---|
 | `IFTTT_PORT` | `env.sh` | Port webhook serveru (default 8089) |
 | `IFTTT_QUEUE_DIR` | `env.sh` | Cesta k IFTTT queue adresáři |
 | `NITTER_INSTANCE` | `env.sh` | URL Nitter instance |
+
+**Social cookies (profile sync)**
+
+| Proměnná | Zdroj | Popis |
+|---|---|---|
 | `BROWSERLESS_TOKEN` | `env.sh` | Token pro Browserless.io (FB + IG profile sync) |
 | `FB_COOKIE_*` | `env.sh` | Facebook cookies pro profile sync (4 hodnoty) |
 | `IG_COOKIE_*` | `env.sh` | Instagram cookies pro profile sync (4 hodnoty) |
+
+**Monitoring**
+
+| Proměnná | Zdroj | Popis |
+|---|---|---|
 | `ZPRAVOBOT_MONITOR_TOKEN` | `env.sh` | Mastodon token pro Údržbot alerting |
 | `ZPRAVOBOT_STATS_ACCOUNT` | `env.sh` | Publisher account pro týdenní digest |
 | `DEBUG` | volitelné | Zapne verbose logging |
@@ -116,7 +133,9 @@ Cron joby se konfigurují přes **Cloudron Dashboard → Cron**, ne přes `cront
 
 ### Profile sync — weekly rotation
 
-Každá platforma má přiřazený den v týdnu (šetří rate limity):
+Každá platforma má přiřazený den v týdnu (šetří rate limity).
+
+> Design intent: distribuovaný plán zabraňuje souběžnému zatížení Browserless.io a respektuje rate limity externích platforem.
 
 | Den | Platforma | Poznámka |
 |---|---|---|
@@ -132,6 +151,8 @@ Každá platforma má přiřazený den v týdnu (šetří rate limity):
 Intervaly a celkový přehled schedulingu viz [`../40-tools/runtime.md`](../40-tools/runtime.md).
 
 **Webhook server** je výjimkou — nejde o cron job, ale o **long-running proces**. `cron_webhook.sh` funguje jako watchdog: při každém spuštění ověří dostupnost přes `/health` endpoint a v případě potřeby server restartuje přes `nohup`.
+
+> Důsledek: ZBNW‑NG je primárně batch systém s jedním speciálním long-running procesem (webhook server). Ostatní komponenty jsou bezstavové jednorázové skripty.
 
 ---
 

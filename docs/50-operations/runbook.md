@@ -1,11 +1,12 @@
 # Runbook ZBNW‑NG
 
-Tento dokument popisuje **praktické provozní postupy** pro systém ZBNW‑NG.
+Tento dokument slouží pro **konkrétní provozní zásahy** — co dělat a jak.
 
 Slouží pro:
-- ověření, že systém funguje správně
-- rychlou diagnostiku problémů
-- manuální zásahy v případě potřeby
+- ověření, že systém funguje správně (každodenní kontrola)
+- manuální zásahy — restart, reset stavu, ruční spuštění
+
+Pro diagnostiku problémů (co se děje a proč) → [`troubleshooting.md`](troubleshooting.md).
 
 ---
 

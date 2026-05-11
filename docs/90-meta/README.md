@@ -1,5 +1,13 @@
 # 90-meta
 
+## Meta dokumentace (orientace)
+
+Tato sekce popisuje **jak přemýšlet o systému ZBNW‑NG**.
+
+Nejde o implementaci ani o runtime — ale o **mentální model**: proč systém vypadá tak, jak vypadá, a jaká pravidla ho drží konzistentním.
+
+---
+
 Tato sekce definuje **myšlenkový rámec** systému ZBNW‑NG.
 
 Na rozdíl od ostatních sekcí (které popisují co systém dělá)
@@ -9,30 +17,36 @@ tato sekce popisuje **proč je navržen tak, jak je**.
 
 ## Jak číst tuto sekci
 
-Dokumenty mají logickou posloupnost:
+Doporučené pořadí — od kontextu k detailu:
 
-| Dokument | Role | Otázka |
-|----------|------|--------|
-| [`principles.md`](principles.md) | Pravidla myšlení | Jak přemýšlíme o návrhu? |
-| [`constraints.md`](constraints.md) | Guardrails | Co jsme vědomě odmítli? |
-| [`scope.md`](scope.md) | Hranice systému | Co systém je a není? |
-| [`decisions.md`](decisions.md) | Historie voleb | Proč je systém navržen takto? |
-
-👉 Doporučené pořadí čtení: `principles → constraints → scope → decisions`
+| # | Dokument | Role | Otázka |
+|---|----------|------|--------|
+| 1 | [`scope.md`](scope.md) | Hranice systému | Co systém je a není? |
+| 2 | [`principles.md`](principles.md) | Pravidla myšlení + design rules | Jak přemýšlíme o návrhu? |
+| 3 | [`constraints.md`](constraints.md) | Guardrails | Co jsme vědomě odmítli? |
+| 4 | [`decisions.md`](decisions.md) | Historie voleb (ADR) | Proč je systém navržen takto? |
 
 ---
 
 ## Vztahy mezi dokumenty
 
 ```
-principles          ← základní pravidla (nadčasová)
+scope               ← co systém je a není (vstupní kontext)
+    ↓
+principles          ← základní pravidla a design rules (nadčasová)
     ↓
 constraints         ← co z principů plyne v praxi (stabilní)
     ↓
-scope               ← kde systém začíná a končí (stabilní)
-    ↓
 decisions           ← konkrétní trade-off volby (historické)
 ```
+
+## Účel
+
+Tyto dokumenty:
+
+- nepopisují implementaci
+- nepopisují runtime
+- ale definují **mentální model systému** — rámec, se kterým jsou konzistentní všechna ostatní rozhodnutí
 
 ---
 

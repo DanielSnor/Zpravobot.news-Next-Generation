@@ -13,13 +13,26 @@ Neobsahuje:
 
 ---
 
+## Role v systému
+
+Nitter slouží jako **proxy vrstva** pro přístup k Twitter/X datům bez oficiálního API:
+
+- **Tier 2 enrichment** — fetchuje plný text tweetu, média a thread kontext pro zpracování IFTTT webhooků
+- **Profile sync** — scraping profilové stránky pro synchronizaci avataru, banneru a bio na Mastodon
+
+Nitter není součástí core pipeline — jeho výpadek pipeline nezastavuje, ale snižuje kvalitu Twitter dat (systém propadne na nižší Tier).
+
+Viz [`../40-tools/nitter.md`](../40-tools/nitter.md) pro architekturu a failure model.
+
+---
+
 ## Přehled
 
 Nitter je externí komponenta používaná pro ingest dat z Twitter/X.
 
-Viz architektura:
-- [`../40-tools/nitter.md`](../40-tools/nitter.md)
-- [`../40-tools/integration.md`](../40-tools/integration.md)
+Viz:
+- [`../40-tools/nitter.md`](../40-tools/nitter.md) — architektura, endpointy, health monitoring
+- [`../40-tools/integration.md`](../40-tools/integration.md) — integrační modely
 
 ---
 

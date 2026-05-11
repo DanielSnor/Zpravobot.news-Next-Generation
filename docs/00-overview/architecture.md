@@ -1,10 +1,24 @@
 # ZBNW‑NG – Architecture Overview
 
+## Architektonické vrstvy (orientace)
+
+Pro rychlou orientaci v architektuře:
+
+- **Koordinační vrstva** – Orchestrátor
+- **Integrační vrstva** – Adaptéry
+- **Doménová vrstva** – Post (mezikrok)
+- **Zpracovací vrstva** – Pipeline
+- **Výstupní vrstva** – Publisher
+- **Stavová vrstva** – Database / State
+- **Doplňkové subsystémy** – Stats, Sync, Trending, Bots
+
+---
+
 Tento dokument poskytuje **strukturální architektonický přehled systému ZBNW‑NG**.
 Popisuje hlavní komponenty, jejich odpovědnosti a vzájemné vztahy.
 
-- Terminologie použitých pojmů je definována v `docs/00-overview/terminologie.md`.
-- Důvody architektonických rozhodnutí jsou zachyceny v `docs/90-meta/decisions.md`.
+- Terminologie použitých pojmů je definována v [`terminologie.md`](terminologie.md).
+- Důvody architektonických rozhodnutí jsou zachyceny v [`decisions.md`](../90-meta/decisions.md).
 
 Dokument se soustředí na **aktuální tvar architektury** a její rozhraní.
 Neřeší historický vývoj ani provozní incidenty.
@@ -69,7 +83,7 @@ Systém pracuje se dvěma vstupními kanály:
 
 ```
 ┌───────────────┐
-│ Orchestrátor │
+│ Orchestrátor  │
 └─────┬─────────┘
       │ rozhodování
       ▼
@@ -118,7 +132,7 @@ Adaptéry tvoří integrační vrstvu mezi ZBNW‑NG a externími platformami.
 ```
 [ Twitter ]   [ Bluesky ]   [ RSS ]
      │             │          │
-     └───────┬─────┴─────┬────┘
+     └───────┬─────┴──────────┘
              ▼
         [ Adaptéry ]
              ▼
@@ -236,7 +250,7 @@ Vedle hlavního publikačního toku existují doplňkové subsystémy.
 ```
 [ Stats / Reporting ]  [ Profile Sync ]  [ Trending / FF ]  [ Údržbot / Tlambot ]
           │                   │                  │                    │
-          └───────────────────┴──────────────────┴────────────────────┘
+          └───────────────────┴─────────┬────────┴────────────────────┘
                                         ▼
                                     Sdílená
                                   infrastruktura
@@ -273,8 +287,55 @@ Tyto hranice jsou zásadní pro dlouhodobou udržitelnost architektury.
 
 ## 12. Vztah k ostatní dokumentaci
 
-- **Terminologie** definuje pojmy, které architektura používá
-- **Decisions** vysvětlují důvody architektonických voleb
-- **System Overview** popisuje chování systému v běhu
+- **[Terminologie](terminologie.md)** definuje pojmy, které architektura používá
+- **[Decisions](../90-meta/decisions.md)** vysvětlují důvody architektonických voleb
+- **[System Overview](../10-system/zbnw-ng-system.md)** popisuje chování systému v běhu
 
 Tento dokument se zaměřuje výhradně na **strukturální pohled**.
+
+---
+
+## Doplňky (append-only)
+
+Tato sekce rozšiřuje architekturu o explicitní interpretaci bez zásahu do původního textu.
+
+### Architektonický styl
+
+ZBNW‑NG lze chápat jako:
+
+- modulární dávkový pipeline systém
+- s jasnou separací vrstev
+- s kanonickým mezimodelem (`Post`)
+
+### Klíčové hranice
+
+Z architektury implicitně vyplývá:
+
+- integrace je izolovaná (Adapter)
+- business logika je centralizovaná (Pipeline)
+- publikace je oddělená (Publisher)
+- stav je perzistentní, ale ne sdílený live
+
+### Tok řízení vs tok dat
+
+Je vhodné rozlišovat:
+
+- **tok dat:** Platforma → Adapter → Post → Pipeline → Publisher
+- **tok řízení:** Orchestrátor → jednotlivé komponenty
+
+### Pipeline jako kontrolní bod
+
+Pipeline je hlavní místo, kde:
+
+- se rozhoduje, zda se obsah publikuje
+- se aplikuje kompletní business logika
+- může dojít k early-exit (ukončení zpracování)
+
+### Evoluční vlastnosti
+
+Architektura je navržená tak, aby:
+
+- nové platformy = nový Adapter
+- nové výstupy = nový Publisher / extension
+- nové logiky = nový krok v Pipeline
+- konfigurace neměnila strukturu systému

@@ -1,5 +1,18 @@
 # Facebook
 
+## Platforma (orientace)
+
+Facebook v kontextu ZBNW‑NG představuje:
+
+- **Zdroj dat** – příspěvky přes RSS.app bridge (veřejné stránky)
+- **Integrační vrstvu** – `RssAdapter` s `FacebookProcessor` pro platformně-specifické filtrování
+- **Platform-specific chování** – filtrování systémových postů (cover photo, check-in…), link cards
+- **Konfigurační jednotku** – definovanou v YAML (`config/sources/*.yml`)
+
+Platforma je vždy vstupní bod systému, izolovaná adapterem a sjednocená do modelu `Post`.
+
+---
+
 Tento dokument popisuje **integraci platformy Facebook** do systému ZBNW‑NG.
 Zaměřuje se na vlastnosti platformy jako zdroje obsahu, způsob dosažení dat
 v současné architektuře a omezení, která z této kombinace vyplývají.

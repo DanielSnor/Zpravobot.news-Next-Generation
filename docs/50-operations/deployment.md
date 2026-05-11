@@ -171,7 +171,44 @@ Zkontroluj:
 
 ---
 
-# ⚠️ 4. Nejčastější problémy po deployi
+# ⚠️ 4. Rizika deploymentu
+
+Každý typ změny nese specifická rizika:
+
+| Typ změny | Riziko |
+|---|---|
+| Code-only | Neočekávané chování pipeline, regrese formatterů |
+| Konfigurace | Nevalidní YAML, změna chování konkrétního zdroje |
+| DB migrace | Nekompatibilní schema, ztráta dat při revert |
+| Nový zdroj | Noise posty, špatný `bot_id`, chybějící banned_phrases |
+
+**Před deploymentem vždy ověř:**
+- testy prošly (`ruby bin/run_tests.rb`)
+- první `--dry-run` doběhl bez chyb
+
+---
+
+# 🔙 5. Rollback strategie
+
+**Kdy rollback provést:**
+- pipeline padá opakovaně po deployi
+- publikace zcela přestala fungovat
+- DB chyby, které nelze rychle opravit
+
+**Postup rollbacku:**
+
+1. Vrať předchozí verzi kódu
+2. Restartuj systém
+3. Ověř první běh (viz Sekce 2 — Post-deploy kontrola)
+
+**Poznámky:**
+- DB migrace nemusí být snadno revertovatelné — plánuj backward-compatible migraci
+- Config změny jsou reverzibilní okamžitě
+- Code-only rollback je nejbezpečnější a nejrychlejší
+
+---
+
+# ⚠️ 6. Nejčastější problémy po deployi
 
 ---
 
@@ -223,31 +260,7 @@ Zkontroluj:
 
 ---
 
-# 🔙 5. Rollback
-
-Použij, pokud:
-
-- systém nefunguje po deployi
-- nelze rychle opravit chybu
-
----
-
-## Postup rollbacku
-
-1. vrať předchozí verzi kódu
-2. restartuj systém
-3. ověř běh (viz Post-deploy kontrola)
-
----
-
-## Poznámky
-
-- DB změny nemusí být vždy snadno revertovatelné
-- rollback musí být rychlý a bezpečný
-
----
-
-# 🧠 6. Deployment principy
+# 🧠 7. Deployment principy
 
 Platí vždy:
 

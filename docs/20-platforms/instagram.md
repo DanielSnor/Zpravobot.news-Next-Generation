@@ -1,5 +1,18 @@
 # Instagram
 
+## Platforma (orientace)
+
+Instagram v kontextu ZBNW‑NG představuje:
+
+- **Zdroj dat** – příspěvky přes RSS.app bridge
+- **Integrační vrstvu** – `RssAdapter` s `InstagramProcessor` pro rekonstrukci captionů
+- **Platform-specific chování** – caption rekonstrukce z embed kódu, cookies pro profile sync přes Browserless
+- **Konfigurační jednotku** – definovanou v YAML (`config/sources/*.yml`)
+
+Platforma je vždy vstupní bod systému, izolovaná adapterem a sjednocená do modelu `Post`.
+
+---
+
 Tento dokument popisuje **integraci platformy Instagram** do systému ZBNW‑NG.
 Zaměřuje se na specifika obrazově orientované platformy, charakter obsahu
 (Caption + média) a omezení, která z této povahy vyplývají.

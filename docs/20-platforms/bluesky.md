@@ -1,5 +1,18 @@
 # Bluesky
 
+## Platforma (orientace)
+
+Bluesky v kontextu ZBNW‑NG představuje:
+
+- **Zdroj dat** – příspěvky z AT Protocolu přes veřejné API
+- **Integrační vrstvu** – `BlueskyAdapter` převádí data na `Post`
+- **Platform-specific chování** – vlákna, replies, AT URI threading, delete+repost místo editací
+- **Konfigurační jednotku** – definovanou v YAML (`config/sources/*.yml`)
+
+Platforma je vždy vstupní bod systému, izolovaná adapterem a sjednocená do modelu `Post`.
+
+---
+
 Tento dokument popisuje **integraci platformy Bluesky** do systému ZBNW‑NG.
 Zaměřuje se na technický model integrace, strukturu dat a rozdíly oproti jiným
 sociálním platformám.

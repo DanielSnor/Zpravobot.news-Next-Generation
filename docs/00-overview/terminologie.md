@@ -1,5 +1,17 @@
 # Terminologie ZBNW-NG
 
+## Typy pojmů (orientace)
+
+Pro rychlé skenování dokumentace rozlišujeme:
+
+- **Model** – datové entity, které systém zpracovává (např. Post, Media)
+- **Komponenty** – části systému v kódu (např. Adapter, Formatter, Publisher, Orchestrator)
+- **Procesy** – opakované postupy a toky (např. Pipeline, Webhook, Fronta)
+- **Konfigurace** – deklarativní pojmy popisující, co systém sleduje (Platforma, Zdroj, Priority)
+- **Nástroje (tools)** – technické prostředníky integrace (např. Nitter)
+
+---
+
 Tento dokument definuje jednotnou terminologii používanou v projektu
 **ZBNW-NG (Zpravobot News – Next Generation)**.
 
@@ -288,7 +300,7 @@ Nitter je:
 - externí komponenta, nikoli součást core systému
 - považován za best‑effort integraci
 
-Viz `docs/40-tools/nitter.md`.
+Viz [`nitter.md`](../40-tools/nitter.md).
 
 ---
 
@@ -368,12 +380,49 @@ Výjimka: editace s médii mohou vést k **delete + republish**.
 
 ## Související dokumenty
 
-- `00-overview/architecture.md` – architektura systému
-- `10-system/zbnw-ng-system.md` – detailní popis jádra
-- `20-platforms/*.md` – platformní detaily
-- `90-meta/decisions.md` – architektonická rozhodnutí
+- [`architecture.md`](architecture.md) – architektura systému
+- [`zbnw-ng-system.md`](../10-system/zbnw-ng-system.md) – detailní popis jádra
+- [`20-platforms/`](../20-platforms/) – platformní detaily
+- [`decisions.md`](../90-meta/decisions.md) – architektonická rozhodnutí
 
 ---
 
 > Tento dokument je **normativní**.
 > Nové pojmy se **nejprve přidávají sem**, teprve poté se používají jinde.
+
+---
+
+## Doplňky (append-only)
+
+Tato sekce doplňuje několik pojmů a explicitních definic, aniž by měnila původní text výše.
+
+### Post (upřesnění)
+
+V původním textu je Post definován jako unifikovaný model. Pro architektonickou orientaci platí:
+
+- **Post je kanonický mezimodel** (architektonická hranice) mezi integrací a zpracováním.
+- Downstream logika pracuje s Postem bez platformních větvení.
+
+### Pipeline (explicitní definice)
+
+V původním textu je pipeline popsaná v sekci **Processor / Pipeline**. V terminologii znamená **pipeline**:
+
+- deterministickou sekvenci kroků nad `Post` před publikací
+- možnost předčasného ukončení zpracování (early-exit)
+- jednotný tok zpracování napříč platformami
+
+### Publisher (obecně)
+
+V původním textu je uveden konkrétní **Mastodon Publisher**. Obecně **publisher** označuje komponentu, která:
+
+- převádí interní reprezentaci na volání cílového API
+- provádí publikaci (včetně retry / rate-limit handlingu)
+
+### Nástroj (tool)
+
+V původním textu je Nitter popsán jako technická vrstva. Pro konzistenci vrstvené dokumentace platí:
+
+- **Platforma** = odkud data pochází (Twitter/X, Bluesky, RSS…)
+- **Nástroj (tool)** = technický prostředník integrace (např. Nitter), který není zdrojovou platformou
+
+Nástroje jsou typicky implementační detail a jejich provozní nastavení patří do provozní (často privátní) dokumentace.

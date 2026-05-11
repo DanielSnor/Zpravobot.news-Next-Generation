@@ -9,6 +9,18 @@ Cílem je:
 
 ---
 
+## Cíl údržby
+
+Pravidelná údržba zajišťuje:
+
+- **stabilitu** — systém se nedegraduje postupně bez povšimnutí
+- **prevenci incidentů** — problémy jsou zachyceny dříve, než způsobí výpadek
+- **kontinuální provoz** — disk, DB, queue zůstávají v kontrolovaném stavu
+
+Bez pravidelné údržby se akumulují: nedetekované chyby, nárůst dat a zastaralá konfigurace.
+
+---
+
 ## Jak tento dokument používat
 
 Údržba vychází z dat poskytovaných monitoringem — viz [`../40-tools/monitoring.md`](../40-tools/monitoring.md).

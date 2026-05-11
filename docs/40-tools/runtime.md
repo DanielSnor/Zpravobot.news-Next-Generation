@@ -25,6 +25,28 @@ Tyto běhy:
 
 ---
 
+## Lifecycle běhu
+
+Každý orchestrator běh prochází pevnými fázemi:
+
+1. **Start** — cron (nebo CLI) spustí skript, načte ENV a konfiguraci
+2. **Load** — StateManager načte stav zdrojů z DB
+3. **Run** — iterace zdrojů: fetch → normalize → filter → publish
+4. **Persist** — výsledky se zapíší do DB, výstup do logu
+5. **Exit** — proces se ukončí; veškerý stav je v DB nebo souborech
+
+Mezi dvěma běhy neexistuje žádný in-memory stav — každý běh začíná z DB.
+
+## Typy běhů
+
+| Typ | Trigger | Příklady |
+|---|---|---|
+| Cron batch | Scheduler | Hlavní pipeline, profile sync, health monitoring |
+| Webhook-triggered | Zewnętrzní event → queue → processor | Twitter (IFTTT), broadcast fronta |
+| Manuální (CLI) | Operátor | `run_zbnw.rb`, `sync_profiles.rb`, `run_tests.rb` |
+
+---
+
 ## 1. Hlavní komponenty
 
 ---
@@ -206,6 +228,18 @@ Runtime musí počítat s chybami:
 
 - může ovlivnit konkrétní post
 - nesmí zastavit celý běh
+
+---
+
+### 5.4 Co se stane když…
+
+| Scénář | Důsledek | Automatická reakce |
+|---|---|---|
+| Cron neběží | Žádný běh; systém je offline | Údržbot upozorní na staleness runneru |
+| Webhook server nespadne | Příchozí eventy nejsou přijímány | Watchdog ho restartuje do 1 minuty |
+| Adapter selže | Jeden zdroj nepublikuje | Zalogováno, ostatní pokračují; retry v dalším běhu |
+| Publish selže | Post není publikován | `error_count` roste; retry v dalším cyklu |
+| Queue se zasekne | Backlog roste | Monitoring upozorní; manuálně: `retry_failed_queue.rb` |
 
 ---
 

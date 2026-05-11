@@ -65,6 +65,16 @@ Použití:
 - payload musí být validován
 - zpracování nesmí blokovat příjem dalších dat
 
+### 1.3 Přehled integrací podle platformy
+
+| Typ | Platformy | Mechanismus |
+|---|---|---|
+| API-based | Bluesky, Mastodon | AT Protocol / REST API, token autentizace |
+| RSS-based | RSS, Facebook (RSS.app), Instagram (RSS.app), YouTube | Polling RSS/Atom feedu |
+| Proxy-based | Twitter/X (Nitter) | Scraping přes alternativní frontend |
+| Push webhook | Twitter/X (IFTTT) | Event-driven push do lokální fronty |
+| Headless browser | Facebook, Instagram, YouTube (profile sync) | Browserless.io — EU consent bypass |
+
 ---
 
 ## 2. Queue jako boundary systému

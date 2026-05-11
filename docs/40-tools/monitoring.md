@@ -30,6 +30,25 @@ za **oddělenou pozorovací vrstvu** — existuje mimo tok dat, neovlivňuje ho.
 
 ---
 
+## Zdravý systém a incident
+
+**Zdravý systém:**
+
+- cron běhy probíhají pravidelně bez fatálních chyb
+- posty se publikují odpovídající aktivitě sledovaných zdrojů
+- chyby jsou sporadické a neopakující se
+
+**Incident vyžadující zásah:**
+
+- žádná publikace déle než 60 minut
+- webhook server nereaguje
+- spike chyb napříč více zdroji naráz
+- queue backlog roste nebo je zaseknutá
+
+Podrobné thresholdy jsou v [sekci 5 — Alerting pravidla](#5-alerting-pravidla).
+
+---
+
 ## 1. Co se monitoruje
 
 | Oblast | OK stav | Problém |
