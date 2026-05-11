@@ -14,6 +14,26 @@ Platform → Adapter → Post → Pipeline → Publisher → Mastodon
 
 ---
 
+## Co tato dokumentace umožňuje (a co ne)
+
+Tato dokumentace je **veřejně bezpečná** — popisuje architekturu, datové toky a způsob integrace.
+
+**Umožňuje:**
+- pochopit, jak systém funguje
+- pochopit integraci jednotlivých platforem
+- orientovat se v kódu a konfiguraci
+- provozovat systém s přístupem k private dokumentaci
+
+**Neumožňuje:**
+- spustit produkční instanci od nuly bez dalších podkladů
+- nastavit přístupy k externím službám (tokeny, cookies, credentials)
+
+**Proč:** ZBNW‑NG pracuje s přístupovými údaji a integracemi (scraping, session cookies, webhook tokeny), jejichž zveřejnění by představovalo bezpečnostní riziko. Tyto informace jsou vedeny odděleně v `docs-private/`.
+
+> Pro plný provozní onboarding je potřeba přístup k `docs-private/`.
+
+---
+
 ## Dokumentace je strukturována do vrstev
 
 Každá vrstva odpovídá na jinou otázku:

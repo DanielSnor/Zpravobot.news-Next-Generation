@@ -271,38 +271,12 @@ Platí vždy:
 
 ---
 
----
-
 > **Deployment = změna systému.** Pro manuální zásahy při běžném provozu
 > (restart, ruční spuštění pipeline, reset zdroje) viz [`runbook.md`](runbook.md).
 
 ---
 
-# 🚫 Co do deployment.md nepatří
+## Co tento dokument neobsahuje
 
-- konkrétní příkazy (ssh, paths, skripty)
-- credentials
-- IP adresy
-- detailní infra konfigurace
-
-👉 ty patří do:
-- private dokumentace
-- nebo lokálního runbooku
-
----
-
-# ✅ Cíl dokumentu
-
-- bezpečný a predikovatelný deployment
-- rychlá kontrola po změně
-- minimalizace rizika výpadku
-
----
-
-# 📌 Shrnutí
-
-Deployment odpovídá na:
-
-- „jak nasadit změnu?“
-- „jak poznám, že to funguje?“
-- „co dělat, když to nefunguje?“
+- konkrétní příkazy s produkčními cestami → `docs-private/`
+- credentials, IP adresy, detailní infra konfigurace
