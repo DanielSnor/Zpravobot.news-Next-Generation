@@ -95,11 +95,15 @@ url:
     # Specifické služby
     - flashsco.re
     - piped.video
+    - herohero.co
+    - forendors.cz
     # České/slovenské
     - 1url.cz
     - jdem.cz
     - sdu.sk
     - sqzr.cz
+    - rozhl.as
+    - czch.tv
   domain_rewrites:
     - to: youtu.be
       domains:
