@@ -455,7 +455,7 @@ ruby lib/webhook/ifttt_queue_processor.rb
 
 **Řešení:**
 ```bash
-psql "$CLOUDRON_POSTGRESQL_URL" -f db/migrate_cloudron.sql
+psql "$CLOUDRON_POSTGRESQL_URL" -f db/migrate_prod.sql
 ```
 
 ---

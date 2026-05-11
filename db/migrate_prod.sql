@@ -1,25 +1,21 @@
 -- ============================================================
--- Zpravobot: Migrace schématu
+-- Zpravobot: Migrace schématu (Cloudron verze)
 -- ============================================================
--- Spustit jako: zpravobot_owner
--- Idempotentní - lze spouštět opakovaně
+-- Spustit jako Cloudron user v existující DB
 --
--- psql -U zpravobot_owner -d zpravobot -f 02_migrate_schema.sql
+-- psql "$CLOUDRON_POSTGRESQL_URL" -f db/migrate_cloudron.sql
 -- ============================================================
 
 -- ============================================================
 -- Schéma
 -- ============================================================
 
-CREATE SCHEMA IF NOT EXISTS zpravobot AUTHORIZATION zpravobot_owner;
-
--- Nastavit výchozí search_path pro tuto session
-SET search_path TO zpravobot;
-
--- Odebrat public přístup
-REVOKE ALL ON SCHEMA zpravobot FROM PUBLIC;
+CREATE SCHEMA IF NOT EXISTS zpravobot;
 
 COMMENT ON SCHEMA zpravobot IS 'Zpravobot state management - published posts, source state, activity log';
+
+-- Nastavit search_path pro tuto session
+SET search_path TO zpravobot;
 
 -- ============================================================
 -- Tabulka: published_posts
@@ -28,11 +24,11 @@ COMMENT ON SCHEMA zpravobot IS 'Zpravobot state management - published posts, so
 
 CREATE TABLE IF NOT EXISTS published_posts (
     id                  BIGSERIAL PRIMARY KEY,
-    source_id           TEXT NOT NULL,                -- "ct24_twitter", "idnes_rss"
-    post_id             TEXT NOT NULL,                -- ID z platformy
-    post_url            TEXT,                         -- URL postu (pro debug)
-    mastodon_status_id  TEXT,                         -- Mastodon ID
-    platform_uri        TEXT,                         -- Platform-specific URI pro threading
+    source_id           VARCHAR(100) NOT NULL,
+    post_id             VARCHAR(255) NOT NULL,
+    post_url            TEXT,
+    mastodon_status_id  TEXT,
+    platform_uri        TEXT,                         -- Platform-specific URI (e.g., Bluesky AT URI) for threading
     published_at        TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     
     CONSTRAINT uq_source_post UNIQUE (source_id, post_id)
@@ -51,7 +47,6 @@ CREATE INDEX IF NOT EXISTS idx_published_source_time
 CREATE INDEX IF NOT EXISTS brin_published_at
     ON published_posts USING brin (published_at);
 
--- Unikátnost Mastodon statusu (pokud je vyplněn)
 CREATE UNIQUE INDEX IF NOT EXISTS uq_published_mastodon_status
     ON published_posts (mastodon_status_id)
     WHERE mastodon_status_id IS NOT NULL;
@@ -84,23 +79,31 @@ BEGIN
         COMMENT ON COLUMN published_posts.platform_uri IS 
             'Platform-specific URI pro thread tracking (např. Bluesky AT URI)';
         
+        -- Vytvořit indexy pro nový sloupec
+        CREATE INDEX IF NOT EXISTS idx_published_platform_uri
+            ON published_posts (platform_uri)
+            WHERE platform_uri IS NOT NULL;
+            
+        CREATE INDEX IF NOT EXISTS idx_published_source_platform_uri
+            ON published_posts (source_id, platform_uri)
+            WHERE platform_uri IS NOT NULL;
+        
         RAISE NOTICE 'Sloupec platform_uri přidán do published_posts';
     END IF;
 END $$;
 
 -- ============================================================
 -- Tabulka: source_state
--- Stav jednotlivých zdrojů (scheduling, error tracking)
 -- ============================================================
 
 CREATE TABLE IF NOT EXISTS source_state (
-    source_id       TEXT PRIMARY KEY,
-    last_check      TIMESTAMPTZ,                      -- Kdy naposledy zkontrolován
-    last_success    TIMESTAMPTZ,                      -- Kdy naposledy úspěšně
-    posts_today     INTEGER NOT NULL DEFAULT 0,       -- Počet postů dnes
-    last_reset      DATE NOT NULL DEFAULT CURRENT_DATE, -- Kdy naposledy resetován posts_today
-    error_count     INTEGER NOT NULL DEFAULT 0,       -- Počet po sobě jdoucích chyb
-    last_error      TEXT,                             -- Poslední chybová zpráva
+    source_id       VARCHAR(100) PRIMARY KEY,
+    last_check      TIMESTAMPTZ,
+    last_success    TIMESTAMPTZ,
+    posts_today     INTEGER NOT NULL DEFAULT 0,
+    last_reset      DATE NOT NULL DEFAULT CURRENT_DATE,
+    error_count     INTEGER NOT NULL DEFAULT 0,
+    last_error      TEXT,
     disabled_at     TIMESTAMPTZ,                      -- NULL = aktivní; NOT NULL = pozastaven (manage_source.rb pause)
     updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
@@ -143,8 +146,8 @@ BEGIN
     END IF;
 END $$;
 
--- Trigger pro automatickou aktualizaci updated_at
-CREATE OR REPLACE FUNCTION set_updated_at()
+-- Trigger pro updated_at
+CREATE OR REPLACE FUNCTION zpravobot.set_updated_at()
 RETURNS trigger LANGUAGE plpgsql AS $$
 BEGIN
     NEW.updated_at := NOW();
@@ -156,7 +159,7 @@ DROP TRIGGER IF EXISTS trg_source_state_updated_at ON source_state;
 
 CREATE TRIGGER trg_source_state_updated_at
     BEFORE UPDATE ON source_state
-    FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+    FOR EACH ROW EXECUTE FUNCTION zpravobot.set_updated_at();
 
 -- Partial index pro rychlé reporty chyb
 CREATE INDEX IF NOT EXISTS idx_sources_with_errors
@@ -165,24 +168,17 @@ CREATE INDEX IF NOT EXISTS idx_sources_with_errors
 
 -- ============================================================
 -- Tabulka: activity_log
--- Diagnostický log pro debugging
 -- ============================================================
 
 CREATE TABLE IF NOT EXISTS activity_log (
     id          BIGSERIAL PRIMARY KEY,
-    source_id   TEXT,                                 -- Může být NULL (systémové logy)
+    source_id   VARCHAR(100),
     action      VARCHAR(50) NOT NULL,
     details     JSONB,
     created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     
     CONSTRAINT chk_action_valid CHECK (action IN (
-        'fetch',
-        'publish',
-        'skip',
-        'error',
-        'profile_sync',
-        'media_upload',
-        'transient_error'
+        'fetch','publish','skip','error','profile_sync','media_upload','transient_error'
     ))
 );
 
@@ -190,7 +186,6 @@ COMMENT ON TABLE activity_log IS 'Diagnostický log - append-only';
 COMMENT ON COLUMN activity_log.action IS 'Typ akce: fetch, publish, skip, error, profile_sync, media_upload, transient_error';
 COMMENT ON COLUMN activity_log.details IS 'JSON s detaily akce (post_url, error_message, ...)';
 
--- Indexy
 CREATE INDEX IF NOT EXISTS idx_activity_source_time
     ON activity_log (source_id, created_at DESC);
 
@@ -233,12 +228,12 @@ CREATE INDEX IF NOT EXISTS idx_edit_buffer_hash
 CREATE INDEX IF NOT EXISTS idx_edit_buffer_created
     ON edit_detection_buffer (created_at);
 
-CREATE OR REPLACE FUNCTION cleanup_edit_detection_buffer(retention_hours INTEGER DEFAULT 2)
+CREATE OR REPLACE FUNCTION zpravobot.cleanup_edit_detection_buffer(retention_hours INTEGER DEFAULT 2)
 RETURNS INTEGER AS $$
 DECLARE
     deleted_count INTEGER;
 BEGIN
-    DELETE FROM edit_detection_buffer
+    DELETE FROM zpravobot.edit_detection_buffer
     WHERE created_at < NOW() - (retention_hours || ' hours')::INTERVAL;
 
     GET DIAGNOSTICS deleted_count = ROW_COUNT;
@@ -246,41 +241,91 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
-COMMENT ON FUNCTION cleanup_edit_detection_buffer IS 'Smaže záznamy starší než retention_hours (default 2)';
+COMMENT ON FUNCTION zpravobot.cleanup_edit_detection_buffer IS 'Smaže záznamy starší než retention_hours (default 2)';
 
 -- ============================================================
--- Práva pro zpravobot_app
+-- Tabulka: media_fingerprints
+-- SHA-256 fingerprints médií pro video deduplikaci (retence 96h)
 -- ============================================================
 
-GRANT USAGE ON SCHEMA zpravobot TO zpravobot_app;
+CREATE TABLE IF NOT EXISTS media_fingerprints (
+    id          BIGSERIAL PRIMARY KEY,
+    source_id   VARCHAR(100) NOT NULL,
+    sha256_hash VARCHAR(64) NOT NULL,
+    post_id     VARCHAR(255),
+    media_url   TEXT,
+    created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
 
-GRANT SELECT, INSERT, UPDATE, DELETE 
-    ON ALL TABLES IN SCHEMA zpravobot 
-    TO zpravobot_app;
+COMMENT ON TABLE media_fingerprints IS 'SHA-256 fingerprints médií pro video deduplikaci (retence 96h)';
+COMMENT ON COLUMN media_fingerprints.source_id IS 'Identifikátor zdroje/bota — deduplikace je per-source';
+COMMENT ON COLUMN media_fingerprints.sha256_hash IS 'SHA-256 hex digest binárních dat videa';
+COMMENT ON COLUMN media_fingerprints.post_id IS 'ID postu při prvním výskytu videa (pro diagnostiku)';
+COMMENT ON COLUMN media_fingerprints.media_url IS 'URL média při prvním výskytu (pro diagnostiku)';
 
-GRANT USAGE, SELECT 
-    ON ALL SEQUENCES IN SCHEMA zpravobot 
-    TO zpravobot_app;
+CREATE UNIQUE INDEX IF NOT EXISTS idx_media_fp_source_hash
+    ON media_fingerprints (source_id, sha256_hash);
 
--- Default privileges pro budoucí tabulky
-ALTER DEFAULT PRIVILEGES IN SCHEMA zpravobot
-    GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO zpravobot_app;
+CREATE INDEX IF NOT EXISTS idx_media_fp_created
+    ON media_fingerprints (created_at);
 
-ALTER DEFAULT PRIVILEGES IN SCHEMA zpravobot
-    GRANT USAGE, SELECT ON SEQUENCES TO zpravobot_app;
+-- Migrace: přidat phash_int pokud neexistuje (pro existující DB)
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_schema = 'zpravobot'
+        AND table_name = 'media_fingerprints'
+        AND column_name = 'phash_int'
+    ) THEN
+        ALTER TABLE media_fingerprints
+        ADD COLUMN phash_int BIGINT;
+
+        COMMENT ON COLUMN media_fingerprints.phash_int IS
+            'aHash (average hash) 64-bit integer via ImageMagick; NULL pro URL-hash záznamy (videa >10MB)';
+
+        RAISE NOTICE 'Sloupec phash_int přidán do media_fingerprints';
+    END IF;
+END $$;
+
+-- ============================================================
+-- Tabulka: account_stats_snapshot
+-- Týdenní snapshoty Mastodon účtů pro ZpravobotStats
+-- ============================================================
+
+CREATE TABLE IF NOT EXISTS account_stats_snapshot (
+    account_id    VARCHAR(100) NOT NULL,
+    snapshot_date DATE NOT NULL,
+    followers     INTEGER,
+    statuses      INTEGER,
+    posts_week    INTEGER,
+    PRIMARY KEY (account_id, snapshot_date)
+);
+
+CREATE INDEX IF NOT EXISTS idx_snapshot_date
+    ON account_stats_snapshot (snapshot_date DESC);
+
+COMMENT ON TABLE account_stats_snapshot IS 'Týdenní snapshoty Mastodon účtů pro ZpravobotStats';
+COMMENT ON COLUMN account_stats_snapshot.account_id IS 'Identifikátor Mastodon účtu (z mastodon_accounts.yml)';
+COMMENT ON COLUMN account_stats_snapshot.snapshot_date IS 'Datum snapshotu (typicky neděle)';
+COMMENT ON COLUMN account_stats_snapshot.followers IS 'Počet sledujících z Mastodon API verify_credentials';
+COMMENT ON COLUMN account_stats_snapshot.statuses IS 'Celkový počet statusů z Mastodon API verify_credentials';
+COMMENT ON COLUMN account_stats_snapshot.posts_week IS 'Počet postů za daný týden z published_posts';
 
 -- ============================================================
 -- Výstup
 -- ============================================================
 
 \echo ''
-\echo '✅ Schéma zpravobot vytvořeno'
-\echo '✅ Tabulka published_posts vytvořena (včetně platform_uri)'
-\echo '✅ Tabulka source_state vytvořena (včetně last_reset)'
-\echo '✅ Tabulka activity_log vytvořena'
-\echo '✅ Tabulka edit_detection_buffer vytvořena (včetně cleanup funkce)'
-\echo '✅ Práva pro zpravobot_app nastavena'
+\echo '✅ Schéma zpravobot vytvořeno/aktualizováno'
+\echo '✅ Tabulka published_posts (včetně platform_uri)'
+\echo '✅ Tabulka source_state (včetně last_reset)'
+\echo '✅ Tabulka activity_log'
+\echo '✅ Tabulka edit_detection_buffer (včetně cleanup funkce)'
+\echo '✅ Tabulka media_fingerprints (video pHash deduplikace — sha256_hash + phash_int)'
+\echo '✅ Tabulka account_stats_snapshot (ZpravobotStats)'
 \echo ''
 \echo 'Ověření:'
-\echo '  psql -U zpravobot_app -d zpravobot -c "SELECT column_name FROM information_schema.columns WHERE table_schema = ''zpravobot'' AND table_name = ''published_posts'';"'
+\echo '  SELECT column_name FROM information_schema.columns'
+\echo '  WHERE table_schema = ''zpravobot'' AND table_name = ''published_posts'';'
 \echo ''

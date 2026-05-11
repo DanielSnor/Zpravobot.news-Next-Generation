@@ -103,7 +103,7 @@ rescue PG::Error => e
   puts "❌ Database error: #{e.message}"
   puts
   puts 'Make sure migration has been run:'
-  puts "  psql \"$CLOUDRON_POSTGRESQL_URL\" -f db/migrate_cloudron.sql"
+  puts "  psql \"$CLOUDRON_POSTGRESQL_URL\" -f db/migrate_prod.sql"
   puts "  psql \"$CLOUDRON_POSTGRESQL_URL\" -f db/migrate_test_schema.sql" if schema == 'zpravobot_test'
   exit 1
 rescue => e

@@ -187,7 +187,7 @@ Produkce a test jsou odděleny DB schématy (`zpravobot` / `zpravobot_test`).
 | `source_state` | Scheduling, error tracking | `source_id` (PK), `last_check`, `posts_today`, `error_count`, `last_error` |
 | `activity_log` | Diagnostický append-only log | `source_id`, `action` (fetch/publish/skip/error/…), `details` (JSONB) |
 
-Migrace jsou v `db/` — pro Cloudron produkci se používá `migrate_cloudron.sql` (idempotentní).
+Migrace jsou v `db/` — pro Cloudron produkci se používá `migrate_prod.sql` (idempotentní).
 
 Detailní schéma patří do SQL migrací, nikoli do tohoto souboru.
 
