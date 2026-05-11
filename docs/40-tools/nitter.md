@@ -12,6 +12,8 @@ podkladům (IP adresy, konkrétní tokeny, SSH konfigurace).
 
 ## 1. Role Nitteru v systému
 
+> **Nitter není platforma.** Je to **proxy vrstva** — prostředník pro přístup k Twitter/X datům. Z pohledu systému jde o integrační nástroj, nikoli o zdroj obsahu.
+
 Nitter je **self-hosted alternativní frontend pro Twitter/X**, který ZBNW‑NG používá ve dvou rolích:
 
 | Role | Popis |

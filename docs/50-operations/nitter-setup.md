@@ -1,189 +1,197 @@
 # Nitter – instalace a provoz (ZBNW‑NG)
 
-Tento dokument popisuje, jak připravit a provozovat **Nitter instance** pro systém ZBNW‑NG.
+## Role v systému
 
-Je zaměřen na:
-- praktický setup
-- provozní doporučení
-- integraci do ZBNW‑NG
+Nitter slouží jako **proxy vrstva** pro přístup k Twitter/X datům bez oficiálního API:
 
-Neobsahuje:
-- citlivé údaje
-- konkrétní infrastrukturu
+- **Tier 2 enrichment** — fetchuje plný text tweetu, média a thread kontext pro zpracování IFTTT webhooků
+- **Profile sync** — scraping profilové stránky pro synchronizaci avataru, banneru a bio na Mastodon
 
----
+Nitter je **kritická komponenta** pro Twitter/X ingest. Její kritičnost lze snížit používáním IFTTT webhooků jako primárního triggeru — v takovém případě Nitter slouží jako Tier 2 enrichment (kvalita dat) a jeho výpadek pipeline nezastaví.
 
-## Přehled
-
-Nitter je externí komponenta používaná pro ingest dat z Twitter/X.
-
-Viz architektura:
-- [`../40-tools/nitter.md`](../40-tools/nitter.md)
-- [`../40-tools/integration.md`](../40-tools/integration.md)
+Viz [`../40-tools/nitter.md`](../40-tools/nitter.md) pro architekturu, endpointy a failure model.
 
 ---
 
-## 1. Oficiální dokumentace
+Tento dokument **doplňuje** oficiální instalaci Nitteru o specifika potřebná pro ZBNW‑NG.
+Základní instalaci řeší: https://github.com/zedeus/nitter
 
-Základní instalace:
-
-https://github.com/zedeus/nitter
-
-👉 Tento dokument doplňuje:
-- co je potřeba pro ZBNW‑NG
-- jak instance používat v praxi
+Neobsahuje citlivé údaje — credentials, IP adresy ani konkrétní konfigurační hodnoty patří do `docs-private/`.
 
 ---
 
-## 2. Minimální požadavky
+## 1. Doporučená architektura
 
-Nitter instance musí:
+Nitter by měl běžet na **odděleném serveru** od ZBNW‑NG (Cloudron):
 
-- být dostupná přes HTTP(S)
-- mít dostatečný výkon pro scraping
-- být spolehlivá (běžet dlouhodobě)
+```
+ZBNW‑NG (Cloudron)
+       │
+       │ HTTP (Tier 2 + profile sync)
+       ▼
+  Nitter VPS
+  ┌─────────────────────────────┐
+  │  Nginx (access restriction) │
+  │       │                     │
+  │  Docker: nitter             │
+  │       │                     │
+  │  Redis + sessions.jsonl     │
+  └─────────────────────────────┘
+       │
+       ▼
+  Twitter/X (burner cookies)
+```
 
----
-
-## 3. Doporučený setup
-
-### 3.1 Nasazení
-
-Použij:
-
-- izolovaný server nebo kontejner
-- oddělený od ZBNW‑NG runtime
-
----
-
-### 3.2 Přístup
-
-Doporučeno:
-
-- omezit přístup na interní klienty
-- nepoužívat veřejné instance
-
----
-
-### 3.3 Stabilita
-
-- používat vlastní instanci
-- nepřepínat instance dynamicky
-- plánovat restart/upgrade
+Důvody pro oddělený server:
+- nezávislost dostupnosti (výpadek Nitter VPS neovlivní Cloudron)
+- dedikované zdroje pro scraping
+- izolace přístupu (nginx povoluje pouze ZBNW‑NG server)
 
 ---
 
-## 4. Integrace do ZBNW‑NG
+## 2. Kritická nastavení pro ZBNW‑NG
 
-ZBNW‑NG používá:
+### 2.1 sessions.jsonl — formát ID (nejčastější past)
 
-- HTTP endpoint Nitteru
-- adapter, který parsuje výstup
+Nitter vyžaduje, aby `id` v `sessions.jsonl` bylo **string**, ne číslo:
 
-Flow:
+```json
+{ "id": "123456789012345678" }   ✅
+{ "id": 123456789012345678 }     ❌  → "invalid integer" při startu
+```
 
-Twitter/X → Nitter → Adapter → Post → Pipeline
-
----
-
-## 5. Provozní doporučení
-
-### 5.1 Monitoring
-
-Sleduj:
-
-- dostupnost instance
-- response time
+Při sestavování `sessions.jsonl` ručně nebo ze skriptu vždy ověř, že ID jsou v uvozovkách.
 
 ---
 
-### 5.2 Aktualizace
+### 2.2 Přístup z ZBNW‑NG serveru
 
-- pravidelně aktualizuj Nitter
-- sleduj změny HTML struktury
+Nginx na Nitter VPS musí povolovat přístup **pouze ze ZBNW‑NG serveru**. Nitter instance obsahuje Twitter session cookies — přístup z veřejného internetu by znamenal, že kdokoli může tyto cookies využít přes tvou instanci a vyčerpat nebo zkompromitovat burner účty.
 
----
+Konkrétní konfigurace (IP adresy) patří do `docs-private/`.
 
-### 5.3 Výkon
-
-- omez paralelní požadavky
-- sleduj load
+Ověření, že omezení funguje správně:
+- z ZBNW‑NG serveru: `curl http://<nitter>/settings` → HTTP 200
+- z jiné IP: → HTTP 403 nebo connection refused
 
 ---
 
-## 6. Typické problémy
+### 2.3 ENV konfigurace v ZBNW‑NG
 
-### Problém: Nitter nedostupný
+V `env.sh` na Cloudron serveru nastav:
 
-Symptomy:
-- žádná data z Twitteru
+```bash
+export NITTER_INSTANCE="http://<adresa-nitter-instance>"
+```
 
-Akce:
-- restart instance
-- ověř dostupnost
-
----
-
-### Problém: Parsing selhává
-
-Symptomy:
-- chyba v adapteru
-
-Příčina:
-- změna HTML
-
-Akce:
-- upravit parser
+Per-source override je možný přes `source.nitter_instance` v YAML konfiguraci zdroje.
 
 ---
 
-### Problém: Blokace přístupu
+### 2.4 Burner účty a cookies
 
-Symptomy:
-- timeout
-- prázdná odpověď
+Nitter přistupuje k Twitter/X přes **guest účty** (burner cookies). Bez platných cookies Nitter vrací chyby `"No guest accounts"` nebo `"Could not authenticate you"`.
 
-Akce:
-- změna IP
-- throttling
-
----
-
-## 7. Omezení
-
-Nitter:
-
-- není garantovaně stabilní
-- závisí na změnách Twitter/X
-
-Proto:
-
-- musí být považován za best-effort
-- nesmí blokovat systém
+Co je potřeba vědět:
+- cookies mají omezenou životnost a je třeba je obnovovat
+- obnova cookies vyžaduje specifický postup — viz `docs-private/`
+- po obnovení cookies je třeba restartovat Nitter: `docker compose restart nitter`
 
 ---
 
-## ❌ Co sem nepatří
+## 3. Ověření funkční integrace
 
-- konkrétní URL instance
-- IP adresy
-- secrets / cookies
-- detailní infra layout
+Po instalaci ověř, že ZBNW‑NG instanci skutečně používá:
+
+```bash
+# Na ZBNW-NG serveru: ověř dostupnost a zdraví instance
+curl "$NITTER_INSTANCE/settings"
+
+# Spusť Tier 2 enrichment pro konkrétní tweet
+ruby bin/run_zbnw.rb --source <twitter_source_id> --dry-run
+```
+
+Očekávaný výsledek v logu:
+```
+Tier 2: ✅ Nitter fetch OK for <tweet_id>
+```
+
+Zdravotní stav průběžně monitoruje Údržbot (NitterCheck + NitterAccountsCheck) — viz [`../40-tools/monitoring.md`](../40-tools/monitoring.md).
 
 ---
 
-## ✅ Cíl dokumentu
+## 4. Provozní doporučení
 
-- zajistit reprodukovatelný setup
-- minimalizovat problémy v provozu
-- udržet oddělení architektury a infrastrukturních detailů
+### Aktualizace Nitteru
+
+Nitter parsuje HTML Twitter/X — **změna struktury HTML na straně Twitteru může rozbít parsing** bez varování. Doporučení:
+- sleduj Nitter release notes a issues na GitHubu
+- po aktualizaci ověř Tier 2 enrichment na vzorkovém tweetu
+- pokud parsing přestane fungovat, zkontroluj nejprve verzi Nitteru před laděním ZBNW‑NG kódu
+
+### Monitoring
+
+Údržbot monitoruje Nitter automaticky dvěma způsoby:
+- **NitterCheck** (každých 10 min) — HTTP GET na `/settings`, detekuje `rate_limit` a `suspended` v HTML
+- **NitterAccountsCheck** — prohledává `activity_log` za poslední hodinu na account-related chyby
+
+Manuální kontrola stavu:
+```bash
+ruby bin/health_monitor.rb --details
+```
+
+### Restart po problémech
+
+```bash
+# Na Nitter VPS
+docker compose restart nitter   # reset session rotace (pomáhá u rate limitů)
+docker compose up -d            # pokud container neběží
+```
 
 ---
 
-## 📌 Shrnutí
+## 5. Typické instalační problémy
 
-Nitter setup řeší:
+### "invalid integer" při startu Nitteru
 
-- jak získat data z Twitter/X
-- jak provozovat instanci
-- jak ji integrovat do ZBNW‑NG
+**Příčina:** `id` v `sessions.jsonl` je číslo místo stringu.
+
+**Oprava:** Ověř formát — viz sekce 2.1 výše.
+
+---
+
+### 403 z ZBNW‑NG při přístupu na Nitter
+
+**Příčina:** IP adresa Cloudron serveru není v nginx whitelistu Nitter VPS.
+
+**Řešení:** Přidat IP do nginx konfigurace na Nitter VPS — viz `docs-private/`.
+
+---
+
+### "Could not authenticate you" / "No guest accounts"
+
+**Příčina:** Burner cookies expirovali nebo IP mismatch (cookies získány z jiné IP než Nitter používá).
+
+**Řešení:** Obnovit cookies — viz `docs-private/`.
+
+---
+
+### Connection refused
+
+**Příčina:** Nitter container neběží.
+
+**Diagnostika a řešení:**
+```bash
+docker compose ps
+docker compose logs nitter --tail 20
+docker compose up -d
+```
+
+---
+
+## Co tento dokument neobsahuje
+
+- IP adresy, konkrétní domény
+- credentials, cookies, tokeny
+- postup obnovy burner cookies (→ `docs-private/`)
+- specifická nginx konfigurace s adresami (→ `docs-private/`)

@@ -1,5 +1,18 @@
 # YouTube
 
+## Platforma (orientace)
+
+YouTube v kontextu ZBNW‑NG představuje:
+
+- **Zdroj dat** – videa přes YouTube RSS/Atom feed (channel nebo playlist)
+- **Integrační vrstvu** – `YouTubeAdapter` s `media:group` parsingem přes REXML
+- **Platform-specific chování** – Shorts filtrování přes UULF playlist, ranní maintenance window, thumbnail fallback
+- **Konfigurační jednotku** – definovanou v YAML (`config/sources/*.yml`)
+
+Platforma je vždy vstupní bod systému, izolovaná adapterem a sjednocená do modelu `Post`.
+
+---
+
 Tento dokument popisuje **integraci platformy YouTube** do systému ZBNW‑NG.
 Zaměřuje se na specifika práce s video‑centrickým obsahem, rozdíly oproti
 textovým platformám a omezení, která z této povahy vyplývají.
@@ -227,6 +240,7 @@ scheduling:
 | `source.playlist_id` | Konkrétní playlist místo celého kanálu |
 | `content.no_shorts` | `true` = použít UULF playlist (filtruje Shorts) |
 | `content.description_lines` | Max počet řádků popisu videa |
+| `monitoring.ok_if_idle` | `true` = nealertovat na idle (pro příležitostné zdroje); chyby se stále reportují |
 
 ---
 

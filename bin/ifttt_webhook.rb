@@ -42,6 +42,7 @@ BROADCAST_QUEUE_DIR = ENV['BROADCAST_QUEUE_DIR'] || (ENV['ZBNW_DIR'] ? "#{ENV['Z
 BROADCAST_WEBHOOK_SECRET = ENV['TLAMBOT_WEBHOOK_SECRET']
 BROADCAST_TRIGGER_ACCOUNT = 'tlambot'
 MAX_PAYLOAD_SIZE = 1_048_576 # 1 MB — defence against OOM via crafted Content-Length
+REQUEST_TIMEOUT = 5 # seconds — SO_RCVTIMEO/SO_SNDTIMEO on accepted sockets
 
 # Queue directories per environment
 QUEUE_DIRS = {
@@ -91,6 +92,9 @@ class LightweightWebhookServer
         next unless ready
         
         client, = server.accept
+        timeval = [REQUEST_TIMEOUT, 0].pack('l_2')
+        client.setsockopt(Socket::SOL_SOCKET, Socket::SO_RCVTIMEO, timeval)
+        client.setsockopt(Socket::SOL_SOCKET, Socket::SO_SNDTIMEO, timeval)
         handle_request(client)
       rescue IOError, Errno::EBADF
         break unless @running

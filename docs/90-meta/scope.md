@@ -77,7 +77,18 @@ ZBNW‑NG je:
 
 ---
 
-## Co ZBNW‑NG NENÍ
+## Co ZBNW‑NG NENÍ (out of scope)
+
+Systém záměrně neřeší:
+
+- user interface nebo správu obsahu (CMS)
+- interakce uživatelů (likes, replies, follows)
+- real-time stream processing
+- obecný web crawling nebo scraping
+- distribuované nebo horizontálně škálované nasazení
+- moderování obsahu
+
+Detailně:
 
 ZBNW‑NG není:
 

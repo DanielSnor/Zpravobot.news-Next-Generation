@@ -30,6 +30,25 @@ za **oddělenou pozorovací vrstvu** — existuje mimo tok dat, neovlivňuje ho.
 
 ---
 
+## Zdravý systém a incident
+
+**Zdravý systém:**
+
+- cron běhy probíhají pravidelně bez fatálních chyb
+- posty se publikují odpovídající aktivitě sledovaných zdrojů
+- chyby jsou sporadické a neopakující se
+
+**Incident vyžadující zásah:**
+
+- žádná publikace déle než 60 minut
+- webhook server nereaguje
+- spike chyb napříč více zdroji naráz
+- queue backlog roste nebo je zaseknutá
+
+Podrobné thresholdy jsou v [sekci 5 — Alerting pravidla](#5-alerting-pravidla).
+
+---
+
 ## 1. Co se monitoruje
 
 | Oblast | OK stav | Problém |
@@ -62,7 +81,7 @@ Podrobné CLI viz [`cli.md`](cli.md).
 | 6 | Queue | Stáří a velikost IFTTT pending fronty, počet failed |
 | 7 | Processing | Čas od posledního publish, zdroje s chybami, IFTTT aktivita, activity trend |
 | 8 | Mastodon | Dostupnost Mastodon API (`/api/v1/instance`) |
-| 9 | ProblematicSources | Top 10 zdrojů s opakovanými chybami nebo dlouhým výpadkem |
+| 9 | ProblematicSources | Top 10 zdrojů s opakovanými chybami nebo dlouhým výpadkem (viz [konfigurace níže](#problematické-zdroje)) |
 | 10 | RecurringWarnings | Opakující se WARN patterny v logu (normalizované) |
 | 11 | RunnerHealth | Staleness a po sobě jdoucí crashe cron runneru |
 
@@ -105,7 +124,26 @@ Spouští se každých 5 minut jako cron job (`cron_command_listener.sh`).
 
 ---
 
-## 4. Alerting pravidla
+## 4. Konfigurace checků
+
+### Problematické zdroje
+
+Check **ProblematicSources** reportuje zdroje s `error_count > 0` nebo s `last_success` starším než threshold.
+
+Threshold vychází z `profile_sync.retention_days` zdroje: `retention_days / 3 * 24` hodin. Výchozí hodnota je 720 hodin (90 dní / 3 * 24).
+
+Pro zdroje, které **publikují výjimečně** a nemají smysl alertovat na idle, lze přidat do source configu:
+
+```yaml
+monitoring:
+  ok_if_idle: true  # nealertovat na chybějící aktivity; chyby se stále reportují
+```
+
+Tento flag přeskočí staleness kontrolu, ale chyby (`error_count > 0`) se reportují nadále.
+
+---
+
+## 5. Alerting pravidla
 
 ### Kritické alerty (❌)
 
@@ -128,7 +166,7 @@ Spouští se každých 5 minut jako cron job (`cron_command_listener.sh`).
 
 ---
 
-## 5. Vztah k ostatním nástrojům
+## 6. Vztah k ostatním nástrojům
 
 Monitoring říká „něco není v pořádku” — řešení je jinde:
 
@@ -141,7 +179,7 @@ I při selhání monitoringu musí pipeline fungovat normálně.
 
 ---
 
-## 6. Shrnutí
+## 7. Shrnutí
 
 Monitoring ZBNW‑NG odpovídá na:
 

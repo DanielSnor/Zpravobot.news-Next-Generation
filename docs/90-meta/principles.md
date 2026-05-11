@@ -192,6 +192,26 @@ nikoli konkrétní credentials, interní topologii či privátní provozní deta
 
 ---
 
+---
+
+## Design rules
+
+Tato pravidla jsou aplikací principů jako **konkrétní zábrany** — platí při každém code review a architektonické diskusi:
+
+| Pravidlo | Princip |
+|---|---|
+| Adapter nikdy nepublikuje — odpovědnost adaptera končí vrácením `Post` | P1, P2 |
+| Publisher nikdy nerozhoduje o obsahu — filtry a formátování patří do pipeline | P1, P3 |
+| Business logika je vždy v pipeline — adapter ani infrastruktura ji neobsahují | P1, P3 |
+| Nový zdroj = YAML konfigurace, ne změna kódu | P7 |
+| Chyba jednoho zdroje nepropaguje do ostatních | P4 |
+| Fallback je normální stav, ne výjimka | P4 |
+| Komplexitu přidávej až na základě reálné potřeby (evidence) | P5 |
+
+Porušení design rule bez zdokumentovaného důvodu v [`decisions.md`](decisions.md) = technický dluh.
+
+---
+
 ## ❌ Co do tohoto dokumentu nepatří
 
 - konkrétní rozhodnutí a trade‑offy (→ `decisions.md`)

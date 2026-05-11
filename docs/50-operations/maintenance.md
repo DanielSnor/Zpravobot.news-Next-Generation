@@ -9,14 +9,29 @@ Cílem je:
 
 ---
 
+## Cíl údržby
+
+Pravidelná údržba zajišťuje:
+
+- **stabilitu** — systém se nedegraduje postupně bez povšimnutí
+- **prevenci incidentů** — problémy jsou zachyceny dříve, než způsobí výpadek
+- **kontinuální provoz** — disk, DB, queue zůstávají v kontrolovaném stavu
+
+Bez pravidelné údržby se akumulují: nedetekované chyby, nárůst dat a zastaralá konfigurace.
+
+---
+
 ## Jak tento dokument používat
 
+Tento dokument je **checklist** — říká *co* a *kdy* kontrolovat.
+Konkrétní příkazy a postupy zásahů jsou v [`runbook.md`](runbook.md).
+
 Údržba vychází z dat poskytovaných monitoringem — viz [`../40-tools/monitoring.md`](../40-tools/monitoring.md).
-Monitoring říká *co* sledovat, maintenance říká *kdy a jak* reagovat.
+Monitoring říká *co sledovat průběžně*, maintenance říká *co kontrolovat pravidelně a plánovaně*.
 
 Údržba je rozdělena podle frekvence:
 
-- denní → rychlá kontrola
+- denní → rychlá kontrola (stejné kontroly jako runbook.md#1, ale prováděné rytmicky)
 - týdenní → kontrola trendů
 - měsíční → hlubší kontrola a cleanup
 
@@ -25,6 +40,7 @@ Monitoring říká *co* sledovat, maintenance říká *kdy a jak* reagovat.
 # ✅ 1. Denní údržba (5–10 minut)
 
 Navazuje na runbook – jde o lehké ověření zdraví systému.
+Konkrétní příkazy pro každou kontrolu → [`runbook.md`](runbook.md) sekce *1. Každodenní kontrola*.
 
 ---
 
@@ -235,34 +251,41 @@ Reaguj, pokud se objeví:
 
 # 🔧 5. Typické údržbové zásahy
 
-Používej při problémech:
-
 ---
 
 ## Reset zdroje
 
-Použij, když:
+**Co:** zdroj s rostoucím `error_count` nebo zaseknutým `last_check`
 
-- zdroj je „zaseknutý“
-- ignoruje nové příspěvky
+**Kdy:** zdroj ignoruje nové příspěvky přestože feed obsahuje obsah
+
+**Jak:** → viz [`runbook.md`](runbook.md) — sekce *3.3 Reset stavu zdroje*
 
 ---
 
 ## Restart komponent
 
-Použij, když:
+**Co:**
+- webhook server (nereaguje na `/health`)
+- IFTTT queue processor (backlog roste, processing se neděje)
 
-- webhook nefunguje
-- queue nepracuje
+**Kdy:** komponenta nereaguje, health endpoint neodpovídá, nebo monitoring hlásí CRITICAL
+
+**Jak:** → viz [`runbook.md`](runbook.md) — sekce *3.4 Restart běhových komponent*
 
 ---
 
 ## Cleanup dat
 
-Použij, když:
+**Co:**
+- logy starší než 7 dní (`runner_*.log`, `*.log`)
+- processed queue soubory starší než 3 dny
+- cache profily se vypršelým TTL (7 dní)
 
-- roste disk usage
-- data přestávají být relevantní
+**Kdy:** disk usage roste nad normál, nebo manuálně měsíčně
+
+**Jak:** většinou automaticky přes cron job (denně 4:00) — viz [`../30-infrastructure/cloudron.md`](../30-infrastructure/cloudron.md).
+Manuální cleanup → `docs-private/`
 
 ---
 

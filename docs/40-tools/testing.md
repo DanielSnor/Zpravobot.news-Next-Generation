@@ -139,6 +139,12 @@ Test runner používá jednotné stavy:
 Tyto stavy jsou úmyslně jednodušší než detailní frameworky — cílem je
 **rychlá orientace a automatizovatelný výsledek**.
 
+**OK výsledek:**
+
+- `unit` suite: 100 % pass — baseline před každým nasazením
+- `network` / `db` suite: pass (závislé na dostupnosti externích zdrojů)
+- `e2e` suite: ověřuje konkrétní flow na testovacím Mastodon účtu; interaktivní, spouštěno cíleně
+
 ---
 
 ## 7. Reportování

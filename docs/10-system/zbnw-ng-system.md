@@ -1,11 +1,25 @@
 # ZBNW‑NG System Overview
 
+## Runtime vrstvy (orientace)
+
+Pro rychlé pochopení runtime chování systému:
+
+- **Vstupní vrstva** – polling / webhook
+- **Koordinační vrstva** – orchestrator
+- **Integrační vrstva** – adaptery
+- **Doménová vrstva** – Post
+- **Zpracování** – pipeline
+- **Výstup** – publisher
+- **Stav** – state manager + DB
+
+---
+
 Tento dokument popisuje **funkční a strukturální přehled systému ZBNW‑NG**.
 Slouží jako technický popis toho, **jak systém funguje jako celek**, nikoli proč byl
 navržen tímto způsobem.
 
-- Význam použitých pojmů je definován v `docs/00-overview/terminologie.md`.
-- Důvody architektonických rozhodnutí jsou popsány v `docs/90-meta/decisions.md`.
+- Význam použitých pojmů je definován v [`terminologie.md`](../00-overview/terminologie.md).
+- Důvody architektonických rozhodnutí jsou popsány v [`decisions.md`](../90-meta/decisions.md).
 
 Tento dokument je záměrně odvozen **pouze z pozorovatelného stavu systému**
 (kód, konfigurace, běhový model) a **nevyžaduje znalost historických diskusí,
@@ -24,7 +38,7 @@ Dokument se zaměřuje na:
 
 Dokument **nepokrývá**:
 
-- důvody architektonických rozhodnutí (viz `decisions.md`)
+- důvody architektonických rozhodnutí (viz [`decisions.md`](../90-meta/decisions.md))
 - detailní infrastrukturu hostingu
 - výkonnostní ladění
 - historický vývoj systému
@@ -315,3 +329,59 @@ Tento dokument se vyhýbá:
 
 Tyto informace **nejsou nutné pro pochopení fungování systému** a nejsou
 součástí veřejné dokumentace.
+
+---
+
+## Doplňky (append-only)
+
+Tato sekce doplňuje runtime interpretaci bez změny původního textu.
+
+### Lifecycle Postu
+
+Z architektury vyplývá typický lifecycle:
+
+1. vznik v adapteru
+2. průchod pipeline
+3. rozhodnutí o publikaci
+4. případná publikace
+5. zápis do state
+
+Post neexistuje dlouhodobě – je to transient objekt jednoho běhu.
+
+### Idempotence a deduplikace
+
+Pipeline společně se state vrstvou zajišťuje:
+
+- že stejný obsah nebude publikován opakovaně
+- že opakovaný běh systému je bezpečný
+
+Tím vzniká idempotentní chování systému.
+
+### Oddělení synchronního a asynchronního vstupu
+
+Systém sjednocuje:
+
+- polling (synchronní zdroj dat)
+- webhook/fronta (asynchronní vstup)
+
+Oba vstupy konvergují do stejné pipeline, čímž je zachována konzistence zpracování.
+
+### Místo pro business logiku
+
+Veškerá doménová rozhodnutí patří do pipeline.
+
+To znamená:
+
+- adaptery pouze získávají data
+- orchestrator pouze řídí běh
+- publisher pouze publikuje
+
+### Failure model
+
+Architektura implicitně počítá s chybami:
+
+- selhání adapteru neovlivní ostatní zdroje
+- selhání pipeline kroku zastaví daný post
+- selhání publikace může vést k retry
+
+Systém je navržen jako best-effort pipeline.

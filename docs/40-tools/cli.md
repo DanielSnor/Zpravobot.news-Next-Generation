@@ -9,6 +9,19 @@ Použité pojmy jsou definovány v [`../00-overview/terminologie.md`](../00-over
 
 ---
 
+## Role CLI
+
+CLI slouží pro:
+
+- **manuální spouštění pipeline** — ověření po změně kódu, ad-hoc fetch jednoho zdroje
+- **správu zdrojů** — vytváření, pozastavení, reset stavu
+- **diagnostiku** — přehled logů, snapshot stavu instance, retry selhavších operací
+
+CLI spouští stejné runtime komponenty jako scheduler, ale ručně a výběrově.
+Normální provoz zajišťuje scheduler automaticky — CLI je pro výjimečné situace, debug a onboarding.
+
+---
+
 ## Přehled nástrojů
 
 | Nástroj | Umístění | Účel |

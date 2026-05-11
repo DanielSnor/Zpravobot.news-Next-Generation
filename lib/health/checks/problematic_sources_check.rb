@@ -55,6 +55,8 @@ module HealthChecks
         next false unless hours
 
         info = resolve_source_info(r['source_id'])
+        next false if info[:ok_if_idle]
+
         threshold = silence_threshold_hours(info[:retention_days])
         hours > threshold
       end.first(10)
@@ -128,15 +130,16 @@ module HealthChecks
     end
 
     def resolve_source_info_from_config(source_id)
-      config_dir = File.expand_path('../../config', __dir__)
+      config_dir = File.expand_path('../../../config', __dir__)
       @config_loader ||= Config::ConfigLoader.new(config_dir)
       config = @config_loader.load_source(source_id)
 
       account = config.dig(:target, :mastodon_account)
       platform = config[:platform]
       retention = config.dig(:profile_sync, :retention_days)
+      ok_if_idle = config.dig(:monitoring, :ok_if_idle) || false
 
-      { mastodon_account: account, platform: platform, retention_days: retention }
+      { mastodon_account: account, platform: platform, retention_days: retention, ok_if_idle: ok_if_idle }
     rescue StandardError
       nil
     end
@@ -145,10 +148,10 @@ module HealthChecks
       sid = source_id.downcase
 
       platform = KNOWN_PLATFORMS.find { |p| sid.end_with?("_#{p}") }
-      return { handle: nil, platform: nil, mastodon_account: nil, retention_days: nil } unless platform
+      return { handle: nil, platform: nil, mastodon_account: nil, retention_days: nil, ok_if_idle: false } unless platform
 
       base = sid[0...-("_#{platform}".length)]
-      return { handle: nil, platform: nil, mastodon_account: nil, retention_days: nil } if base.empty?
+      return { handle: nil, platform: nil, mastodon_account: nil, retention_days: nil, ok_if_idle: false } if base.empty?
 
       accounts = load_mastodon_accounts
       accounts.each do |account_id, account_data|
@@ -157,10 +160,10 @@ module HealthChecks
         prefix = "#{account_id}_"
         next unless base.start_with?(prefix) && base.length > prefix.length
 
-        return { handle: nil, platform: platform, mastodon_account: account_id, retention_days: nil }
+        return { handle: nil, platform: platform, mastodon_account: account_id, retention_days: nil, ok_if_idle: false }
       end
 
-      { handle: base, platform: platform, mastodon_account: nil, retention_days: nil }
+      { handle: base, platform: platform, mastodon_account: nil, retention_days: nil, ok_if_idle: false }
     end
 
     def silence_threshold_hours(retention_days)
@@ -171,7 +174,7 @@ module HealthChecks
     def load_mastodon_accounts
       return @mastodon_accounts if @mastodon_accounts
 
-      config_dir = File.expand_path('../../config', __dir__)
+      config_dir = File.expand_path('../../../config', __dir__)
       path = File.join(config_dir, 'mastodon_accounts.yml')
       @mastodon_accounts = YAML.safe_load(File.read(path)) || {}
     rescue StandardError

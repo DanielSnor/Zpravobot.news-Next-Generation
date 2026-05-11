@@ -1,9 +1,23 @@
 # Troubleshooting ZBNW‑NG
 
-Tento dokument obsahuje **konkrétní scénáře řešení problémů** v systému ZBNW‑NG.
-Organizováno podle domény problému.
+Tento dokument slouží pro **diagnostiku**: příznaky problémů, pravděpodobné příčiny a jak problém identifikovat.
+
+Pro konkrétní opravné kroky a provozní zásahy viz [`runbook.md`](runbook.md).
 
 Konkrétní příkazy s provozními cestami a přístupy → [`../../docs-private/30-infrastructure/cloudron.private.md`](../../docs-private/30-infrastructure/cloudron.private.md)
+
+---
+
+## Nejčastější problémy (quick start)
+
+| Symptom | Kde hledat |
+|---|---|
+| Žádné nové posty (všechny platformy) | Sekce Infrastruktura: Cron neběží / Webhook server |
+| Twitter/IFTTT nic nechodí | Sekce Twitter / IFTTT pipeline |
+| Zdroj je zaseknutý, ignoruje nové příspěvky | Sekce Infrastruktura: Zdroj zaseknutý |
+| Queue roste, backlog se nehýbe | Sekce Infrastruktura: Queue se hromadí |
+| Duplicitní text u FB/IG zdroje | Sekce Facebook / Instagram |
+| Nitter nedostupný nebo rate-limited | Sekce Nitter |
 
 ---
 
