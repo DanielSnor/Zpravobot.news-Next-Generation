@@ -130,7 +130,7 @@ module HealthChecks
     end
 
     def resolve_source_info_from_config(source_id)
-      config_dir = File.expand_path('../../config', __dir__)
+      config_dir = File.expand_path('../../../config', __dir__)
       @config_loader ||= Config::ConfigLoader.new(config_dir)
       config = @config_loader.load_source(source_id)
 
@@ -174,7 +174,7 @@ module HealthChecks
     def load_mastodon_accounts
       return @mastodon_accounts if @mastodon_accounts
 
-      config_dir = File.expand_path('../../config', __dir__)
+      config_dir = File.expand_path('../../../config', __dir__)
       path = File.join(config_dir, 'mastodon_accounts.yml')
       @mastodon_accounts = YAML.safe_load(File.read(path)) || {}
     rescue StandardError
