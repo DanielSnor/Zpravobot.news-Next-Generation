@@ -40,6 +40,7 @@ require_relative '../lib/syncers/bluesky_profile_syncer'
 require_relative '../lib/syncers/twitter_profile_syncer'
 require_relative '../lib/syncers/facebook_profile_syncer'
 require_relative '../lib/syncers/instagram_profile_syncer'
+require_relative '../lib/syncers/threads_profile_syncer'
 require_relative '../lib/syncers/youtube_profile_syncer'
 
 # ============================================================
@@ -377,10 +378,11 @@ class ProfileSyncRunner
         platform = social_profile[:platform].to_s
         handle   = social_profile[:handle].to_s
         case platform
-        when 'facebook' then return sync_facebook_for_rss(source, handle, sync_config)
-        when 'twitter'  then return sync_twitter_for_rss(source, handle, sync_config)
-        when 'bluesky'  then return sync_bluesky_for_rss(source, handle, sync_config)
+        when 'facebook'  then return sync_facebook_for_rss(source, handle, sync_config)
+        when 'twitter'   then return sync_twitter_for_rss(source, handle, sync_config)
+        when 'bluesky'   then return sync_bluesky_for_rss(source, handle, sync_config)
         when 'instagram' then return sync_instagram_for_rss(source, handle, sync_config)
+        when 'threads'   then return sync_threads_for_rss(source, handle, sync_config)
         end
       end
       @stats[:skipped] += 1
@@ -433,6 +435,8 @@ class ProfileSyncRunner
       sync_facebook_for_rss(source, handle, sync_config)
     when 'instagram'
       sync_instagram_for_rss(source, handle, sync_config)
+    when 'threads'
+      sync_threads_for_rss(source, handle, sync_config)
     when 'youtube'
       sync_youtube_for_rss(source, handle, sync_config)
     else
@@ -526,6 +530,31 @@ class ProfileSyncRunner
       mastodon_token: source.mastodon_token,
       browserless_token: browserless_token,
       instagram_cookies: instagram_cookies,
+      language: source.data.fetch(:language, 'cs'),
+      retention_days: sync_config.fetch(:retention_days, 90),
+      mentions_config: mentions_config,
+      source_platforms: @account_platforms[source.mastodon_account]
+    )
+
+    run_syncer(source, syncer, sync_config)
+  end
+
+  def sync_threads_for_rss(source, threads_handle, sync_config)
+    platform_config = @config_loader.load_platform_config('threads')
+    mentions_config = load_mentions_config('threads', { type: 'domain_suffix', value: 'threads.net' })
+
+    raw_token = platform_config.dig(:source, :browserless_token)
+    browserless_token = resolve_env_value(raw_token) || ENV['BROWSERLESS_TOKEN']
+    raise 'BROWSERLESS_TOKEN not configured' if browserless_token.nil? || browserless_token.empty?
+
+    global = @config_loader.load_global_config
+
+    syncer = Syncers::ThreadsProfileSyncer.new(
+      threads_handle: threads_handle,
+      browserless_api: global.dig(:infrastructure, :browserless_api),
+      mastodon_instance: source.mastodon_instance,
+      mastodon_token: source.mastodon_token,
+      browserless_token: browserless_token,
       language: source.data.fetch(:language, 'cs'),
       retention_days: sync_config.fetch(:retention_days, 90),
       mentions_config: mentions_config,

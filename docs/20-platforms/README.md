@@ -15,5 +15,6 @@ Společný základ (Post model, pipeline) je popsán v [`../10-system/zbnw-ng-sy
 - [`bluesky.md`](bluesky.md) — AT Protocol API, feed pagination, thread detection přes AT URI
 - [`facebook.md`](facebook.md) — RSS.app bridge, FacebookProcessor, profile sync přes Browserless
 - [`instagram.md`](instagram.md) — RSS.app bridge, InstagramProcessor (rekonstrukce captionů), profile sync přes Browserless
+- [`threads.md`](threads.md) — RSS.app bridge, ThreadsProcessor, profile sync bez cookies (veřejné profily)
 - [`youtube.md`](youtube.md) — YouTube RSS, media:group parsing, Shorts filtrování, maintenance window, profile sync
 - [`rss.md`](rss.md) — univerzální RSS/Atom, content modes, URL processing

@@ -6,7 +6,7 @@ class SourceGenerator
 
     # 1. Platforma
     data[:platform] = PLATFORM_MAP[ask_choice('Platforma', PLATFORM_OPTIONS)]
-    if %w[facebook instagram].include?(data[:platform])
+    if %w[facebook instagram threads].include?(data[:platform])
       data[:rss_source_type] = data[:platform]
       data[:platform] = 'rss'
     end
@@ -69,6 +69,8 @@ class SourceGenerator
       elsif data[:platform] == 'bluesky' && data[:bluesky_source_type] != 'feed'
         data[:profile_sync_enabled] = !data[:is_aggregator]
       elsif data[:platform] == 'rss' && data[:rss_source_type] == 'instagram'
+        data[:profile_sync_enabled] = !data[:is_aggregator]
+      elsif data[:platform] == 'rss' && data[:rss_source_type] == 'threads'
         data[:profile_sync_enabled] = !data[:is_aggregator]
       elsif data[:platform] == 'rss' && data[:rss_source_type] == 'facebook' && data[:handle]
         data[:profile_sync_enabled] = !data[:is_aggregator]
@@ -437,6 +439,7 @@ class SourceGenerator
     show_profile_sync = data[:platform] == 'twitter' ||
                         (data[:platform] == 'bluesky' && data[:bluesky_source_type] != 'feed') ||
                         (data[:platform] == 'rss' && data[:rss_source_type] == 'instagram') ||
+                        (data[:platform] == 'rss' && data[:rss_source_type] == 'threads') ||
                         (data[:platform] == 'rss' && data[:rss_source_type] == 'facebook' && data[:handle]) ||
                         data[:platform] == 'youtube'
 
@@ -480,6 +483,19 @@ class SourceGenerator
             data[:profile_sync_enabled] = false
           else
             data[:social_profile_platform] = 'instagram'
+            data[:social_profile_handle] = handle
+          end
+        end
+
+        if data[:platform] == 'rss' && data[:rss_source_type] == 'threads'
+          puts '  Threads handle (bez @, např. jirikostaf1)'
+          handle = ask('Threads handle', required: false).strip
+          handle = handle.gsub(/^@/, '')
+          if handle.empty?
+            puts '  ⚠️  Handle nevyplněn — sync profilu bude zakázán'
+            data[:profile_sync_enabled] = false
+          else
+            data[:social_profile_platform] = 'threads'
             data[:social_profile_handle] = handle
           end
         end

@@ -1,0 +1,70 @@
+# ============================================================
+# Zpravobot NG: Platform Configuration - Threads
+# ============================================================
+# Výchozí nastavení pro všechny Threads zdroje.
+# Přepisuje hodnoty z global.yml.
+# Jednotlivé zdroje mohou přepsat jakékoliv nastavení.
+# ============================================================
+
+# ------------------------------------------------------------
+# SOURCE - Konfigurace zdroje dat
+# ------------------------------------------------------------
+source:
+  # Browserless.io API token (sdílený s IG/FB)
+  # Threads profily jsou veřejné — pro RSS.app feed není potřeba.
+  # Potřeba pouze pro profile sync (ThreadsProfileSyncer).
+  browserless_token: "${BROWSERLESS_TOKEN}"
+
+# ------------------------------------------------------------
+# MENTIONS - Zpracování zmínek
+# ------------------------------------------------------------
+mentions:
+  type: "domain_suffix"
+  value: "threads.net"
+
+# ------------------------------------------------------------
+# FORMATTING - Formátování výstupu
+# ------------------------------------------------------------
+formatting:
+  platform_emoji: "🧵"
+  prefix_repost: "🧵🔁"
+  prefix_post_text: "\n"
+  prefix_post_url: "\n"
+
+# ------------------------------------------------------------
+# PROCESSING - Zpracování textu
+# ------------------------------------------------------------
+processing:
+  max_length: 500
+  trim_strategy: "smart"
+
+# ------------------------------------------------------------
+# SCHEDULING - Plánování stahování
+# ------------------------------------------------------------
+scheduling:
+  priority: normal
+  interval_minutes: 60
+  max_posts_per_run: 5
+
+# ------------------------------------------------------------
+# PROFILE SYNC - Synchronizace profilu
+# ------------------------------------------------------------
+# Threads profile sync používá Browserless.io API.
+# Threads profily jsou veřejné — cookies NEJSOU potřeba.
+#
+# Syncs:
+# - description/bio
+# - avatar image (profile photo, CDN cdninstagram.com)
+#
+# NESYNCS:
+# - banner/header (Threads nemá banner)
+# - website (Threads nepodporuje web URL na profilu)
+#
+profile_sync:
+  enabled: false
+  sync_avatar: true
+  sync_banner: false          # Threads nemá banner/cover
+  sync_bio: true
+  sync_fields: true
+  language: "cs"
+  retention_days: 90
