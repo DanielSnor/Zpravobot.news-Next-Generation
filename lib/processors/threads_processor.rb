@@ -9,13 +9,10 @@ module Processors
   # RSS.app vrací post jako jeden plochý blok textu bez \n.
   #
   # Threads je text-first platforma (limit 500 znaků) — posty jsou kratší
-  # a strukturovanější než IG captiony. Heuristiky jsou identické s IG,
-  # ale restore_long_paragraph_breaks se uplatní méně (krátké posty).
+  # a strukturovanější než IG captiony. restore_long_paragraph_breaks se
+  # uplatní méně (krátké posty).
   #
-  # Sdílené heuristiky (paragraph breaks, hashtag block, long paragraph,
-  # whitespace cleanup, RSS.app artefakty) jsou v Processors::SocialTextHeuristics.
-  # Threads-specific heuristiky (exclamation title, flag list, dash list,
-  # quote breaks) jsou identické s IG — zůstávají tady.
+  # Všechny heuristiky jsou v Processors::SocialTextHeuristics.
   #
   # Pořadí aplikace:
   #
@@ -61,34 +58,6 @@ module Processors
       result = restore_hashtag_block(result)
       result = cleanup_whitespace(result)
       result.strip
-    end
-
-    private
-
-    FLAG_EMOJI = /[\u{1F1E0}-\u{1F1FF}]{2}/
-
-    def restore_exclamation_title(text)
-      text.sub(/\A([^.!?\n]+!)\s+(?=[^[:lower:]\n])/) { "#{$1}\n\n" }
-    end
-
-    def restore_flag_list(text)
-      text = text.gsub(/(:[[:space:]]*)(#{FLAG_EMOJI})/) { ":\n\n#{$2}" }
-      text.split(/\n\n/).map do |para|
-        next para if para.scan(FLAG_EMOJI).length < 2
-        para.gsub(/([[:alpha:]])[^\S\n]+(#{FLAG_EMOJI})/) { "#{$1}\n#{$2}" }
-      end.join("\n\n")
-    end
-
-    def restore_list_breaks(text)
-      text = text.split(/\n\n/).map do |para|
-        next para if para.scan(/\s+-\s+/).length < 2
-        para.gsub(/([^\n])\s+-\s+/, "\\1\n- ")
-      end.join("\n\n")
-      text.gsub(/((?:^|\n)-[^\n]+)(\n)(?!-)/) { "#{$1}\n\n" }
-    end
-
-    def restore_quote_breaks(text)
-      text.gsub(/([.!?])\s+(?=[\x22"„][[:upper:]])/) { "#{$1}\n\n" }
     end
   end
 end
