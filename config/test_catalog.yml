@@ -54,6 +54,13 @@ tests:
     exit_code_reliable: true
     description: "Facebook em-dash duplicate removal"
 
+  test_threads_processor:
+    file: test/test_threads_processor.rb
+    category: unit
+    tags: [offline, processor, threads]
+    exit_code_reliable: true
+    description: "ThreadsProcessor: emoji splits, exclamation title, hashtag block, quote breaks"
+
   test_fb_truncated_urls:
     file: test/test_fb_truncated_urls.rb
     category: unit
