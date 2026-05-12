@@ -123,7 +123,7 @@ module Syncers
         raise "Browserless API error: #{response.code} #{response.message}"
       end
 
-      response.body.dup.encode('UTF-8', 'binary', invalid: :replace, undef: :replace)
+      response.body.b.encode('UTF-8', invalid: :replace, undef: :replace)
     end
 
     def parse_threads_profile(html)
@@ -202,9 +202,14 @@ module Syncers
         .gsub('\\"', '"')
         .gsub('\\/', '/')
         .gsub('\\\\', '\\')
-        .gsub(/\\u([0-9a-fA-F]{4})/) do
-          code = $1.to_i(16)
-          [code].pack('U')
+        .gsub(/\\u([Dd][89AaBb][0-9a-fA-F]{2})\\u([Dd][CcDdEeFf][0-9a-fA-F]{2})|\\u([0-9a-fA-F]{4})/) do
+          if $3
+            [$3.to_i(16)].pack('U')
+          else
+            high = $1.to_i(16)
+            low  = $2.to_i(16)
+            [0x10000 + (high - 0xD800) * 0x400 + (low - 0xDC00)].pack('U')
+          end
         end
     end
   end
