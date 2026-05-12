@@ -77,11 +77,12 @@ module Processors
     #   "Kimi získává pole position! Max hlásí comeback..." →
     #   "Kimi získává pole position!\n\nMax hlásí comeback..."
     #
-    # Lookahead [^[:lower:]\n] pokrývá velká písmena i emoji na začátku věty
-    # (např. "! 😳Věta" — emoji nesplní [[:upper:]], ale splní [^[:lower:]\n]).
+    # Lookahead [[:upper:]]|\p{Emoji}+[[:upper:]] pokrývá i případ kdy větu
+    # uvozuje prefix emoji těsně před velkým písmenem (např. "! 😳Věta").
+    # Emoji na konci titulku bez navazujícího textu (např. "! 🇬🇧") se nerozdělí.
     # ---------------------------------------------------------------------------
     def restore_exclamation_title(text)
-      text.sub(/\A([^.!?\n]+!)\s+(?=[^[:lower:]\n])/) { "#{$1}\n\n" }
+      text.sub(/\A([^.!?\n]+!)\s+(?=[[:upper:]]|\p{Emoji}+[[:upper:]])/) { "#{$1}\n\n" }
     end
 
     # ---------------------------------------------------------------------------
