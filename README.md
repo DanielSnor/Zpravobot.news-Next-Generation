@@ -175,7 +175,7 @@ config/                # Konfigurace
   mastodon_accounts.yml
   health_monitor.yml
 
-test/                  # 103 registrovaných testů (test_catalog.yml)
+test/                  # 83 registrovaných sad / 2217 testů (test_catalog.yml)
 db/                    # SQL migrace
 docs/           # Dokumentace
 ```
@@ -220,13 +220,13 @@ profile_sync:
 ## Testování
 
 ```bash
-ruby bin/run_tests.rb              # Unit testy (výchozí, 77 testů)
+ruby bin/run_tests.rb              # Unit testy (výchozí, 83 sad)
 ruby bin/run_tests.rb --all        # Unit + síťové + DB
 ruby bin/run_tests.rb --tag bluesky
 ruby bin/run_tests.rb --file edit
 ```
 
-Vlastní testovací framework (bez minitest/RSpec). Registr testů: `config/test_catalog.yml` — kategorie (unit/network/e2e/db), tagy, timeouty. Celkem 103 registrovaných testů.
+Vlastní testovací framework (bez minitest/RSpec). Registr testů: `config/test_catalog.yml` — kategorie (unit/network/e2e/db), tagy, timeouty. Celkem 83 registrovaných sad, 2217 testů.
 
 ---
 
@@ -369,7 +369,7 @@ Twitter uses a 5-tier fallback: IFTTT only → IFTTT + Syndication API → IFTTT
 
 ## Testing
 
-Custom test framework, 103 registered tests across unit / network / db / e2e categories. Run with `ruby bin/run_tests.rb`.
+Custom test framework, 83 registered suites / 2217 tests across unit / network / db / e2e categories. Run with `ruby bin/run_tests.rb`.
 
 ## License
 
