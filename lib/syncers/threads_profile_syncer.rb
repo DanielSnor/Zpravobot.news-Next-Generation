@@ -123,7 +123,7 @@ module Syncers
         raise "Browserless API error: #{response.code} #{response.message}"
       end
 
-      response.body.dup.force_encoding('UTF-8')
+      response.body.dup.encode('UTF-8', 'binary', invalid: :replace, undef: :replace)
     end
 
     def parse_threads_profile(html)
