@@ -192,6 +192,8 @@ class ProfileSyncRunner
       sync_facebook(source)
     when 'instagram'
       sync_instagram(source)
+    when 'threads'
+      sync_threads(source)
     when 'youtube'
       sync_youtube(source)
     when 'rss'
@@ -215,8 +217,10 @@ class ProfileSyncRunner
     id = source.id.to_s
     if id.end_with?('_facebook') || source.rss_source_type == 'facebook'
       'facebook'
-    elsif id.end_with?('_instagram')
+    elsif id.end_with?('_instagram') || source.rss_source_type == 'instagram'
       'instagram'
+    elsif id.end_with?('_threads') || source.rss_source_type == 'threads'
+      'threads'
     else
       'rss'
     end
@@ -364,6 +368,19 @@ class ProfileSyncRunner
     )
 
     run_syncer(source, syncer, sync_config)
+  end
+
+  def sync_threads(source)
+    sync_config = source.data.dig(:profile_sync) || {}
+    social_profile = sync_config[:social_profile]
+
+    handle = if social_profile && social_profile[:handle]
+      social_profile[:handle].to_s
+    else
+      source.id.to_s.sub(/_threads$/, '')
+    end
+
+    sync_threads_for_rss(source, handle, sync_config)
   end
 
   def sync_youtube(source)

@@ -40,6 +40,7 @@ module Syncers
       'bluesky'   => 'Bluesky',
       'facebook'  => 'FB',
       'instagram' => 'IG',
+      'threads'   => 'Threads',
       'youtube'   => 'YT',
       'rss'       => 'RSS'
     }.freeze
