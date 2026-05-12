@@ -448,13 +448,14 @@ class SourceGenerator
       puts '  Pokud má zdroj sociální profil, zadejte platformu a handle.'
       puts '  Synchronizuje avatar, bio a pole z dané platformy.'
       puts
-      platform_options = ['Twitter/X', 'Facebook', 'Instagram', 'YouTube', 'Bluesky', '(přeskočit)']
+      platform_options = ['Twitter/X', 'Facebook', 'Instagram', 'Threads', 'YouTube', 'Bluesky', '(přeskočit)']
       platform_choice = ask_choice('Sociální platforma', platform_options, default: '(přeskočit)')
 
       unless platform_choice == '(přeskočit)'
         platform_map = {
           'Twitter/X' => 'twitter', 'Facebook' => 'facebook',
-          'Instagram' => 'instagram', 'YouTube' => 'youtube', 'Bluesky' => 'bluesky'
+          'Instagram' => 'instagram', 'Threads' => 'threads',
+          'YouTube' => 'youtube', 'Bluesky' => 'bluesky'
         }
         data[:social_profile_platform] = platform_map[platform_choice]
         handle = ask('Handle (bez @, bez https://)', required: true)
