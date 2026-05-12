@@ -54,6 +54,13 @@ tests:
     exit_code_reliable: true
     description: "Facebook em-dash duplicate removal"
 
+  test_instagram_processor:
+    file: test/test_instagram_processor.rb
+    category: unit
+    tags: [offline, processor, instagram]
+    exit_code_reliable: true
+    description: "InstagramProcessor: emoji splits, exclamation title, flag list, dash list, hashtag block, quote breaks, RSS.app artifacts"
+
   test_threads_processor:
     file: test/test_threads_processor.rb
     category: unit
