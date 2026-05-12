@@ -68,6 +68,20 @@ tests:
     exit_code_reliable: true
     description: "ThreadsProcessor: emoji splits, exclamation title, hashtag block, quote breaks"
 
+  test_social_processors_fixtures:
+    file: test/test_social_processors_fixtures.rb
+    category: unit
+    tags: [offline, processor, facebook, instagram]
+    exit_code_reliable: true
+    description: "Regression na real-world RSS.app feedech: smoke, idempotence, pevná očekávání pro klíčové vzorky (U+FFFD, @-mention bug, sponsored-by)"
+
+  test_bio_formatting:
+    file: test/test_bio_formatting.rb
+    category: unit
+    tags: [offline, syncer]
+    exit_code_reliable: true
+    description: "Bio formatting: TcoExpander, enrich_mentions_config, format_bio_text (Twitter t.co + mention rewrite, Bluesky, mentions none)"
+
   test_fb_truncated_urls:
     file: test/test_fb_truncated_urls.rb
     category: unit
