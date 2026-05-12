@@ -65,6 +65,12 @@ test(
 )
 
 test(
+  "Exclamation title + emoji před druhou větou → odstavec za !",
+  "Tomáš Chorý byl vyřazen z kádru!\n\n😳Předseda oznámil uzavření Tribuny Sever. ❌",
+  processor.process("Tomáš Chorý byl vyřazen z kádru! 😳Předseda oznámil uzavření Tribuny Sever. ❌")
+)
+
+test(
   "! uprostřed textu (ne první věta) → beze změny",
   "Tohle je první věta. Druhá věta! Třetí věta.",
   processor.process("Tohle je první věta. Druhá věta! Třetí věta.")

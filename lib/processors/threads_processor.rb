@@ -68,7 +68,7 @@ module Processors
     FLAG_EMOJI = /[\u{1F1E0}-\u{1F1FF}]{2}/
 
     def restore_exclamation_title(text)
-      text.sub(/\A([^.!?\n]+!)\s+(?=[[:upper:]])/) { "#{$1}\n\n" }
+      text.sub(/\A([^.!?\n]+!)\s+(?=[^[:lower:]\n])/) { "#{$1}\n\n" }
     end
 
     def restore_flag_list(text)
