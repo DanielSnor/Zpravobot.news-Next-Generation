@@ -3,40 +3,8 @@
 require_relative 'social_text_heuristics'
 
 module Processors
-  # Threads Content Processor for Zpravobot Next Generation
-  #
-  # Rekonstruuje formátování Threads postů ztracené při RSS.app konverzi.
-  # RSS.app vrací post jako jeden plochý blok textu bez \n.
-  #
-  # Threads je text-first platforma (limit 500 znaků) — posty jsou kratší
-  # a strukturovanější než IG captiony. restore_long_paragraph_breaks se
-  # uplatní méně (krátké posty).
-  #
-  # Všechny heuristiky jsou v Processors::SocialTextHeuristics.
-  #
-  # Pořadí aplikace:
-  #
-  #   Sanity:
-  #   0. RSS.app encoding artefakty (U+FFFD → \n–)
-  #
-  #   Začátek / nadpis:
-  #   1. Emoji titulek → odstavec za uzavíracím emoji
-  #   2. První věta zakončená ! → nadpis, \n\n za ní
-  #
-  #   Struktura těla:
-  #   3. Vlajkový seznam → oddělit od textu, položky na vlastních řádcích
-  #   4. Seznam (- položka) → oddělit od okolního textu
-  #   5. Citace v uvozovkách → vlastní odstavec
-  #   6. Příliš dlouhý blok → rozdělit na větné hranici po 250 znacích
-  #
-  #   Konec:
-  #   7. Hashtag blok → vlastní odstavec
-  #
-  # Usage:
-  #   processor = Processors::ThreadsProcessor.new
-  #   formatted = processor.process("Drama! Antonelli P1, Norris P2. #f1")
-  #   # => "Drama!\n\nAntonelli P1, Norris P2.\n\n#f1"
-  #
+  # Threads Content Processor — viz Processors::SocialTextHeuristics.
+  # restore_long_paragraph_breaks se uplatní méně (Threads limit 500 znaků).
   class ThreadsProcessor
     include SocialTextHeuristics
 
