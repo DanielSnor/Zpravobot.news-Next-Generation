@@ -196,8 +196,8 @@ puts
 puts 'PLATFORM_LABELS constant'
 
 test(
-  'PLATFORM_LABELS contains all 6 platforms',
-  6,
+  'PLATFORM_LABELS contains all 7 platforms',
+  7,
   Syncers::BaseProfileSyncer::PLATFORM_LABELS.size
 )
 
