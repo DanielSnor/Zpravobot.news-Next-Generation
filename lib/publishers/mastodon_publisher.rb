@@ -251,15 +251,19 @@ module Publishers
 
         log "Downloading media from: #{try_url}#{label}"
 
-        response = HttpClient.download(try_url, max_size: max_size)
+        response = HttpClient.download(
+          try_url,
+          max_size: max_size,
+          on_failure: ->(r) {
+            geo = r['x-geo-forbidden'] == 'true' ? ' geo-blocked' : ''
+            log "Download failed (#{r.code}#{geo}): #{try_url}", level: :error
+          }
+        )
         if response == :too_large
           log "Skipping media over #{max_size / 1024 / 1024}MB: #{try_url}", level: :warn
           next
         end
-        unless response
-          log "Download failed: #{try_url}", level: :error
-          next
-        end
+        next unless response
 
         image_data = response.body
         if image_data.nil? || image_data.empty?

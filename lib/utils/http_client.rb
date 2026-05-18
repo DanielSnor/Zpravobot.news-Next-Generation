@@ -206,7 +206,7 @@ module HttpClient
   # @return [Net::HTTPResponse, nil] Response with body, or nil on failure
   def download(url, max_redirects: 3, max_size: nil, headers: {},
                open_timeout: DEFAULT_OPEN_TIMEOUT, read_timeout: DEFAULT_READ_TIMEOUT,
-               user_agent: DEFAULT_UA)
+               user_agent: DEFAULT_UA, on_failure: nil)
     uri = url.is_a?(URI) ? url : URI(url)
     redirect_count = 0
 
@@ -223,7 +223,10 @@ module HttpClient
         next
       end
 
-      return nil unless response.is_a?(Net::HTTPSuccess)
+      unless response.is_a?(Net::HTTPSuccess)
+        on_failure&.call(response)
+        return nil
+      end
       return :too_large if max_size && response.body && response.body.bytesize > max_size
 
       return response
