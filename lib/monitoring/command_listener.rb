@@ -21,6 +21,7 @@ require 'json'
 require 'fileutils'
 require 'time'
 
+require_relative '../utils/atomic_file'
 require_relative '../utils/http_client'
 require_relative '../utils/html_cleaner'
 require_relative '../publishers/mastodon_publisher'
@@ -481,7 +482,7 @@ module Monitoring
     def save_state(state)
       path = state_file_path
       FileUtils.mkdir_p(File.dirname(path))
-      File.write(path, JSON.pretty_generate(state))
+      Utils::AtomicFile.write(path, JSON.pretty_generate(state))
     rescue StandardError => e
       log "Chyba zápisu state souboru: #{e.message}", level: :error
     end

@@ -220,5 +220,4 @@ rescue StandardError => e
   exit 4
 ensure
   @lock_file&.close
-  File.delete(LOCKFILE) if File.exist?(LOCKFILE)
 end

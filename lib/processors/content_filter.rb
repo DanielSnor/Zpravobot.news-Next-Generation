@@ -39,7 +39,7 @@ module Processors
     def initialize(banned_phrases: [], required_keywords: [], content_replacements: [])
       @banned_phrases = Array(banned_phrases).compact
       @required_keywords = Array(required_keywords).compact
-      @content_replacements = Array(content_replacements).compact
+      @content_replacements = precompile_replacements(Array(content_replacements).compact)
     end
 
     # Check if text contains banned content
@@ -88,28 +88,10 @@ module Processors
 
       @content_replacements.each do |replacement_rule|
         next unless replacement_rule.is_a?(Hash)
-        
-        begin
-          pattern = replacement_rule[:pattern]
-          replacement = replacement_rule[:replacement] || ''
-          flags = replacement_rule[:flags] || 'gi'
-          literal = replacement_rule[:literal]
-
-          next unless pattern
-
-          # If literal, escape regex special characters
-          regex_pattern = literal ? Regexp.escape(pattern) : pattern
-
-          # Build regex options from flags
-          options = build_regex_options(flags)
-
-          regex = Regexp.new(regex_pattern, options)
-          
-          # Handle global flag - Ruby gsub is always global
-          result = result.gsub(regex, replacement)
-        rescue RegexpError
-          next
-        end
+        regex = replacement_rule[:_compiled]
+        next unless regex
+        replacement = replacement_rule[:replacement] || ''
+        result = result.gsub(regex, replacement)
       end
 
       result
@@ -238,6 +220,17 @@ module Processors
       when 'or'  then rules.any? { |r| matches_filter_rule?(str, r) }
       else false
       end
+    end
+
+    def precompile_replacements(rules)
+      rules.map do |rule|
+        next rule unless rule.is_a?(Hash) && rule[:pattern]
+        regex_pattern = rule[:literal] ? Regexp.escape(rule[:pattern]) : rule[:pattern]
+        options = build_regex_options(rule[:flags] || 'gi')
+        rule.merge(_compiled: Regexp.new(regex_pattern, options))
+      rescue RegexpError
+        nil
+      end.compact
     end
 
     # Build Ruby Regexp options from JavaScript-style flags

@@ -4,6 +4,7 @@ require 'net/http'
 require 'uri'
 require 'json'
 require_relative '../utils/http_client'
+require_relative '../utils/mime_detector'
 require_relative '../errors'
 require_relative '../support/loggable'
 
@@ -656,106 +657,19 @@ module Publishers
       body
     end
 
-    # Detect MIME type from actual file content (magic bytes), with extension fallback.
-    # Content-based detection is primary to avoid Mastodon rejecting uploads
-    # where URL extension doesn't match actual file format (common with CDNs).
+    # Delegate MIME detection and extension correction to Utils::MimeDetector
+    UNSUPPORTED_MEDIA_EXTENSIONS = Utils::MimeDetector::UNSUPPORTED_MEDIA_EXTENSIONS
+
     def detect_content_type(url, data)
-      # Primary: detect from actual content bytes
-      content_mime = detect_content_type_from_bytes(data)
-      return content_mime if content_mime
-
-      # Fallback: use URL extension
-      ext = File.extname(URI.parse(url).path).downcase rescue ''
-      ext_mime = mime_from_extension(ext)
-      return ext_mime if ext_mime
-
-      # Last resort
-      'application/octet-stream'
+      Utils::MimeDetector.detect_from_url(url, data)
     end
 
     def detect_content_type_from_path(path, data)
-      # Primary: detect from actual content bytes
-      content_mime = detect_content_type_from_bytes(data)
-      return content_mime if content_mime
-
-      # Fallback: use file extension
-      ext = File.extname(path).downcase
-      ext_mime = mime_from_extension(ext)
-      return ext_mime if ext_mime
-
-      # Last resort
-      'application/octet-stream'
+      Utils::MimeDetector.detect_from_path(path, data)
     end
 
-    # Detect MIME type from binary content using magic byte signatures.
-    # Returns nil if no known signature matches.
-    def detect_content_type_from_bytes(data)
-      return nil if data.nil? || data.empty?
-
-      bytes = data.b
-
-      if bytes[0..2] == "\xFF\xD8\xFF".b
-        'image/jpeg'
-      elsif bytes[0..7] == "\x89PNG\r\n\x1A\n".b
-        'image/png'
-      elsif bytes[0..5] == "GIF89a".b || bytes[0..5] == "GIF87a".b
-        'image/gif'
-      elsif bytes[0..3] == "RIFF".b && bytes.length > 11 && bytes[8..11] == "WEBP".b
-        'image/webp'
-      elsif bytes.length > 7 && bytes[4..7] == "ftyp".b
-        'video/mp4'
-      elsif bytes[0..3] == "\x1A\x45\xDF\xA3".b
-        'video/webm'
-      else
-        nil
-      end
-    end
-
-    # Extensions that Mastodon doesn't support as attachments — skip silently
-    UNSUPPORTED_MEDIA_EXTENSIONS = %w[.mp3 .wav .ogg .aac .flac .m4a .wma .opus .m3u8 .m3u].freeze
-
-    EXTENSION_MIME_MAP = {
-      '.jpg'  => 'image/jpeg',
-      '.jpeg' => 'image/jpeg',
-      '.png'  => 'image/png',
-      '.gif'  => 'image/gif',
-      '.webp' => 'image/webp',
-      '.mp4'  => 'video/mp4',
-      '.webm' => 'video/webm',
-      '.mov'  => 'video/quicktime'
-    }.freeze
-
-    MIME_EXTENSION_MAP = {
-      'image/jpeg'      => '.jpg',
-      'image/png'       => '.png',
-      'image/gif'       => '.gif',
-      'image/webp'      => '.webp',
-      'video/mp4'       => '.mp4',
-      'video/webm'      => '.webm',
-      'video/quicktime' => '.mov'
-    }.freeze
-
-    def mime_from_extension(ext)
-      EXTENSION_MIME_MAP[ext]
-    end
-
-    # Ensure filename extension matches the detected MIME type.
-    # If extension doesn't match content, replace it with the correct one.
     def correct_filename_extension(filename, content_type)
-      correct_ext = MIME_EXTENSION_MAP[content_type]
-      return filename unless correct_ext
-
-      current_ext = File.extname(filename).downcase
-      expected_exts = EXTENSION_MIME_MAP.select { |_, v| v == content_type }.keys
-
-      if expected_exts.include?(current_ext)
-        filename
-      elsif current_ext.empty?
-        "#{filename}#{correct_ext}"
-      else
-        basename = File.basename(filename, current_ext)
-        "#{basename}#{correct_ext}"
-      end
+      Utils::MimeDetector.correct_extension(filename, content_type)
     end
 
     def parse_error(response)

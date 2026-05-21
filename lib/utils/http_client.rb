@@ -211,8 +211,13 @@ module HttpClient
     redirect_count = 0
 
     loop do
-      response = get(uri, headers: headers, open_timeout: open_timeout,
-                         read_timeout: read_timeout, user_agent: user_agent)
+      # Use streaming GET when max_size is set — avoids loading entire body
+      # into memory just to check its size (critical for large video files).
+      response = max_size \
+        ? streaming_get(uri, headers: headers, open_timeout: open_timeout,
+                        read_timeout: read_timeout, user_agent: user_agent, max_size: max_size)
+        : get(uri, headers: headers, open_timeout: open_timeout,
+                   read_timeout: read_timeout, user_agent: user_agent)
 
       if response.is_a?(Net::HTTPRedirection)
         redirect_count += 1
@@ -223,14 +228,55 @@ module HttpClient
         next
       end
 
+      return :too_large if response == :too_large
+
       unless response.is_a?(Net::HTTPSuccess)
         on_failure&.call(response)
         return nil
       end
-      return :too_large if max_size && response.body && response.body.bytesize > max_size
 
       return response
     end
+  end
+
+  # Streaming GET — reads body in chunks, returns :too_large if limit exceeded.
+  # Uses a dedicated connection (no pool) so early abort is always safe.
+  # Content-Length header is checked first; falls back to byte-counting during read.
+  def streaming_get(uri, headers:, open_timeout:, read_timeout:, user_agent:, max_size:)
+    request = Net::HTTP::Get.new(uri)
+    request['User-Agent'] = user_agent
+    headers.each { |k, v| request[k] = v }
+
+    Net::HTTP.start(uri.host, uri.port,
+                    use_ssl:      uri.scheme == 'https',
+                    open_timeout: open_timeout,
+                    read_timeout: read_timeout) do |http|
+      http.request(request) do |resp|
+        # Non-success (redirects, errors): drain small body and return as-is
+        unless resp.is_a?(Net::HTTPSuccess)
+          resp.read_body
+          return resp
+        end
+
+        # Check Content-Length header first — skip body entirely if over limit
+        cl = resp['content-length']&.to_i
+        return :too_large if cl && cl > max_size
+
+        # Stream body in chunks, counting bytes
+        total  = 0
+        chunks = []
+        resp.read_body do |chunk|
+          total += chunk.bytesize
+          return :too_large if total > max_size
+          chunks << chunk
+        end
+
+        resp.instance_variable_set(:@body, chunks.join)
+        resp
+      end
+    end
+  rescue *STALE_CONNECTION_ERRORS
+    nil
   end
 
   # Perform a GET request with automatic retry and exponential backoff
