@@ -394,6 +394,11 @@ Charakteristiky:
 - přiřazení do skupiny je deterministické (z `source_id`)
 - každá skupina se synchronizuje **1× týdně** — rozložení zátěže na Nitter
 
+**Bio** prochází stejným zpracováním jako text postů:
+- t.co krátké URL jsou rozbaleny na skutečné adresy (`Utils::TcoExpander`)
+- Twitter mentions (`@username`) jsou transformovány do Mastodon formátu dle konfigurace
+  `mentions:` zdroje (lokální handle → `@account`, ostatní → `@handle@twitter.com`)
+
 Metadata pole Mastodon profilu obsahují odkaz na originální Twitter profil,
 příznak správy systémem (`spravuje:`) a nastavení retence (`retence:`).
 
