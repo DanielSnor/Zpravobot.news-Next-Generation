@@ -104,18 +104,9 @@ module Syncers
         uri = URI("#{api_base}/app.bsky.actor.getProfile")
         uri.query = URI.encode_www_form(actor: handle)
 
-        http = Net::HTTP.new(uri.host, uri.port)
-        http.use_ssl = true
-        http.open_timeout = 5
-        http.read_timeout = 10
-
-        request = Net::HTTP::Get.new(uri)
-        request['User-Agent'] = USER_AGENT
-        response = http.request(request)
-
+        response = HttpClient.get(uri, user_agent: USER_AGENT, open_timeout: 5, read_timeout: 10)
         if response.is_a?(Net::HTTPSuccess)
-          data = JSON.parse(response.body)
-          display_name = data['displayName']
+          display_name = JSON.parse(response.body)['displayName']
           return display_name if display_name && !display_name.empty?
         end
 

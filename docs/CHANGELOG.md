@@ -16,20 +16,63 @@ Tento changelog je psaný **chronologicky po měsících** (projekt nepoužívá
 ---
 
 ---
-## 2026-05 — RSS-social, opravy, model upgrade
-Květen se soustředil na **kvalitu výstupu** a stabilizaci „RSS‑social“ integrační větve (Facebook/Instagram přes RSS), plus několik oprav okrajových případů v enrichmentu a URL zpracování. Současně proběhl upgrade modelu pro Hrubota.
+## 2026-05 — Security hardening, výkonová revize, strukturální refaktoring
+
+Květen přinesl komplexní revizi codebase ve 6 vlnách: bezpečnostní záplaty, výkonové optimalizace a strukturální refaktoring zvyšující udržitelnost. Paralelně proběhla stabilizace RSS‑social větve a upgrade modelu.
 
 ### Přidáno
+- **Threads.net** — nová platforma via RSS.app bridge: `ThreadsProcessor` (sdílí heuristiky s IG přes `SocialTextHeuristics`), `ThreadsProfileSyncer` (bez cookies — veřejné profily), `config/platforms/threads.yml`, source wizard, 17 testů
 - FB heuristiky pro formátování RSS-social postů; sdílený modul; config overlay z platformové YAML
 - Podpora `playlist_id` pro YouTube zdroje sledující konkrétní playlist
+- **`BrowserlessProfileSyncer`** — sdílená základní třída pro Facebook, Instagram, Threads, YouTube syncery; `cookies:` + `safe_encoding:` parametry eliminují 4× duplikaci `fetch_page_via_browserless`
+- **`Utils::MimeDetector`** — magic bytes detekce MIME typů extrahována z `MastodonPublisher` jako reusable modul
+- **`lib/webhook/`** — webhook business logika přesunuta z `bin/ifttt_webhook.rb` do `lib/webhook/http_server.rb`, `routes/ifttt_route.rb`, `routes/broadcast_route.rb`, `signature_verifier.rb`, `queue_writer.rb`; `bin/` redukován na ~70 ř. entry pointu
+- `Utils::HttpClient#streaming_get` — chunked čtení s early abort při překročení `max_size`; `Content-Length` kontrola ještě před stažením těla
+- `monitoring.ok_if_idle: true` — flag pro příležitostné zdroje; přeskočí staleness check, chyby se stále reportují
+- Profile sync bio: mention rewrite + t.co expanze (`BaseProfileSyncer#format_bio_text`; `TwitterProfileSyncer` přepisuje `expand_short_urls` přes `Utils::TcoExpander`); `ConfigLoader#enrich_mentions_config` jako sdílený helper
+
+### Zabezpečení
+- **S1** — `bin/ifttt_webhook.rb`: startup warning pokud `IFTTT_AUTH_TOKEN` nebo `TLAMBOT_WEBHOOK_SECRET` nejsou nastaveny; server běží dál, ale přijímá neautentizované požadavky resp. neověřuje HMAC podpisy
+- **S2** — `secure_compare` helper přes `OpenSSL.fixed_length_secure_compare`; použit v IFTTT Bearer auth i v broadcast HMAC verifikaci (eliminuje ruční XOR loop)
+- **S3** — odstraněn `File.delete(LOCKFILE)` v `bin/run_zbnw.rb` — race condition vedoucí k duplicitním postům (kernel uvolní flock při exitu, identicky jako `sync_profiles.rb`)
+- **S4** — `ProfileFieldsBuilder`: `sanitize_field_value` + `sanitize_url_field` — strip HTML tagů, null bajtů a control chars; zamítnutí non-http(s) schémat (`javascript:`, `data:`, `vbscript:`); truncate na Mastodon limit 255 znaků; aplikováno na všechny hodnoty ze sociálních sítí vstupující do Mastodon profilových polí
+
+### Výkon
+- **P1** — `ConfigLoader`: `mastodon_accounts.yml` parsován jednou za životnost instance; `@mastodon_accounts_cache`; dopad ~500+ eliminovaných YAML parsů per cron cyklus
+- **P2** — `ContentFilter`: regexpy z `content_replacements` prekompilovány v `initialize` přes `precompile_replacements`; žádný `Regexp.new` per post
+- **P3** — `HttpClient#download`: streaming s `max_size` limitem; `:too_large` abort z `Content-Length` hlavičky nebo při accumulated bytes
+- **P4** — `Orchestrator`: sort před limitem — `.sort_by { published_at }.last(max_posts)` garantuje nejnovější posty bez ohledu na pořadí z adapteru
 
 ### Opraveno
 - Propagace `video_thumbnail_url` do raw dat při Syndication enrichmentu
 - Rozbité URL pro handles s tečkou (`@kimi.antonelli`)
 - Instagram: hashtags a `@mentions` na oddělených řádcích; tag blok podporuje mentions za hashtagy
+- Webhook: `SO_REUSEADDR` před `bind()` — eliminuje minutové crash smyčky při restartu po OOM pádu (port v TIME_WAIT stavu)
+- Webhook: `SO_RCVTIMEO`/`SO_SNDTIMEO` 5s na accepted socketech — fix crash loop při hanging IFTTT connection blokující main loop a health check
+- `MastodonPublisher`: download selhání nově loguje HTTP status kód a geo-blocked hint (`HttpClient.download` rozšířen o `on_failure` callback)
 
 ### Změněno
 - Hrubot: upgrade modelu na `claude-sonnet-4-6`
+
+### Instagram heuristiky
+- H2 — první věta zakončená `!` = nadpis; `\n\n` za ní (pattern `\A([^.!?\n]+!)\s+(?=[[:upper:]])`)
+- Emoji titulek — emoji na začátku řádku/textu jako dekorace nadpisu; oddělen `\n\n` od těla
+- Vlajkový seznam — `:` + vlajka → `\n\n` před blokem; vlajka → vlajka → `\n` mezi položkami (aktivuje se jen při 2+ vlajkách)
+- Citace v uvozovkách → vlastní odstavec (podporuje `"`, `"`, `„`)
+- Příliš dlouhé bloky (>250 znaků) — rekurzivní split na větné hranici + velké písmeno
+
+### Refaktoring (bez funkční změny)
+- **R1** — `PostProcessor` pipeline dokončena: `FormatterFactory` (nahrazuje 60 ř. platform switch), `FormatStep`; pipeline kroky 1–4 plně extrahované do `pipeline_steps.rb`
+- **R2** — Profile syncery: `sync_twitter` / `sync_twitter_for_rss` a 5 dalších párů sloučeny do jedné metody s keyword arg defaults (~140 ř. méně); `build_fields` rozšířen o `extra_data[:website]` v base třídě (eliminuje override v FB/IG)
+- **R3** — viz Přidáno: webhook → `lib/webhook/`
+- **R4** — `BlueskyPublisher` + `HrubotCommenter` přepsány na `HttpClient.post_json`; odstraněn duplicitní `Net::HTTP` boilerplate
+- **R5** — viz Přidáno: `Utils::MimeDetector`
+- **R6** — zbývající `File.write` přepnuty na `Utils::AtomicFile.write`: `command_listener.rb` (state cursor), `image_cache_manager.rb` (cache meta soubory)
+- **R7** — `TwitterNitterAdapter` (937 → ~320 ř.): extrahováno do 3 modulů `Twitter::TierDecision`, `Twitter::SyndicationPostBuilder`, `Twitter::NitterFetcher`; tier chain explicitní v `process_webhook` přes `||` operátor
+- **R8** — taby → 2-space indentace v `lib/orchestrator.rb`
+- **R9** — `BlueskyPublisher`: `refresh_session` přes `com.atproto.server.refreshSession`; automatický retry po `BlueskyAuthError` (expirovaný JWT); relevantní pro long-lived procesy (`--process-queue`, trending)
+- `SocialTextHeuristics` — sdílený modul pro `InstagramProcessor` a `ThreadsProcessor`; eliminuje duplikaci `restore_exclamation_title`, `restore_flag_list`, `restore_list_breaks`, `restore_quote_breaks`, `FLAG_EMOJI`
+- `Utils::TcoExpander` — konsolidace t.co expanderu z `twitter_nitter_adapter` a `twitter_tweet_processor` do sdíleného modulu; přidán volitelný `on_error` blok pro logování
 
 ---
 

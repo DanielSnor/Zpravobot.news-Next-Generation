@@ -26,19 +26,16 @@
 #   )
 #   syncer.sync!
 
-require_relative 'base_profile_syncer'
+require_relative 'browserless_profile_syncer'
 
 module Syncers
-  class ThreadsProfileSyncer < BaseProfileSyncer
-    BROWSERLESS_API = 'https://chrome.browserless.io/content'
+  class ThreadsProfileSyncer < BrowserlessProfileSyncer
     DEFAULT_MENTIONS_CONFIG = { 'type' => 'domain_suffix', 'value' => 'threads.net' }.freeze
 
-    attr_reader :threads_handle, :browserless_token
+    attr_reader :threads_handle
 
-    def initialize(threads_handle:, browserless_token:, browserless_api: nil, **base_opts)
+    def initialize(threads_handle:, **base_opts)
       @threads_handle = threads_handle.gsub(%r{^https?://[^/]+/}, '').gsub(/^@/, '')
-      @browserless_token = browserless_token
-      @browserless_api = (browserless_api || BROWSERLESS_API).chomp('/')
       super(**base_opts)
     end
 
@@ -70,23 +67,12 @@ module Syncers
       true
     end
 
-    def build_fields(handle, current_fields, extra_data = {})
-      labels = FIELD_LABELS[language]
-      source_platforms = extra_data[:source_platforms]
-
-      [
-        { name: field_prefix, value: build_profile_url(handle) },
-        { name: 'web:', value: extract_web_value(current_fields) },
-        { name: labels[:managed], value: build_managed_by_value(source_platforms: source_platforms) },
-        { name: labels[:retention], value: "#{retention_days} #{labels[:days]}" }
-      ]
-    end
-
     def fetch_platform_profile
       url = "https://www.threads.net/@#{threads_handle}"
       log "  Fetching #{url} via Browserless (no cookies — public profile)..."
 
-      html = fetch_page_via_browserless(url)
+      # Threads uses safe_encoding because response may contain non-UTF-8 byte sequences.
+      html = fetch_page_via_browserless(url, safe_encoding: true)
       parse_threads_profile(html)
     end
 
@@ -105,25 +91,6 @@ module Syncers
 
     def build_profile_url_fallback(handle)
       "https://www.threads.net/@#{handle}"
-    end
-
-    def fetch_page_via_browserless(url)
-      uri = URI("#{@browserless_api}?token=#{browserless_token}")
-
-      body = {
-        url: url,
-        gotoOptions: { waitUntil: 'networkidle2' }
-        # Záměrně bez cookies — Threads profily jsou veřejné
-      }
-
-      response = HttpClient.post_json(uri.to_s, body,
-                   open_timeout: 30, read_timeout: 60, user_agent: USER_AGENT)
-
-      unless response.is_a?(Net::HTTPSuccess)
-        raise "Browserless API error: #{response.code} #{response.message}"
-      end
-
-      response.body.b.encode('UTF-8', invalid: :replace, undef: :replace)
     end
 
     def parse_threads_profile(html)

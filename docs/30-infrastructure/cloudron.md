@@ -93,6 +93,8 @@ Citlivé části konfigurace (tokeny, cookies, secrets) **nesmí být commitnuty
 |---|---|---|
 | `IFTTT_PORT` | `env.sh` | Port webhook serveru (default 8089) |
 | `IFTTT_QUEUE_DIR` | `env.sh` | Cesta k IFTTT queue adresáři |
+| `IFTTT_AUTH_TOKEN` | `env.sh` | Bearer token pro autentizaci IFTTT webhooků — bez něj server přijímá neautentizované požadavky (warn při startu) |
+| `TLAMBOT_WEBHOOK_SECRET` | `env.sh` | HMAC secret pro broadcast webhook (Tlambot) — bez něj se podpis neověřuje (warn při startu) |
 | `NITTER_INSTANCE` | `env.sh` | URL Nitter instance |
 
 **Social cookies (profile sync)**

@@ -2,6 +2,10 @@
 
 require_relative 'content_filter'
 require_relative '../logging'
+require_relative '../formatters/twitter_formatter'
+require_relative '../formatters/bluesky_formatter'
+require_relative '../formatters/rss_formatter'
+require_relative '../formatters/youtube_formatter'
 
 # Pipeline Step Objects for PostProcessor
 # ========================================
@@ -358,6 +362,117 @@ module Processors
         domain_rewrites = global_config.dig(:url, :domain_rewrites) || []
         Processors::UrlProcessor.new(no_trim_domains: no_trim_domains, domain_rewrites: domain_rewrites)
       end
+    end
+  end
+
+  # ----------------------------------------------------------------
+  # FormatterFactory — platform-specific formatter construction
+  # ----------------------------------------------------------------
+  # Extracted from PostProcessor#create_formatter so it can be reused
+  # independently (e.g. in tests or future CLI tools) and to keep
+  # PostProcessor focused on pipeline orchestration.
+  module FormatterFactory
+    module_function
+
+    # Build the correct formatter for a given source config.
+    # @param source_config [Hash] Source configuration hash
+    # @return [Formatters::UniversalFormatter subclass] Configured formatter
+    def create(source_config)
+      platform   = source_config[:platform]&.to_sym || :twitter
+      formatting = source_config[:formatting] || {}
+      content    = source_config[:content]    || {}
+      processing = source_config[:processing] || {}
+
+      base = formatting.merge(
+        platform:    platform,
+        source_name: formatting[:source_name],
+        mentions:    source_config[:mentions]
+      )
+
+      case platform
+      when :twitter
+        thread = source_config[:thread_handling] || {}
+        Formatters::TwitterFormatter.new(base.merge(
+          thread_handling: {
+            show_indicator:     thread[:show_indicator] != false,
+            indicator_position: thread[:indicator_position] || 'end'
+          }
+        ))
+
+      when :bluesky
+        Formatters::BlueskyFormatter.new(base.merge(
+          url_domain_fixes: processing[:url_domain_fixes] || []
+        ))
+
+      when :rss
+        Formatters::RssFormatter.new(base.merge(
+          show_title_as_content:     content[:show_title_as_content]     || false,
+          combine_title_and_content: content[:combine_title_and_content] || false,
+          title_separator:           content[:title_separator]           || ' — ',
+          rss_source_type:           source_config[:rss_source_type]     || 'rss'
+        ))
+
+      when :youtube
+        Formatters::YouTubeFormatter.new(base.merge(
+          show_title_as_content:     content[:show_title_as_content]                          || false,
+          combine_title_and_content: content[:combine_title_and_content]                      || false,
+          title_separator:           content[:title_separator]                                || "\n\n",
+          description_max_lines:     content[:description_max_lines]                          || 3,
+          include_views:             content[:include_views] || content[:include_view_count]  || false
+        ))
+
+      else
+        Formatters::UniversalFormatter.new(base)
+      end
+    end
+  end
+
+  # ----------------------------------------------------------------
+  # Steps 3–4: Format + content replacements
+  # ----------------------------------------------------------------
+  # Encapsulates formatter construction, post formatting, and
+  # regex-based content replacements. Owns the per-source
+  # ContentFilter cache (replacements are precompiled once).
+  class FormatStep
+    def initialize
+      @filter_cache = {}  # source_id → ContentFilter with precompiled replacements
+    end
+
+    # @param ctx [ProcessingContext] ctx.formatted_text is set on return
+    # @return [nil] always continues (no early exit)
+    def call(ctx)
+      formatter      = FormatterFactory.create(ctx.source_config)
+      formatted_text = formatter.format(ctx.post)
+      ctx.options[:on_format]&.call(formatted_text)
+
+      ctx.formatted_text = apply_replacements(formatted_text, ctx.source_config)
+      nil
+    end
+
+    private
+
+    def apply_replacements(text, source_config)
+      replacements = (source_config.dig(:processing, :content_replacements) || [])
+      return text if replacements.empty?
+      return text unless defined?(Processors::ContentFilter)
+
+      # Preserve trailing URL through replacements (same invariant as Step 5 trimming)
+      url_suffix = nil
+      body       = text
+      if text =~ /([\r\n]+[^\n]*?https?:\/\/[^\s]+)\s*\z/
+        url_suffix = Regexp.last_match(0)
+        body       = text.sub(/([\r\n]+[^\n]*?https?:\/\/[^\s]+)\s*\z/, '')
+      end
+
+      filter = filter_for(source_config[:id], replacements)
+      result = filter.apply_replacements(body)
+      url_suffix ? "#{result}#{url_suffix}" : result
+    end
+
+    def filter_for(source_id, replacements)
+      @filter_cache[source_id] ||= Processors::ContentFilter.new(
+        content_replacements: replacements
+      )
     end
   end
 end

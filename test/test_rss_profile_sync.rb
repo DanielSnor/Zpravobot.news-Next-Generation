@@ -93,49 +93,50 @@ class FakeSyncer
   end
 end
 
-# Testable subclass — overrides syncer-building methods to inject FakeSyncer
+# Testable subclass — overrides sync_X methods to inject FakeSyncer instead of real syncers.
+# Methods accept the merged signature: (source, handle:, sync_config:).
 class TestableSyncRunner < ProfileSyncRunner
   attr_reader :last_twitter_handle, :last_bluesky_handle, :last_facebook_handle,
               :last_instagram_handle, :last_youtube_handle,
               :last_syncer, :delegated_to
 
   def initialize(options = {})
-    @options       = options
-    @config_loader = Config::ConfigLoader.new
-    @stats         = { synced: 0, skipped: 0, errors: 0 }
+    @options           = options
+    @config_loader     = Config::ConfigLoader.new
+    @stats             = { synced: 0, skipped: 0, errors: 0 }
     @account_platforms = Hash.new([])
-    @delegated_to  = nil
+    @delegated_to      = nil
   end
 
-  def sync_twitter_for_rss(source, handle, sync_config)
+  def sync_twitter(source, handle: source.source_handle, sync_config: source.data.dig(:profile_sync) || {})
     @delegated_to        = :twitter
     @last_twitter_handle = handle
     @last_syncer         = FakeSyncer.new(handle: handle)
     run_syncer(source, @last_syncer, sync_config)
   end
 
-  def sync_bluesky_for_rss(source, handle, sync_config)
+  def sync_bluesky(source, handle: source.source_handle, sync_config: source.data.dig(:profile_sync) || {})
     @delegated_to        = :bluesky
     @last_bluesky_handle = handle
     @last_syncer         = FakeSyncer.new(handle: handle)
     run_syncer(source, @last_syncer, sync_config)
   end
 
-  def sync_facebook_for_rss(source, handle, sync_config)
+  def sync_facebook(source, handle: source.source_handle, sync_config: source.data.dig(:profile_sync) || {})
     @delegated_to         = :facebook
     @last_facebook_handle = handle
     @last_syncer          = FakeSyncer.new(handle: handle)
     run_syncer(source, @last_syncer, sync_config)
   end
 
-  def sync_instagram_for_rss(source, handle, sync_config)
+  def sync_instagram(source, handle: nil, sync_config: source.data.dig(:profile_sync) || {})
     @delegated_to          = :instagram
     @last_instagram_handle = handle
     @last_syncer           = FakeSyncer.new(handle: handle)
     run_syncer(source, @last_syncer, sync_config)
   end
 
-  def sync_youtube_for_rss(source, handle, sync_config)
+  def sync_youtube(source, handle: nil, sync_config: source.data.dig(:profile_sync) || {})
     @delegated_to        = :youtube
     @last_youtube_handle = handle
     @last_syncer         = FakeSyncer.new(handle: handle)
@@ -180,7 +181,7 @@ src = FakeRssSource.new(data: {
   profile_sync: { enabled: true, social_profile: { platform: 'twitter', handle: 'Aktualnecz' } }
 })
 runner.send(:sync_rss, src)
-test 'twitter social_profile → delegates to sync_twitter_for_rss', :twitter, runner.delegated_to
+test 'twitter social_profile → delegates to sync_twitter', :twitter, runner.delegated_to
 test 'twitter handle passed correctly', 'Aktualnecz', runner.last_twitter_handle
 
 # Bluesky
@@ -189,7 +190,7 @@ src = FakeRssSource.new(data: {
   profile_sync: { enabled: true, social_profile: { platform: 'bluesky', handle: 'denikreferendum.cz' } }
 })
 runner.send(:sync_rss, src)
-test 'bluesky social_profile → delegates to sync_bluesky_for_rss', :bluesky, runner.delegated_to
+test 'bluesky social_profile → delegates to sync_bluesky', :bluesky, runner.delegated_to
 test 'bluesky handle passed correctly', 'denikreferendum.cz', runner.last_bluesky_handle
 
 # Facebook
@@ -198,7 +199,7 @@ src = FakeRssSource.new(data: {
   profile_sync: { enabled: true, social_profile: { platform: 'facebook', handle: 'auto.cz' } }
 })
 runner.send(:sync_rss, src)
-test 'facebook social_profile → delegates to sync_facebook_for_rss', :facebook, runner.delegated_to
+test 'facebook social_profile → delegates to sync_facebook', :facebook, runner.delegated_to
 test 'facebook handle passed correctly', 'auto.cz', runner.last_facebook_handle
 
 # No social_profile → skip
@@ -214,7 +215,7 @@ src = FakeRssSource.new(data: {
   profile_sync: { enabled: true, social_profile: { platform: 'instagram', handle: 'ikoktejl' } }
 })
 runner.send(:sync_rss, src)
-test 'instagram social_profile → delegates to sync_instagram_for_rss', :instagram, runner.delegated_to
+test 'instagram social_profile → delegates to sync_instagram', :instagram, runner.delegated_to
 test 'instagram handle passed correctly', 'ikoktejl', runner.last_instagram_handle
 
 # YouTube
@@ -223,7 +224,7 @@ src = FakeRssSource.new(data: {
   profile_sync: { enabled: true, social_profile: { platform: 'youtube', handle: 'computer_zive' } }
 })
 runner.send(:sync_rss, src)
-test 'youtube social_profile → delegates to sync_youtube_for_rss', :youtube, runner.delegated_to
+test 'youtube social_profile → delegates to sync_youtube', :youtube, runner.delegated_to
 test 'youtube handle passed correctly', 'computer_zive', runner.last_youtube_handle
 
 # Unknown platform → skip
@@ -273,14 +274,14 @@ test 'sync_fields true forwarded',  true,  fake.sync_opts[:sync_fields]
 # ============================================================
 puts "\n--- Section 5: language and retention_days defaults ---"
 
-# We can test this by inspecting sync_twitter_for_rss — it reads from sync_config
+# We can test this by inspecting sync_twitter — it reads from sync_config
 # Use a real (non-stub) runner and stub out the syncer init to capture params
 syncer_init_args = nil
 runner = TestableSyncRunner.new(dry_run: true)
 
-# Override sync_twitter_for_rss to capture what args would be passed
-runner.define_singleton_method(:sync_twitter_for_rss) do |source, handle, sc|
-  syncer_init_args = { language: sc.fetch(:language, 'cs'), retention_days: sc.fetch(:retention_days, 90) }
+# Override sync_twitter to capture what sync_config args would be passed
+runner.define_singleton_method(:sync_twitter) do |_source, handle: nil, sync_config: {}|
+  syncer_init_args = { language: sync_config.fetch(:language, 'cs'), retention_days: sync_config.fetch(:retention_days, 90) }
   @stats[:skipped] += 1
 end
 

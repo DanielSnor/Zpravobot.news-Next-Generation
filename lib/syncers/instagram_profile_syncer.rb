@@ -30,21 +30,18 @@
 #   )
 #   syncer.sync!
 
-require_relative 'base_profile_syncer'
+require_relative 'browserless_profile_syncer'
 
 module Syncers
-  class InstagramProfileSyncer < BaseProfileSyncer
-    BROWSERLESS_API = 'https://chrome.browserless.io/content'
+  class InstagramProfileSyncer < BrowserlessProfileSyncer
     DEFAULT_MENTIONS_CONFIG = { 'type' => 'domain_suffix', 'value' => 'instagram.com' }.freeze
     DEFAULT_INSTAGRAM_COOKIES = [].freeze
 
-    attr_reader :instagram_handle, :browserless_token, :instagram_cookies
+    attr_reader :instagram_handle, :instagram_cookies
 
-    def initialize(instagram_handle:, browserless_token:, instagram_cookies:, browserless_api: nil, **base_opts)
-      @instagram_handle = instagram_handle.gsub(%r{^https?://[^/]+/}, '').gsub(/^@/, '')
-      @browserless_token = browserless_token
+    def initialize(instagram_handle:, instagram_cookies:, **base_opts)
+      @instagram_handle  = instagram_handle.gsub(%r{^https?://[^/]+/}, '').gsub(/^@/, '')
       @instagram_cookies = instagram_cookies || DEFAULT_INSTAGRAM_COOKIES
-      @browserless_api = (browserless_api || BROWSERLESS_API).chomp('/')
       super(**base_opts)
     end
 
@@ -82,33 +79,11 @@ module Syncers
       true
     end
 
-    # Instagram přebírá website z profilu pokud je k dispozici
-    def build_fields(handle, current_fields, extra_data = {})
-      labels = FIELD_LABELS[language]
-      instagram_website = extra_data[:website]
-      source_platforms = extra_data[:source_platforms]
-
-      web_value = if instagram_website && !instagram_website.empty?
-                    instagram_website.chomp('/')
-                  else
-                    extract_web_value(current_fields)
-                  end
-
-      profile_url = build_profile_url(handle)
-
-      [
-        { name: field_prefix, value: profile_url },
-        { name: 'web:', value: web_value },
-        { name: labels[:managed], value: build_managed_by_value(source_platforms: source_platforms) },
-        { name: labels[:retention], value: "#{retention_days} #{labels[:days]}" }
-      ]
-    end
-
     def fetch_platform_profile
       url = "https://www.instagram.com/#{instagram_handle}/"
       log "  Fetching #{url} via Browserless..."
 
-      html = fetch_page_via_browserless(url)
+      html = fetch_page_via_browserless(url, cookies: instagram_cookies)
       parse_instagram_profile(html)
     end
 
@@ -148,29 +123,6 @@ module Syncers
 
     def build_profile_url_fallback(handle)
       "https://instagram.com/#{handle}"
-    end
-
-    # ============================================
-    # Instagram Scraping via Browserless
-    # ============================================
-
-    def fetch_page_via_browserless(url)
-      uri = URI("#{@browserless_api}?token=#{browserless_token}")
-
-      body = {
-        url: url,
-        cookies: instagram_cookies,
-        gotoOptions: { waitUntil: 'networkidle2' }
-      }
-
-      response = HttpClient.post_json(uri.to_s, body,
-                   open_timeout: 30, read_timeout: 60, user_agent: USER_AGENT)
-
-      unless response.is_a?(Net::HTTPSuccess)
-        raise "Browserless API error: #{response.code} #{response.message}"
-      end
-
-      response.body.dup.force_encoding('UTF-8')
     end
 
     def parse_instagram_profile(html)

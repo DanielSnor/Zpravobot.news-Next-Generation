@@ -150,20 +150,50 @@ require_relative '../lib/processors/post_processor'
 
 # Mock Post class
 class MockPost
-  attr_accessor :id, :url, :text, :title, :is_reply, :is_thread_post, 
-                :is_repost, :is_quote, :media, :author
-  
+  attr_accessor :id, :url, :text, :title, :is_reply, :is_thread_post,
+                :is_repost, :is_quote, :media, :author, :poll_data,
+                :published_at, :quoted_post, :reposted_by, :reply_to,
+                :has_video, :raw, :thread_context, :reply_to_handle,
+                :platform
+
   def initialize(attrs = {})
-    @id = attrs[:id] || 'test_123'
-    @url = attrs[:url] || 'https://example.com/post/123'
-    @text = attrs[:text] || 'Test post content'
-    @title = attrs[:title]
-    @is_reply = attrs[:is_reply] || false
+    @id             = attrs[:id]             || 'test_123'
+    @url            = attrs[:url]            || 'https://example.com/post/123'
+    @text           = attrs[:text]           || 'Test post content'
+    @title          = attrs[:title]
+    @is_reply       = attrs[:is_reply]       || false
     @is_thread_post = attrs[:is_thread_post] || false
-    @is_repost = attrs[:is_repost] || false
-    @is_quote = attrs[:is_quote] || false
-    @media = attrs[:media] || []
+    @is_repost      = attrs[:is_repost]      || false
+    @is_quote       = attrs[:is_quote]       || false
+    @media          = attrs[:media]          || []
+    @poll_data      = attrs[:poll_data]
+    @published_at   = attrs[:published_at]
+    @quoted_post    = attrs[:quoted_post]
+    @reposted_by    = attrs[:reposted_by]
+    @reply_to       = attrs[:reply_to]
+    @has_video      = attrs[:has_video]      || false
+    @raw            = attrs[:raw]
+    @thread_context = attrs[:thread_context]
+    @reply_to_handle = attrs[:reply_to_handle]
+    @platform       = attrs[:platform]       || 'twitter'
+    @author         = attrs[:author]
   end
+
+  def has_media?  = @media&.any?
+  def has_video?  = @has_video == true
+  def has_poll?   = !@poll_data.nil? && @poll_data[:choices]&.any?
+  def has_title?  = !@title.nil? && !@title.empty?
+  def has_text?   = !@text.nil? && !@text.empty?
+  def twitter?    = @platform == 'twitter'
+  def bluesky?    = @platform == 'bluesky'
+  def rss?        = @platform == 'rss'
+  def youtube?    = @platform == 'youtube'
+  def author_name = @author.respond_to?(:name) ? @author.name : @author.to_s
+  def author_username = @author.respond_to?(:username) ? @author.username : ''
+  def thread_context_loaded? = !@thread_context.nil?
+  def self_repost?   = false
+  def self_quote?    = false
+  def external_reply? = @is_reply && !@is_thread_post
 end
 
 # Test runner

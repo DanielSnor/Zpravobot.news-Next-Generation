@@ -82,6 +82,7 @@ module Processors
       @dedup_step          = DeduplicationStep.new(state_manager)
       @edit_step           = EditDetectionStep.new(state_manager, true, logger: logger)
       @filter_step         = ContentFilterStep.new
+      @format_step         = FormatStep.new
       @url_step            = UrlProcessingStep.new(config_loader)
       @media_enrich_step   = MediaEnrichmentStep.new(state_manager, dry_run: dry_run, logger: logger)
 
@@ -142,15 +143,9 @@ module Processors
         return Result.new(status: :skipped, skipped_reason: skip_reason)
       end
 
-      # Step 3: Format post
-      formatter = create_formatter(source_config)
-      formatted_text = formatter.format(post)
-      
-      # Callback for verbose logging
-      options[:on_format]&.call(formatted_text)
-
-      # Step 4: Apply content replacements
-      formatted_text = apply_content_replacements(formatted_text, source_config)
+      # Steps 3–4: Format + apply content replacements
+      @format_step.call(ctx)
+      formatted_text = ctx.formatted_text
 
       # Step 5: Process content (trim, normalize)
       fallback_url_for_trim = build_trim_fallback_url(post, source_config)
@@ -290,12 +285,13 @@ module Processors
         return nil
       end
 
-      # Format the new text
-      formatter = create_formatter(source_config)
-      formatted_text = formatter.format(post)
-      options[:on_format]&.call(formatted_text)
-
-      formatted_text = apply_content_replacements(formatted_text, source_config)
+      # Format the new text (Steps 3–4)
+      update_ctx = ProcessingContext.new(
+        post: post, source_config: source_config, options: options,
+        source_id: source_id, post_id: mastodon_id, platform: source_config[:platform]
+      )
+      @format_step.call(update_ctx)
+      formatted_text = update_ctx.formatted_text
       fallback_url_for_trim = build_trim_fallback_url(post, source_config)
       processed_text = process_content(formatted_text, source_config, fallback_url: fallback_url_for_trim)
       processed_text = @url_step.call(processed_text, source_config)
@@ -374,98 +370,6 @@ module Processors
       { success: false, error: 'edit_not_allowed' }
     rescue StandardError => e
       { success: false, error: e.message }
-    end
-
-    # ============================================
-    # Step 3: Formatting
-    # ============================================
-
-    def create_formatter(source_config)
-      platform = source_config[:platform]&.to_sym || :twitter
-      formatting = source_config[:formatting] || {}
-      content = source_config[:content] || {}
-      processing = source_config[:processing] || {}
-
-      # Build formatter config
-      config = formatting.merge(
-        platform: platform,
-        source_name: formatting[:source_name],
-        mentions: source_config[:mentions]
-      )
-
-      # Use platform-specific formatter (which delegates to UniversalFormatter)
-      case platform
-      when :twitter
-        # Add thread handling options
-        thread_config = source_config[:thread_handling] || {}
-        config[:thread_handling] = {
-          show_indicator: thread_config[:show_indicator] != false,
-          indicator_position: thread_config[:indicator_position] || 'end'
-        }
-        Formatters::TwitterFormatter.new(config)
-
-      when :bluesky
-        # Add processing options (url_domain_fixes)
-        config[:url_domain_fixes] = processing[:url_domain_fixes] || []
-        Formatters::BlueskyFormatter.new(config)
-
-      when :rss
-        # Add content options and rss_source_type
-        rss_config = config.merge(
-          show_title_as_content: content[:show_title_as_content] || false,
-          combine_title_and_content: content[:combine_title_and_content] || false,
-          title_separator: content[:title_separator] || ' — ',
-          rss_source_type: source_config[:rss_source_type] || 'rss'
-        )
-        Formatters::RssFormatter.new(rss_config)
-
-      when :youtube
-        # Add content options
-        yt_config = config.merge(
-          show_title_as_content: content[:show_title_as_content] || false,
-          combine_title_and_content: content[:combine_title_and_content] || false,
-          title_separator: content[:title_separator] || "\n\n",
-          description_max_lines: content[:description_max_lines] || 3,
-          include_views: content[:include_views] || content[:include_view_count] || false
-        )
-        Formatters::YouTubeFormatter.new(yt_config)
-        
-      else
-        # Fallback to UniversalFormatter directly
-        Formatters::UniversalFormatter.new(config)
-      end
-    end
-
-    # ============================================
-    # Step 4: Content Replacements
-    # ============================================
-
-    def apply_content_replacements(text, source_config)
-      processing = source_config[:processing] || {}
-      replacements = processing[:content_replacements] || []
-
-      return text if replacements.empty?
-      return text unless defined?(Processors::ContentFilter)
-
-      # Extract trailing URL (same invariant as Step 5: URL is untouchable)
-      url_suffix = nil
-      text_for_processing = text
-      if text =~ /([\r\n]+[^\n]*?https?:\/\/[^\s]+)\s*\z/
-        url_suffix = $1
-        text_for_processing = text.sub(/([\r\n]+[^\n]*?https?:\/\/[^\s]+)\s*\z/, '')
-      end
-
-      source_id = source_config[:id]
-      filter = get_content_filter(source_id, replacements)
-      result = filter.apply_replacements(text_for_processing)
-
-      url_suffix ? "#{result}#{url_suffix}" : result
-    end
-
-    def get_content_filter(source_id, replacements)
-      @content_filters[source_id] ||= Processors::ContentFilter.new(
-        content_replacements: replacements
-      )
     end
 
     # ============================================
