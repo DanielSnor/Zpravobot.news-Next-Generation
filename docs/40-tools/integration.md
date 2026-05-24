@@ -187,6 +187,22 @@ Musí:
 - omezovat payload
 - chránit se proti zneužití
 
+### 6.1 Webhook server — bezpečnostní model
+
+Webhook server (port 8089) obsluhuje dva endpointy s **odlišnými** mechanismy. Časté nedorozumění pramení z toho, že `cron_command_listener.sh` spouští oba ve stejném kroku, ač fungují opačně:
+
+| Komponenta | Model | Trigger | Hradlo |
+|---|---|---|---|
+| **Údržbot** (`command_listener.rb`) | Pull (polling) | cron tahá Mastodon notifications API | cron — bez něj se nic neděje |
+| **Tlambot** (`process_broadcast_queue.rb`) | Push (webhook) | Mastodon volá endpoint při postu `@tlambot` | HMAC podpis — ne cron |
+
+**Klíčový rozdíl:** u Tlambota zapisuje do `queue/broadcast/pending/` **příchozí webhook** (okamžitě, nezávisle na cronu), nikoli interní nástroj. Cron frontu jen konzumuje a slepě věří jejímu obsahu. Jediná autentizace toho, co se do fronty dostane, je tedy HMAC verifikace na vstupu — viz ADR-055.
+
+Bezpečnostní model webhooku stojí na dvou vrstvách:
+
+- **Bind adresa** (`IFTTT_BIND="0.0.0.0"`) — server musí poslouchat na všech rozhraních kontejneru. Nginx běží na **hostu** a proxuje `wh.zpravobot.news → container-ip:8089` přes Docker bridge síť; na bridge IP (`172.x.x.x`) se dostane pouze pokud je bind `0.0.0.0`. Hodnota `127.0.0.1` je **nesprávná** — loopback kontejneru je izolovaný, nginx na hostu na něj nedosáhne a žádný webhook neprojde. Bind se čte při startu, změna vyžaduje restart procesu.
+- **HMAC** (`TLAMBOT_WEBHOOK_SECRET`) — sdílené tajemství, musí sedět s podpisovým klíčem v Mastodon adminu. Secret se neposílá; Mastodon posílá jen `X-Hub-Signature` odvozenou z těla. Oba secrety (`IFTTT_AUTH_TOKEN`, `TLAMBOT_WEBHOOK_SECRET`) jsou povinné — server bez nich nenastartuje.
+
 ---
 
 ## 7. Přehled integračních nástrojů

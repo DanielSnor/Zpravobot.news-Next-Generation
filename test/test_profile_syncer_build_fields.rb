@@ -196,8 +196,8 @@ puts
 puts 'PLATFORM_LABELS constant'
 
 test(
-  'PLATFORM_LABELS contains all 6 platforms',
-  6,
+  'PLATFORM_LABELS contains all 7 platforms',
+  7,
   Syncers::BaseProfileSyncer::PLATFORM_LABELS.size
 )
 
@@ -212,6 +212,137 @@ test(
   'FB',
   Syncers::BaseProfileSyncer::PLATFORM_LABELS['facebook']
 )
+
+# ==============================================================================
+# sanitize_field_value — strips HTML, control chars, truncates
+# ==============================================================================
+
+puts 'sanitize_field_value'
+
+s = twitter_syncer
+
+test 'plain text unchanged',
+  'hello world',
+  s.send(:sanitize_field_value, 'hello world')
+
+test 'strips HTML tags',
+  'bold text',
+  s.send(:sanitize_field_value, '<b>bold</b> text')
+
+test 'strips anchor tags',
+  'click here',
+  s.send(:sanitize_field_value, '<a href="https://example.com">click here</a>')
+
+test 'strips null bytes',
+  'abc',
+  s.send(:sanitize_field_value, "abc\x00")
+
+test 'strips ASCII control chars (keeps content)',
+  'ab',
+  s.send(:sanitize_field_value, "a\x01\x1Fb")
+
+test 'collapses whitespace',
+  'a b c',
+  s.send(:sanitize_field_value, "a  b\t\tc")
+
+test 'strips leading/trailing whitespace',
+  'hello',
+  s.send(:sanitize_field_value, '  hello  ')
+
+test 'nil → empty string',
+  '',
+  s.send(:sanitize_field_value, nil)
+
+test 'empty string → empty string',
+  '',
+  s.send(:sanitize_field_value, '')
+
+test "truncates at #{Syncers::ProfileFieldsBuilder::MASTODON_FIELD_VALUE_MAX} chars",
+  255,
+  s.send(:sanitize_field_value, 'x' * 300).length
+
+puts
+
+# ==============================================================================
+# sanitize_url_field — validates http/https scheme, rejects dangerous URIs
+# ==============================================================================
+
+puts 'sanitize_url_field'
+
+test 'https URL passes through',
+  'https://example.com/path',
+  s.send(:sanitize_url_field, 'https://example.com/path')
+
+test 'http URL passes through',
+  'http://example.com',
+  s.send(:sanitize_url_field, 'http://example.com')
+
+test 'javascript: scheme → empty string',
+  '',
+  s.send(:sanitize_url_field, 'javascript:alert(1)')
+
+test 'data: scheme → empty string',
+  '',
+  s.send(:sanitize_url_field, 'data:text/html,<script>alert(1)</script>')
+
+test 'vbscript: scheme → empty string',
+  '',
+  s.send(:sanitize_url_field, 'vbscript:msgbox(1)')
+
+test 'nil → empty string',
+  '',
+  s.send(:sanitize_url_field, nil)
+
+test 'empty string → empty string',
+  '',
+  s.send(:sanitize_url_field, '')
+
+test 'whitespace-only → empty string',
+  '',
+  s.send(:sanitize_url_field, '   ')
+
+test 'invalid URI → empty string',
+  '',
+  s.send(:sanitize_url_field, "http://invalid uri\x00")
+
+test 'URL with trailing slash kept (chomp is callers responsibility)',
+  'https://example.com/',
+  s.send(:sanitize_url_field, 'https://example.com/')
+
+puts
+
+# ==============================================================================
+# build_fields — website from social network is sanitized
+# ==============================================================================
+
+puts 'build_fields — website sanitization'
+
+# Normal website
+fields = twitter_syncer.send(:build_fields, 'ct24zive', EMPTY_FIELDS,
+  { website: 'https://ct24.cz' })
+test 'valid website passed through to web: field',
+  'https://ct24.cz',
+  fields[1][:value]
+
+# javascript: URI injected as website
+fields = twitter_syncer.send(:build_fields, 'ct24zive', EMPTY_FIELDS,
+  { website: 'javascript:alert(1)' })
+test 'javascript: website → web: field becomes ""',
+  '""',
+  fields[1][:value]
+
+# HTML in website
+fields = twitter_syncer.send(:build_fields, 'ct24zive', EMPTY_FIELDS,
+  { website: '<script>alert(1)</script>' })
+test 'HTML-only website → sanitized to "" fallback',
+  '""',
+  fields[1][:value]
+
+# Platform URL (field 0) always http/https
+fields = twitter_syncer.send(:build_fields, 'ct24zive', EMPTY_FIELDS)
+test 'platform URL field starts with https',
+  true,
+  fields[0][:value].start_with?('https://')
 
 puts
 puts '=' * 60

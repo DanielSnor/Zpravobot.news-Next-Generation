@@ -28,12 +28,11 @@
 #   )
 #   syncer.sync!
 
-require_relative 'base_profile_syncer'
+require_relative 'browserless_profile_syncer'
 require 'cgi'
 
 module Syncers
-  class FacebookProfileSyncer < BaseProfileSyncer
-    BROWSERLESS_API = 'https://chrome.browserless.io/content'
+  class FacebookProfileSyncer < BrowserlessProfileSyncer
     DEFAULT_MENTIONS_CONFIG = { 'type' => 'domain_suffix', 'value' => 'facebook.com' }.freeze
     DEFAULT_FACEBOOK_COOKIES = [].freeze
     # Domains that appear in the global FB footer — never a profile's own website
@@ -42,7 +41,7 @@ module Syncers
       whatsapp.com oculus.com
     ].freeze
 
-    attr_reader :facebook_handle, :browserless_token, :facebook_cookies
+    attr_reader :facebook_handle, :facebook_cookies
 
     # NOTE: Image cache is intentionally NOT used for Facebook.
     # Facebook CDN URLs contain time-limited tokens in query parameters
@@ -50,11 +49,9 @@ module Syncers
     # Because cache_key_for_url hashes the full URL, each fetch produces a
     # different key and the cache would never hit. Facebook sync also runs
     # only once every 3 days, so re-downloading images is acceptable.
-    def initialize(facebook_handle:, browserless_token:, facebook_cookies:, browserless_api: nil, **base_opts)
-      @facebook_handle = facebook_handle.gsub(%r{^https?://[^/]+/}, '').gsub(/^@/, '')
-      @browserless_token = browserless_token
+    def initialize(facebook_handle:, facebook_cookies:, **base_opts)
+      @facebook_handle  = facebook_handle.gsub(%r{^https?://[^/]+/}, '').gsub(/^@/, '')
       @facebook_cookies = facebook_cookies || DEFAULT_FACEBOOK_COOKIES
-      @browserless_api = (browserless_api || BROWSERLESS_API).chomp('/')
       super(**base_opts)
     end
 
@@ -92,35 +89,13 @@ module Syncers
       true
     end
 
-    # Facebook prefers website from profile over current web: value
-    def build_fields(handle, current_fields, extra_data = {})
-      labels = FIELD_LABELS[language]
-      facebook_website = extra_data[:website]
-      source_platforms = extra_data[:source_platforms]
-
-      web_value = if facebook_website && !facebook_website.empty?
-                    facebook_website.chomp('/')
-                  else
-                    extract_web_value(current_fields)
-                  end
-
-      profile_url = build_profile_url(handle)
-
-      [
-        { name: field_prefix, value: profile_url },
-        { name: 'web:', value: web_value },
-        { name: labels[:managed], value: build_managed_by_value(source_platforms: source_platforms) },
-        { name: labels[:retention], value: "#{retention_days} #{labels[:days]}" }
-      ]
-    end
-
     def fetch_platform_profile
       # Fetch /about page — the profile website link only appears there,
       # not on the main profile page (which only has global FB footer links).
       url = "https://www.facebook.com/#{facebook_handle}/about"
       log "  Fetching #{url} via Browserless..."
 
-      html = fetch_page_via_browserless(url)
+      html = fetch_page_via_browserless(url, cookies: facebook_cookies)
       profile = parse_facebook_profile(html)
 
       # Detekce expirovaných cookies: při login wall FB vrátí stránku bez
@@ -155,31 +130,6 @@ module Syncers
 
     def build_profile_url_fallback(handle)
       "https://facebook.com/#{handle}"
-    end
-
-    # ============================================
-    # Facebook Scraping via Browserless
-    # ============================================
-
-    def fetch_page_via_browserless(url)
-      uri = URI("#{@browserless_api}?token=#{browserless_token}")
-
-      body = {
-        url: url,
-        cookies: facebook_cookies,
-        gotoOptions: { waitUntil: 'networkidle2' }
-      }
-
-      response = HttpClient.post_json(uri.to_s, body,
-                   open_timeout: 30, read_timeout: 60, user_agent: USER_AGENT)
-
-      unless response.is_a?(Net::HTTPSuccess)
-        raise "Browserless API error: #{response.code} #{response.message}"
-      end
-
-      # Net::HTTP vrací body jako ASCII-8BIT (BINARY). Browserless posílá UTF-8 HTML,
-      # takže přeznačíme kódování (bez konverze dat) aby regex a string operace fungovaly.
-      response.body.dup.force_encoding('UTF-8')
     end
 
     def parse_facebook_profile(html)

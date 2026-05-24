@@ -15,43 +15,23 @@
 # All @mentions are stripped from the broadcast text.
 # ============================================================
 
-require 'openssl'
 require 'json'
 require_relative '../utils/html_cleaner'
 require_relative '../support/loggable'
 
 module Broadcast
+  # HMAC verifikace běží upstream v Webhook::SignatureVerifier (lib/webhook/signature_verifier.rb)
+  # při zápisu do queue. Tato třída přebírá payload z fronty a předpokládá, že autenticita
+  # už byla ověřena na HTTP vrstvě — vlastní HMAC zde proto neimplementuje.
   class TlambotWebhookHandler
     include Support::Loggable
 
     TRIGGER_ACCOUNT = 'tlambot'
     ZPRAVOBOT_KEYWORD = 'zpravobot'
 
-    # @param webhook_secret [String] HMAC-SHA256 secret for signature verification
     # @param trigger_account [String] Mastodon username that triggers broadcasts
-    def initialize(webhook_secret:, trigger_account: TRIGGER_ACCOUNT)
-      @webhook_secret = webhook_secret
+    def initialize(trigger_account: TRIGGER_ACCOUNT)
       @trigger_account = trigger_account.downcase
-    end
-
-    # Verify HMAC-SHA256 signature from X-Hub-Signature header
-    #
-    # @param body [String] Raw request body
-    # @param signature_header [String] Value of X-Hub-Signature header ("sha256=...")
-    # @return [Boolean]
-    def verify_signature(body, signature_header)
-      return false if @webhook_secret.nil? || @webhook_secret.empty?
-      return false unless signature_header.is_a?(String) && signature_header.start_with?('sha256=')
-
-      expected_hex = signature_header.sub('sha256=', '')
-      computed_hex = OpenSSL::HMAC.hexdigest('SHA256', @webhook_secret, body)
-
-      # Constant-time comparison
-      return false unless expected_hex.length == computed_hex.length
-
-      computed_hex.bytes.zip(expected_hex.bytes).map { |a, b| a ^ b }.reduce(0, :|).zero?
-    rescue StandardError
-      false
     end
 
     # Parse webhook payload and extract broadcast job

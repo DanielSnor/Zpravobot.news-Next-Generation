@@ -231,6 +231,8 @@ Bluesky profily jsou synchronizovány **1× týdně** přes nativní AT Protocol
 
 Synchronizuje se: avatar, banner, bio a metadata pole Mastodon profilu.
 
+**Bio** prochází mention transformací dle konfigurace `mentions:` zdroje před zápisem do Mastodon profilu.
+
 Nativní API (na rozdíl od Nitteru u Twitteru) znamená stabilní a spolehlivou synchronizaci.
 
 ---

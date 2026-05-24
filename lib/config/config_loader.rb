@@ -117,7 +117,7 @@ module Config
                   (account_id.to_s == 'zpravobot' ? ENV['ZPRAVOBOT_REPORT_TOKEN'] : nil)
       return { token: env_token } if env_token
 
-      accounts = load_yaml('mastodon_accounts.yml') || {}
+      accounts = mastodon_accounts_cache
       creds = accounts[account_id.to_sym]
       raise "Mastodon account not found: #{account_id}" unless creds
       creds
@@ -125,8 +125,7 @@ module Config
     # List all Mastodon accounts
     # @return [Array<String>] Account identifiers
     def mastodon_account_ids
-      accounts = load_yaml('mastodon_accounts.yml') || {}
-      accounts.keys
+      mastodon_accounts_cache.keys
     end
     # List all source IDs (excluding examples)
     # @return [Array<String>]
@@ -145,6 +144,7 @@ module Config
       @global = nil
       @all_sources = nil
       @twitter_handle_map = nil
+      @mastodon_accounts_cache = nil
     end
     # Public access to global config (for URL processor etc.)
     # @return [Hash] Global configuration
@@ -193,6 +193,11 @@ module Config
     end
 
     private
+
+    def mastodon_accounts_cache
+      @mastodon_accounts_cache ||= load_yaml('mastodon_accounts.yml') || {}
+    end
+
     # Check if file is an example (should be skipped)
     # Matches: !example_*, _example_*, *_example.yml, example_*
     def example_file?(source_id)

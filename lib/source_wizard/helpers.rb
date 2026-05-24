@@ -107,13 +107,13 @@ class SourceGenerator
     end
   end
 
-  # Check if this is an RSS.app source (Facebook/Instagram)
+  # Check if this is an RSS.app source (Facebook/Instagram/Threads)
   def rssapp_source?(data)
     return false unless data[:platform] == 'rss'
-    %w[facebook instagram].include?(data[:rss_source_type])
+    %w[facebook instagram threads].include?(data[:rss_source_type])
   end
 
-  # Get default banned phrases for RSS.app sources (Facebook/Instagram)
+  # Get default banned phrases for RSS.app sources (Facebook/Instagram/Threads)
   def rssapp_banned_phrases(data)
     return [] unless rssapp_source?(data)
     RSSAPP_BANNED_PHRASES[data[:rss_source_type]] || []

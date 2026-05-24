@@ -30,6 +30,7 @@ require 'digest'
 require 'fileutils'
 require 'json'
 require 'net/http'
+require_relative '../utils/atomic_file'
 require_relative '../utils/http_client'
 require_relative '../utils/format_helpers'
 require_relative '../support/loggable'
@@ -170,7 +171,7 @@ module Syncers
       meta_path = "#{path}.meta"
 
       File.binwrite(path, data)
-      File.write(meta_path, { content_type: content_type, filename: filename }.to_json)
+      Utils::AtomicFile.write(meta_path, { content_type: content_type, filename: filename }.to_json)
     rescue StandardError => e
       log "  ⚠️ Cache write error: #{e.message}", level: :warn
     end

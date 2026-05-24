@@ -1,11 +1,12 @@
 # frozen_string_literal: true
 
 class SourceGenerator
-  PLATFORMS = %w[twitter bluesky facebook instagram rss youtube].freeze
-  PLATFORM_OPTIONS = ['twitter', 'bluesky', 'facebook (via RSS.app)', 'instagram (via RSS.app)', 'rss', 'youtube'].freeze
+  PLATFORMS = %w[twitter bluesky facebook instagram threads rss youtube].freeze
+  PLATFORM_OPTIONS = ['twitter', 'bluesky', 'facebook (via RSS.app)', 'instagram (via RSS.app)', 'threads (via RSS.app)', 'rss', 'youtube'].freeze
   PLATFORM_MAP = {
     'twitter' => 'twitter', 'bluesky' => 'bluesky',
     'facebook (via RSS.app)' => 'facebook', 'instagram (via RSS.app)' => 'instagram',
+    'threads (via RSS.app)' => 'threads',
     'rss' => 'rss', 'youtube' => 'youtube'
   }.freeze
   PRIORITIES = %w[high normal low].freeze
@@ -26,6 +27,7 @@ class SourceGenerator
     'rss' => { label: 'RSS', suffix: 'rss' },
     'facebook' => { label: 'Facebook', suffix: 'facebook' },
     'instagram' => { label: 'Instagram', suffix: 'instagram' },
+    'threads' => { label: 'Threads', suffix: 'threads' },
     'other' => { label: nil, suffix: nil }  # Custom - user provides
   }.freeze
 
@@ -41,7 +43,7 @@ class SourceGenerator
     { pattern: "(When[^>]+deleted.)", replacement: "", flags: "gim", literal: false }
   ].freeze
 
-  # Banned phrases for Facebook/Instagram sources (filter out noise posts)
+  # Banned phrases for Facebook/Instagram/Threads sources (filter out noise posts)
   RSSAPP_BANNED_PHRASES = {
     'facebook' => [
       "updated their cover photo",
@@ -51,7 +53,8 @@ class SourceGenerator
     ],
     'instagram' => [
       "updated their profile picture"
-    ]
+    ],
+    'threads' => []
   }.freeze
 
   # URL domain choices for Twitter sources on non-zpravobot instances

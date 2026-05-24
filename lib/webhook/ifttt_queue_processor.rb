@@ -39,6 +39,7 @@ require_relative 'webhook_thread_handler'
 # Optional processors (shared with orchestrator)
 require_relative '../support/optional_processors'
 require_relative '../support/loggable'
+require_relative '../utils/atomic_file'
 include Support::OptionalProcessors
 
 module Webhook
@@ -689,7 +690,7 @@ module Webhook
         failed_at: Time.now.iso8601,
         retry_count: existing_retry_count
       }
-      File.write(filepath, JSON.pretty_generate(data))
+      Utils::AtomicFile.write(filepath, JSON.pretty_generate(data))
 
       dest = File.join(QUEUE_DIR, 'failed', File.basename(filepath))
       FileUtils.mv(filepath, dest)

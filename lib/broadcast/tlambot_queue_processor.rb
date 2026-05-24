@@ -36,11 +36,8 @@ module Broadcast
       @broadcast_config = load_broadcast_config
       @tlambot_config = @broadcast_config[:tlambot] || {}
       trigger_account = @tlambot_config[:trigger_account] || TlambotWebhookHandler::TRIGGER_ACCOUNT
-      webhook_secret = ENV['TLAMBOT_WEBHOOK_SECRET'] || ''
-      @handler = TlambotWebhookHandler.new(
-        webhook_secret: webhook_secret,
-        trigger_account: trigger_account
-      )
+      # HMAC se ověřuje při zápisu do queue (Webhook::SignatureVerifier), ne tady.
+      @handler = TlambotWebhookHandler.new(trigger_account: trigger_account)
     end
 
     # Process all pending broadcast jobs

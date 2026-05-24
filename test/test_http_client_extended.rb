@@ -76,20 +76,28 @@ test("RETRIABLE_ERRORS includes Zpravobot::NetworkError", true,
      HttpClient::RETRIABLE_ERRORS.include?(Zpravobot::NetworkError))
 
 # =============================================================================
-# 3. build_http for various URIs
+# 3. ConnectionPool — edge cases pro různé URI
 # =============================================================================
-section("build_http: Edge Cases")
+section("ConnectionPool: Edge Cases")
+
+HttpClient.reset_pools!
 
 uri_no_port = URI('https://api.example.com/v1/statuses')
-http = HttpClient.build_http(uri_no_port)
+pool1 = HttpClient.pool_for(uri_no_port)
+http = pool1.checkout(HttpClient::DEFAULT_OPEN_TIMEOUT,
+                      HttpClient::DEFAULT_READ_TIMEOUT,
+                      HttpClient::CHECKOUT_TIMEOUT)
 test("HTTPS default port 443", 443, http.port)
 test("HTTPS SSL enabled", true, http.use_ssl?)
+pool1.checkin(http)
 
 uri_custom = URI('http://localhost:3000/api')
-http2 = HttpClient.build_http(uri_custom, open_timeout: 3, read_timeout: 5)
+pool2 = HttpClient.pool_for(uri_custom)
+http2 = pool2.checkout(3, 5, HttpClient::CHECKOUT_TIMEOUT)
 test("Custom open_timeout 3", 3, http2.open_timeout)
 test("Custom read_timeout 5", 5, http2.read_timeout)
 test("HTTP no SSL", false, http2.use_ssl?)
+pool2.checkin(http2)
 
 # =============================================================================
 # 4. Error hierarchy used in RETRIABLE_ERRORS
@@ -114,13 +122,91 @@ test("ServerError status_code", 502, server_err.status_code)
 section("URI Handling")
 
 # Verify methods accept both String and URI
-test_no_error("build_http accepts URI object") do
-  HttpClient.build_http(URI('https://example.com'))
+test_no_error("pool_for accepts URI object") do
+  HttpClient.pool_for(URI('https://example.com'))
 end
 
-test_no_error("build_http accepts URI with path") do
-  HttpClient.build_http(URI('https://example.com/api/v1/statuses'))
+test_no_error("pool_for accepts URI with path") do
+  HttpClient.pool_for(URI('https://example.com/api/v1/statuses'))
 end
+
+# =============================================================================
+# 6. ConnectionPool — chování poolu (R2 fix)
+# =============================================================================
+# Pool drží až MAX_POOL_SIZE_PER_HOST connections per host:port:scheme.
+# Vlákna si přes checkout vyzvedávají exkluzivní vlastnictví, po dokončení
+# checkin vrátí. Pokud je pool plný a vše in_use, čekající vlákno blokuje
+# do CHECKOUT_TIMEOUT, pak vyhodí PoolTimeoutError.
+section("ConnectionPool: pool behavior")
+
+HttpClient.reset_pools!
+test_uri = URI('https://pool-test.example.com')
+test_pool = HttpClient.pool_for(test_uri)
+
+# Reuse: checkout → checkin → checkout vrátí stejnou instanci
+http_a = test_pool.checkout(5, 10, 1)
+test_pool.checkin(http_a)
+http_b = test_pool.checkout(5, 10, 1)
+test("checkin → další checkout vrátí TUTÉŽ Net::HTTP instanci (keep-alive)",
+     true, http_a.equal?(http_b))
+test_pool.checkin(http_b)
+
+# Pool roste do MAX_POOL_SIZE_PER_HOST když více vláken drží connections
+held = []
+HttpClient::MAX_POOL_SIZE_PER_HOST.times do |i|
+  held << test_pool.checkout(5, 10, 1)
+end
+test("pool má #{HttpClient::MAX_POOL_SIZE_PER_HOST} entries při plném využití",
+     HttpClient::MAX_POOL_SIZE_PER_HOST, test_pool.size)
+test("všechny checkouts vrátily různé Net::HTTP instance",
+     HttpClient::MAX_POOL_SIZE_PER_HOST, held.uniq.size)
+
+# Plný pool → další checkout timeoutne s PoolTimeoutError
+begin
+  start_t = Time.now
+  test_pool.checkout(5, 10, 0.1)  # 100ms timeout
+  puts "  \e[31m✗\e[0m vyčerpaný pool MĚL vyhodit PoolTimeoutError"
+  $failed += 1
+rescue HttpClient::PoolTimeoutError => e
+  elapsed = Time.now - start_t
+  if elapsed >= 0.1 && elapsed < 0.5
+    puts "  \e[32m✓\e[0m vyčerpaný pool vyhodil PoolTimeoutError v ~#{(elapsed*1000).round}ms"
+    $passed += 1
+  else
+    puts "  \e[31m✗\e[0m PoolTimeoutError přišel, ale timing #{elapsed}s mimo očekávané ~0.1s"
+    $failed += 1
+  end
+end
+
+# Po checkin se waiter probudí (signal v checkin)
+held.each { |h| test_pool.checkin(h) }
+test("po vrácení všech connections je pool stále velikosti #{HttpClient::MAX_POOL_SIZE_PER_HOST}",
+     HttpClient::MAX_POOL_SIZE_PER_HOST, test_pool.size)
+
+# Stale connection drop uvolní slot
+http_drop = test_pool.checkout(5, 10, 1)
+size_before_drop = test_pool.size
+test_pool.drop(http_drop)
+test("drop snižuje velikost poolu (uvolňuje slot)",
+     size_before_drop - 1, test_pool.size)
+
+# Multi-thread concurrent checkout/checkin nezamrzne
+HttpClient.reset_pools!
+mt_uri = URI('https://multithread.example.com')
+mt_pool = HttpClient.pool_for(mt_uri)
+
+threads = 8.times.map do |i|
+  Thread.new do
+    h = mt_pool.checkout(5, 10, 2)
+    sleep(0.01)  # simulate work
+    mt_pool.checkin(h)
+  end
+end
+threads.each(&:join)
+test("8 vláken sériálně checkout/checkin nezamrzlo (pool size #{HttpClient::MAX_POOL_SIZE_PER_HOST})",
+     true, mt_pool.size <= HttpClient::MAX_POOL_SIZE_PER_HOST)
+
+HttpClient.reset_pools!
 
 # =============================================================================
 # Summary

@@ -6,7 +6,7 @@ class SourceGenerator
 
     # 1. Platforma
     data[:platform] = PLATFORM_MAP[ask_choice('Platforma', PLATFORM_OPTIONS)]
-    if %w[facebook instagram].include?(data[:platform])
+    if %w[facebook instagram threads].include?(data[:platform])
       data[:rss_source_type] = data[:platform]
       data[:platform] = 'rss'
     end
@@ -69,6 +69,8 @@ class SourceGenerator
       elsif data[:platform] == 'bluesky' && data[:bluesky_source_type] != 'feed'
         data[:profile_sync_enabled] = !data[:is_aggregator]
       elsif data[:platform] == 'rss' && data[:rss_source_type] == 'instagram'
+        data[:profile_sync_enabled] = !data[:is_aggregator]
+      elsif data[:platform] == 'rss' && data[:rss_source_type] == 'threads'
         data[:profile_sync_enabled] = !data[:is_aggregator]
       elsif data[:platform] == 'rss' && data[:rss_source_type] == 'facebook' && data[:handle]
         data[:profile_sync_enabled] = !data[:is_aggregator]
@@ -437,6 +439,7 @@ class SourceGenerator
     show_profile_sync = data[:platform] == 'twitter' ||
                         (data[:platform] == 'bluesky' && data[:bluesky_source_type] != 'feed') ||
                         (data[:platform] == 'rss' && data[:rss_source_type] == 'instagram') ||
+                        (data[:platform] == 'rss' && data[:rss_source_type] == 'threads') ||
                         (data[:platform] == 'rss' && data[:rss_source_type] == 'facebook' && data[:handle]) ||
                         data[:platform] == 'youtube'
 
@@ -445,13 +448,14 @@ class SourceGenerator
       puts '  Pokud má zdroj sociální profil, zadejte platformu a handle.'
       puts '  Synchronizuje avatar, bio a pole z dané platformy.'
       puts
-      platform_options = ['Twitter/X', 'Facebook', 'Instagram', 'YouTube', 'Bluesky', '(přeskočit)']
+      platform_options = ['Twitter/X', 'Facebook', 'Instagram', 'Threads', 'YouTube', 'Bluesky', '(přeskočit)']
       platform_choice = ask_choice('Sociální platforma', platform_options, default: '(přeskočit)')
 
       unless platform_choice == '(přeskočit)'
         platform_map = {
           'Twitter/X' => 'twitter', 'Facebook' => 'facebook',
-          'Instagram' => 'instagram', 'YouTube' => 'youtube', 'Bluesky' => 'bluesky'
+          'Instagram' => 'instagram', 'Threads' => 'threads',
+          'YouTube' => 'youtube', 'Bluesky' => 'bluesky'
         }
         data[:social_profile_platform] = platform_map[platform_choice]
         handle = ask('Handle (bez @, bez https://)', required: true)
@@ -480,6 +484,19 @@ class SourceGenerator
             data[:profile_sync_enabled] = false
           else
             data[:social_profile_platform] = 'instagram'
+            data[:social_profile_handle] = handle
+          end
+        end
+
+        if data[:platform] == 'rss' && data[:rss_source_type] == 'threads'
+          puts '  Threads handle (bez @, např. jirikostaf1)'
+          handle = ask('Threads handle', required: false).strip
+          handle = handle.gsub(/^@/, '')
+          if handle.empty?
+            puts '  ⚠️  Handle nevyplněn — sync profilu bude zakázán'
+            data[:profile_sync_enabled] = false
+          else
+            data[:social_profile_platform] = 'threads'
             data[:social_profile_handle] = handle
           end
         end

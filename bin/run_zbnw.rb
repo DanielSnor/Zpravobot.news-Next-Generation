@@ -51,7 +51,9 @@ LOCKFILE = File.expand_path('../tmp/run_zbnw.lock', __dir__)
 def acquire_lock
   FileUtils.mkdir_p(File.dirname(LOCKFILE))
   @lock_file = File.open(LOCKFILE, File::RDWR | File::CREAT)
-  @lock_file.flock(File::LOCK_NB | File::LOCK_EX)
+  # flock vrací 0 při úspěchu (LOCK_NB), false při kolizi. Explicitní převod
+  # na true/false brání křehkosti při budoucím refaktoru typu `== true`.
+  @lock_file.flock(File::LOCK_NB | File::LOCK_EX) ? true : false
 rescue Errno::EACCES
   false
 end
@@ -220,5 +222,4 @@ rescue StandardError => e
   exit 4
 ensure
   @lock_file&.close
-  File.delete(LOCKFILE) if File.exist?(LOCKFILE)
 end

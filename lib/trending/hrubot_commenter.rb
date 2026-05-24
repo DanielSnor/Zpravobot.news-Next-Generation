@@ -1,10 +1,9 @@
 # frozen_string_literal: true
 
-require 'net/http'
-require 'uri'
 require 'json'
-require 'openssl'
 require 'cgi'
+
+require_relative '../utils/http_client'
 
 # Generuje krátký sarkastický komentář ve stylu @hrubot k trending postu.
 #
@@ -146,28 +145,24 @@ module Trending
     end
 
     def call_api(prompt)
-      uri  = URI.parse(API_URL)
-      http = Net::HTTP.new(uri.host, uri.port)
-      http.use_ssl      = true
-      http.verify_mode  = OpenSSL::SSL::VERIFY_PEER
-      http.open_timeout = 5
-      http.read_timeout = 20
-
-      req = Net::HTTP::Post.new(uri.path)
-      req['Content-Type']      = 'application/json'
-      req['Accept']            = 'application/json'
-      req['x-api-key']         = @api_key
-      req['anthropic-version'] = API_VERSION
-      req.body = JSON.generate(
-        model:       MODEL,
-        max_tokens:  MAX_TOKENS,
-        temperature: TEMPERATURE,
-        messages:    [{ role: 'user', content: prompt }]
+      response = HttpClient.post_json(
+        API_URL,
+        {
+          model:       MODEL,
+          max_tokens:  MAX_TOKENS,
+          temperature: TEMPERATURE,
+          messages:    [{ role: 'user', content: prompt }]
+        },
+        headers: {
+          'Accept'            => 'application/json',
+          'x-api-key'         => @api_key,
+          'anthropic-version' => API_VERSION
+        },
+        open_timeout: 5,
+        read_timeout: 20
       )
 
-      response = http.request(req)
       code = response.code.to_i
-
       unless (200..299).cover?(code)
         raise "Claude API HTTP #{code}: #{response.body.to_s[0, 200]}"
       end

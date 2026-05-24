@@ -170,8 +170,9 @@ class SourceGenerator
     # Profile sync
     # Plain RSS = rss source, který není facebook/instagram subplatforma
     plain_rss = data[:platform] == 'rss' &&
-                !%w[facebook instagram].include?(data[:rss_source_type].to_s)
+                !%w[facebook instagram threads].include?(data[:rss_source_type].to_s)
     rss_instagram = data[:platform] == 'rss' && data[:rss_source_type].to_s == 'instagram'
+    rss_threads   = data[:platform] == 'rss' && data[:rss_source_type].to_s == 'threads'
 
     show_profile_sync = data[:platform] == 'twitter' ||
                         (data[:platform] == 'bluesky' && data[:bluesky_source_type] != 'feed') ||
@@ -189,6 +190,19 @@ class SourceGenerator
         lines << '  social_profile:'
         lines << "    platform: #{data[:social_profile_platform]}"
         lines << "    handle: #{data[:social_profile_handle]}"
+      end
+      lines << ''
+    elsif rss_threads
+      lines << '# Synchronizace profilu'
+      lines << 'profile_sync:'
+      lines << "  enabled: #{data[:profile_sync_enabled] ? 'true' : 'false'}"
+      if data[:profile_sync_enabled]
+        lines << "  retention_days: #{data[:retention_days] || 30}"
+        if data[:social_profile_platform] && data[:social_profile_handle]
+          lines << '  social_profile:'
+          lines << "    platform: #{data[:social_profile_platform]}"
+          lines << "    handle: #{data[:social_profile_handle]}"
+        end
       end
       lines << ''
     elsif rss_instagram

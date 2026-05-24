@@ -19,6 +19,7 @@ require_relative '../utils/hash_helpers'
 require_relative '../models/post_text_wrapper'
 require_relative '../processors/instagram_processor'
 require_relative '../processors/facebook_processor'
+require_relative '../processors/threads_processor'
 
 module Formatters
   class RssFormatter
@@ -66,8 +67,8 @@ module Formatters
     # Hodnota: třída procesoru (musí mít #process(text) → text).
     PROCESSORS_BY_SOURCE_TYPE = {
       'facebook'  => 'Processors::FacebookProcessor',
-      'instagram' => 'Processors::InstagramProcessor'
-      # 'threads' => 'Processors::ThreadsProcessor'  # připravit po přidání procesoru
+      'instagram' => 'Processors::InstagramProcessor',
+      'threads'   => 'Processors::ThreadsProcessor'
     }.freeze
 
     def initialize(config = {})

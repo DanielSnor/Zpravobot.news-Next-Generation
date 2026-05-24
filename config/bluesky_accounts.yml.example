@@ -1,0 +1,20 @@
+# ============================================================
+# Zpravobot NG: Bluesky účty pro publikování
+# ============================================================
+# ⚠️  PRODUKČNÍ SOUBOR OBSAHUJE CITLIVÉ ÚDAJE!
+# ⚠️  config/bluesky_accounts.yml JE V .gitignore!
+# ============================================================
+# Credentials nejsou v tomto souboru — app password je v env.sh.
+# app_password_env: název ENV proměnné obsahující app password.
+#
+# Přidat nový účet:
+#   1. Zaregistrovat účet na bsky.app
+#   2. Vygenerovat app password v bsky.app/settings/app-passwords
+#   3. Přidat do env.sh: export BLUESKY_APP_PASSWORD_<ID>=xxxx-xxxx-xxxx-xxxx
+#   4. Přidat záznam sem
+# ============================================================
+
+your_account_id:
+  identifier: your-handle.bsky.social
+  app_password_env: BLUESKY_APP_PASSWORD_YOUR_ACCOUNT_ID
+  pds_url: https://bsky.social

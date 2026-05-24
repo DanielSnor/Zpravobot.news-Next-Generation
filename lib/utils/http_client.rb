@@ -65,6 +65,12 @@ module HttpClient
   # Connection cache TTL — close idle connections after this many seconds
   CONNECTION_TTL = 30
 
+  # Per-host connection pool sizing.
+  # Match Publishers::MastodonPublisher::MAX_MEDIA_COUNT (4) — to je dolní hranice
+  # pro paralelní upload média, kde nás per-host keep-alive zajímá nejvíc.
+  MAX_POOL_SIZE_PER_HOST = 4
+  CHECKOUT_TIMEOUT = 5  # seconds — kdy se vzdát čekání na uvolněnou connection
+
   # Network errors eligible for retry
   RETRIABLE_ERRORS = [
     Net::OpenTimeout, Net::ReadTimeout,
@@ -75,11 +81,132 @@ module HttpClient
   # Errors indicating a cached connection went stale (server closed it)
   STALE_CONNECTION_ERRORS = [Errno::EPIPE, IOError, Errno::ECONNRESET].freeze
 
-  # Per-host connection cache: "host:port" → { http: Net::HTTP, last_used: Time }
-  @connections = {}
-  @connections_mutex = Mutex.new
+  # Vyhozen, když pool je vyčerpán a čekající vlákno přesáhlo CHECKOUT_TIMEOUT.
+  class PoolTimeoutError < StandardError; end
+
+  # Per-host connection pool.
+  #
+  # Net::HTTP instance NENÍ thread-safe (interní IO buffery, request/response state),
+  # takže dvě vlákna nesmí současně používat stejnou Net::HTTP. Pool drží až
+  # MAX_POOL_SIZE_PER_HOST connections per host; vlákno si přes #checkout vyzvedne
+  # exkluzivní vlastnictví, po dokončení requestu #checkin vrátí do poolu.
+  # Pokud pool je plný a všechny connections jsou in_use, vlákno čeká na
+  # ConditionVariable do CHECKOUT_TIMEOUT.
+  #
+  # Connection s last_used starším než CONNECTION_TTL se při checkoutu zahodí
+  # a nahradí čerstvou — server-side keep-alive by ji stejně zavřel.
+  class ConnectionPool
+    def initialize(host, port, use_ssl)
+      @host = host
+      @port = port
+      @use_ssl = use_ssl
+      @entries = []  # Array<Hash{http:, in_use:, last_used:}>
+      @mutex = Mutex.new
+      @cond = ConditionVariable.new
+    end
+
+    # Získej exkluzivní Net::HTTP instanci. Blokuje až do checkout_timeout,
+    # pokud je pool plný a všechny connections jsou in_use.
+    # @raise [PoolTimeoutError] pokud timeout vypršel
+    def checkout(open_timeout, read_timeout, checkout_timeout)
+      deadline = Time.now + checkout_timeout
+      @mutex.synchronize do
+        loop do
+          idle = @entries.find { |e| !e[:in_use] }
+          if idle
+            # Expirovaná connection → zavři + nahraď čerstvou
+            if Time.now - idle[:last_used] > CONNECTION_TTL
+              idle[:http].finish rescue nil
+              idle[:http] = build_http(open_timeout, read_timeout)
+            else
+              idle[:http].open_timeout = open_timeout
+              idle[:http].read_timeout = read_timeout
+            end
+            idle[:in_use] = true
+            idle[:last_used] = Time.now
+            return idle[:http]
+          end
+
+          if @entries.size < MAX_POOL_SIZE_PER_HOST
+            http = build_http(open_timeout, read_timeout)
+            @entries << { http: http, in_use: true, last_used: Time.now }
+            return http
+          end
+
+          # Pool je plný a vše in_use → čekej na checkin
+          remaining = deadline - Time.now
+          raise PoolTimeoutError, "Pool exhausted for #{@host}:#{@port} (waited #{checkout_timeout}s)" if remaining <= 0
+          @cond.wait(@mutex, remaining)
+        end
+      end
+    end
+
+    # Vrátí connection zpět do poolu jako volnou. Probudí jedno čekající vlákno.
+    def checkin(http)
+      @mutex.synchronize do
+        entry = @entries.find { |e| e[:http].equal?(http) }
+        if entry
+          entry[:in_use] = false
+          entry[:last_used] = Time.now
+        end
+        @cond.signal
+      end
+    end
+
+    # Zahodí connection úplně (stale connection retry). Uvolňuje slot v poolu.
+    def drop(http)
+      @mutex.synchronize do
+        @entries.reject! do |e|
+          if e[:http].equal?(http)
+            e[:http].finish rescue nil
+            true
+          else
+            false
+          end
+        end
+        @cond.signal
+      end
+    end
+
+    # Pouze pro testy — zavře všechny connections a vyprázdní pool.
+    def close_all
+      @mutex.synchronize do
+        @entries.each { |e| e[:http].finish rescue nil }
+        @entries.clear
+        @cond.broadcast
+      end
+    end
+
+    # Pouze pro testy — počet aktuálně držených connections.
+    def size
+      @mutex.synchronize { @entries.size }
+    end
+
+    private
+
+    def build_http(open_timeout, read_timeout)
+      http = Net::HTTP.new(@host, @port)
+      http.use_ssl = @use_ssl
+      http.open_timeout = open_timeout
+      http.read_timeout = read_timeout
+      http.keep_alive_timeout = CONNECTION_TTL
+      http
+    end
+  end
+
+  # Per-host pools, klíč "host:port:scheme".
+  @pools = {}
+  @pools_mutex = Mutex.new
 
   module_function
+
+  # Pouze pro testy — zavře všechny pooly a uvolní jejich connections.
+  def reset_pools!
+    @pools_mutex.synchronize do
+      @pools.each_value(&:close_all)
+      @pools.clear
+    end
+  end
 
   # Perform a GET request
   #
@@ -206,13 +333,18 @@ module HttpClient
   # @return [Net::HTTPResponse, nil] Response with body, or nil on failure
   def download(url, max_redirects: 3, max_size: nil, headers: {},
                open_timeout: DEFAULT_OPEN_TIMEOUT, read_timeout: DEFAULT_READ_TIMEOUT,
-               user_agent: DEFAULT_UA)
+               user_agent: DEFAULT_UA, on_failure: nil)
     uri = url.is_a?(URI) ? url : URI(url)
     redirect_count = 0
 
     loop do
-      response = get(uri, headers: headers, open_timeout: open_timeout,
-                         read_timeout: read_timeout, user_agent: user_agent)
+      # Use streaming GET when max_size is set — avoids loading entire body
+      # into memory just to check its size (critical for large video files).
+      response = max_size \
+        ? streaming_get(uri, headers: headers, open_timeout: open_timeout,
+                        read_timeout: read_timeout, user_agent: user_agent, max_size: max_size)
+        : get(uri, headers: headers, open_timeout: open_timeout,
+                   read_timeout: read_timeout, user_agent: user_agent)
 
       if response.is_a?(Net::HTTPRedirection)
         redirect_count += 1
@@ -223,11 +355,55 @@ module HttpClient
         next
       end
 
-      return nil unless response.is_a?(Net::HTTPSuccess)
-      return :too_large if max_size && response.body && response.body.bytesize > max_size
+      return :too_large if response == :too_large
+
+      unless response.is_a?(Net::HTTPSuccess)
+        on_failure&.call(response)
+        return nil
+      end
 
       return response
     end
+  end
+
+  # Streaming GET — reads body in chunks, returns :too_large if limit exceeded.
+  # Uses a dedicated connection (no pool) so early abort is always safe.
+  # Content-Length header is checked first; falls back to byte-counting during read.
+  def streaming_get(uri, headers:, open_timeout:, read_timeout:, user_agent:, max_size:)
+    request = Net::HTTP::Get.new(uri)
+    request['User-Agent'] = user_agent
+    headers.each { |k, v| request[k] = v }
+
+    Net::HTTP.start(uri.host, uri.port,
+                    use_ssl:      uri.scheme == 'https',
+                    open_timeout: open_timeout,
+                    read_timeout: read_timeout) do |http|
+      http.request(request) do |resp|
+        # Non-success (redirects, errors): drain small body and return as-is
+        unless resp.is_a?(Net::HTTPSuccess)
+          resp.read_body
+          return resp
+        end
+
+        # Check Content-Length header first — skip body entirely if over limit
+        cl = resp['content-length']&.to_i
+        return :too_large if cl && cl > max_size
+
+        # Stream body in chunks, counting bytes
+        total  = 0
+        chunks = []
+        resp.read_body do |chunk|
+          total += chunk.bytesize
+          return :too_large if total > max_size
+          chunks << chunk
+        end
+
+        resp.instance_variable_set(:@body, chunks.join)
+        resp
+      end
+    end
+  rescue *STALE_CONNECTION_ERRORS
+    nil
   end
 
   # Perform a GET request with automatic retry and exponential backoff
@@ -327,7 +503,8 @@ module HttpClient
   end
 
   # Execute an arbitrary pre-built request (GET, POST, PATCH, etc.)
-  # Retries once on stale cached connection.
+  # Vyzvedne connection z per-host poolu, provede request, vrátí ji zpět.
+  # Při stale connection error ji zahodí a zopakuje s čerstvou.
   #
   # @param uri [URI] Parsed URI
   # @param request [Net::HTTPRequest] Pre-built request object
@@ -335,69 +512,28 @@ module HttpClient
   # @param read_timeout [Integer] Read timeout in seconds
   # @return [Net::HTTPResponse]
   def execute(uri, request, open_timeout: DEFAULT_OPEN_TIMEOUT, read_timeout: DEFAULT_READ_TIMEOUT)
-    http = build_http(uri, open_timeout: open_timeout, read_timeout: read_timeout)
-    http.start unless http.started?
-    http.request(request)
-  rescue *STALE_CONNECTION_ERRORS
-    # Cached connection went stale — drop it and retry with a fresh one
-    drop_cached_connection(uri)
-    http = build_http(uri, open_timeout: open_timeout, read_timeout: read_timeout)
-    http.start unless http.started?
-    http.request(request)
-  end
-
-  # Build or reuse a configured Net::HTTP instance.
-  # Caches connections per host:port with TTL-based expiry.
-  # Connection is started lazily in execute, not here (keeps unit tests offline).
-  #
-  # @param uri [URI] Parsed URI
-  # @param open_timeout [Integer] Connection timeout
-  # @param read_timeout [Integer] Read timeout
-  # @return [Net::HTTP]
-  def build_http(uri, open_timeout: DEFAULT_OPEN_TIMEOUT, read_timeout: DEFAULT_READ_TIMEOUT)
-    key = "#{uri.host}:#{uri.port}:#{Thread.current.object_id}"
-
-    @connections_mutex.synchronize do
-      cached = @connections[key]
-      if cached && cached[:http].started? && (Time.now - cached[:last_used]) < CONNECTION_TTL
-        http = cached[:http]
-        http.open_timeout = open_timeout
-        http.read_timeout = read_timeout
-        cached[:last_used] = Time.now
-        return http
-      end
-
-      # Close stale/expired connection if present
-      if cached
-        cached[:http].finish rescue nil
-        @connections.delete(key)
-      end
-
-      http = Net::HTTP.new(uri.host, uri.port)
-      http.use_ssl = (uri.scheme == 'https')
-      http.open_timeout = open_timeout
-      http.read_timeout = read_timeout
-      http.keep_alive_timeout = CONNECTION_TTL
-
-      @connections[key] = { http: http, last_used: Time.now }
-      http
+    pool = pool_for(uri)
+    http = nil
+    begin
+      http = pool.checkout(open_timeout, read_timeout, CHECKOUT_TIMEOUT)
+      return http.request(request)
+    rescue *STALE_CONNECTION_ERRORS
+      # Cached connection went stale — drop it, vyzvedni čerstvou a retry.
+      # ensure níž zachytí finální stav http; drop už connection odstranil,
+      # takže nás zajímá jen ten druhý checkout.
+      pool.drop(http) if http
+      http = pool.checkout(open_timeout, read_timeout, CHECKOUT_TIMEOUT)
+      http.request(request)
+    ensure
+      pool.checkin(http) if http
     end
   end
 
-  # Close all cached connections (call at end of run)
-  def close_all_connections
-    @connections_mutex.synchronize do
-      @connections.each_value { |c| c[:http].finish rescue nil }
-      @connections.clear
-    end
-  end
-
-  # Drop a single cached connection (used on stale connection retry)
-  def drop_cached_connection(uri)
-    key = "#{uri.host}:#{uri.port}:#{Thread.current.object_id}"
-    @connections_mutex.synchronize do
-      cached = @connections.delete(key)
-      cached[:http].finish rescue nil if cached
+  # Vyzvedne / vytvoří pool pro daný host:port:scheme.
+  def pool_for(uri)
+    key = "#{uri.host}:#{uri.port}:#{uri.scheme}"
+    @pools_mutex.synchronize do
+      @pools[key] ||= ConnectionPool.new(uri.host, uri.port, uri.scheme == 'https')
     end
   end
 end

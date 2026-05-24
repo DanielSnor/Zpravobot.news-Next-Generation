@@ -29,14 +29,20 @@ module Utils
     MAX_BODY_BYTES = 32_768 # číst prvních 32KB — moderní <head> bývá větší kvůli inline stylům
     MAX_REDIRECTS = 5       # více redirectů pro www↔non-www, http→https apod.
 
-    # SSRF protection — block requests to private/internal networks
+    # SSRF protection — block requests to private/internal/special-use networks.
+    # Resolved IPs are validated PŘED připojením a TCP je pinováno na ověřenou IP,
+    # aby DNS rebinding mezi check a connect (TOCTOU) nemohlo přesměrovat na private cíl.
     PRIVATE_RANGES = [
-      IPAddr.new('127.0.0.0/8'),
-      IPAddr.new('10.0.0.0/8'),
-      IPAddr.new('172.16.0.0/12'),
-      IPAddr.new('192.168.0.0/16'),
-      IPAddr.new('169.254.0.0/16'),
-      IPAddr.new('fd00::/8'),
+      IPAddr.new('0.0.0.0/8'),       # "this network" včetně 0.0.0.0
+      IPAddr.new('10.0.0.0/8'),      # private (RFC 1918)
+      IPAddr.new('100.64.0.0/10'),   # CGNAT — může vést do internal cloud infrastructure
+      IPAddr.new('127.0.0.0/8'),     # loopback
+      IPAddr.new('169.254.0.0/16'),  # link-local + AWS/GCP/Azure metadata (169.254.169.254)
+      IPAddr.new('172.16.0.0/12'),   # private (RFC 1918)
+      IPAddr.new('192.168.0.0/16'), # private (RFC 1918)
+      IPAddr.new('224.0.0.0/4'),    # multicast
+      IPAddr.new('fc00::/7'),        # IPv6 ULA (zahrnuje fd00::/8)
+      IPAddr.new('fe80::/10'),       # IPv6 link-local
     ].freeze
 
     # Fetch og:image URL from given article URL.
@@ -77,9 +83,15 @@ module Utils
     def fetch_html_partial(url, redirects_left: MAX_REDIRECTS)
       uri = URI(url)
       return nil unless uri.is_a?(URI::HTTP) || uri.is_a?(URI::HTTPS)
-      return nil if private_address?(uri.host)
+
+      # Resolve DNS jednou a pinuj TCP na ověřenou IP. Net::HTTP by jinak
+      # resolvoval podruhé v http.start — útočník s krátkým TTL by mohl mezi
+      # checkem a connectem podstrčit private IP (DNS rebinding / TOCTOU).
+      pinned_ip = resolve_and_validate(uri.host)
+      return nil unless pinned_ip
 
       http = Net::HTTP.new(uri.host, uri.port)
+      http.ipaddr = pinned_ip
       http.use_ssl = (uri.scheme == 'https')
       http.open_timeout = TIMEOUT_SECONDS
       http.read_timeout = TIMEOUT_SECONDS
@@ -103,8 +115,8 @@ module Utils
 
           # Make absolute URL if relative
           location = URI.join(url, location).to_s unless location.start_with?('http')
-          redirect_uri = URI(location)
-          return nil if private_address?(redirect_uri.host)
+          # Recursive call validates the redirect target's IP again — žádný extra
+          # check tady není potřeba, brání se TOCTOU stejně jako úvodní volání.
           return fetch_html_partial(location, redirects_left: redirects_left - 1)
 
         when Net::HTTPSuccess
@@ -123,12 +135,20 @@ module Utils
       nil
     end
 
-    # Check if hostname resolves to a private/internal IP address (SSRF protection).
-    def private_address?(host)
+    # Resolve hostname a vrať jednu validovanou IP, na kterou se pinuje TCP.
+    # Pokud KTERÁKOLI vrácená IP padá do PRIVATE_RANGES, blokuj celý host —
+    # útočník nesmí získat průchod tím, že přidá public IP vedle private.
+    # Preferuje IPv4 (širší kompatibilita); pokud nejsou, vezme první IPv6.
+    #
+    # @return [String, nil] IP adresa nebo nil pokud host nelze resolvovat / je private
+    def resolve_and_validate(host)
       ips = Resolv.getaddresses(host)
-      ips.any? { |ip| private_ip?(ip) }
+      return nil if ips.empty?
+      return nil if ips.any? { |ip| private_ip?(ip) }
+
+      ips.find { |ip| !ip.include?(':') } || ips.first
     rescue Resolv::ResolvError
-      true # Unresolvable host = block
+      nil
     end
 
     def private_ip?(ip_str)

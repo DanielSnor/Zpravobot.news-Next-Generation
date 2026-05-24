@@ -1000,6 +1000,43 @@ CPU threshold = `load_average / n_cores`. Alert cooldown brání opakovaným ale
 
 ---
 
+### ADR-055: Bezpečnostní model webhook serveru — síťová izolace kontejneru + HMAC
+
+**Datum:** květen 2026
+
+**Kontext:**
+Webhook server (`bin/ifttt_webhook.rb`, port 8089) obsluhuje dva nezávislé endpointy: IFTTT (`/api/ifttt/...`) a Tlambot broadcast (`/api/mastodon/broadcast`). Při auditu vznikl opakovaný omyl o tom, jak broadcast funguje a zda má jeho HMAC verifikace smysl. Příčina omylu: `cron_command_listener.sh` spouští ve stejném kroku dva mechanismy, které vypadají souvisle, ale fungují opačně:
+
+- **Údržbot** (`command_listener.rb`) — **pull / polling**. Cron tahá Mastodon notifications API (cursor přes `last_notification_id`), zpracuje DM příkazy. Bez cronu se nic neděje; cron je řídící prvek.
+- **Tlambot** (`process_broadcast_queue.rb`) — **push / webhook**. Mastodon server-level webhook (`status.created` na účtu `@tlambot`) volá endpoint v reálném čase. Request **okamžitě** zapíše soubor do `queue/broadcast/pending/` (jediný zapisovatel je `handle_broadcast_webhook`). Cron pak frontu jen slepě konzumuje — `TlambotQueueProcessor` s Mastodonem nekomunikuje, věří obsahu souboru včetně pole `username == tlambot`.
+
+Důsledek: u Tlambota **není hradlem cron, ale HMAC na vstupu webhooku.** Cokoli se dostane do fronty jako validní JSON, je do 5 minut odvysíláno na všechny boty — nejmocnější operace v systému.
+
+HMAC mechanika (proč je secret nutný): `TLAMBOT_WEBHOOK_SECRET` je **sdílené tajemství** uložené současně v Mastodon adminu (Webhooks → Podpisový klíč) a v `env.sh`. Secret se v requestu **neposílá** — Mastodon jím spočítá `HMAC-SHA256` z těla a pošle jen otisk v hlavičce `X-Hub-Signature`. ZBNW spočítá otisk svou kopií a porovná. Bez shody secretu nelze padělat platný payload.
+
+**Rozhodnutí:**
+Bezpečnostní model = dvě vrstvy:
+
+1. **Síťová izolace kontejneru** (`IFTTT_BIND="0.0.0.0"`) — webhook server poslouchá na všech rozhraních **kontejneru**, ale kontejner sám není přímo routovatelný z internetu. Nginx běží na **hostu** (mimo kontejner) a proxuje `wh.zpravobot.news → container-ip:8089` přes Docker bridge síť. Co nginx-on-host explicitně neproxuje, zvenčí dosažitelné není.
+
+   **Proč ne loopback (`127.0.0.1`):** Vyzkoušeno empiricky 2026-05-23 18:44 — nginx na hostu se na loopback uvnitř kontejneru nedosáhne (loopback je per-network-namespace). Důsledek: 13h výpadek IFTTT pipeline (do 2026-05-24 07:46), vráceno na `0.0.0.0`. Loopback model by fungoval jen kdyby nginx běžel ve stejném kontejneru — což v Cloudronu není.
+
+2. **HMAC verifikace** (`TLAMBOT_WEBHOOK_SECRET`, musí sedět s podpisovým klíčem v Mastodonu) — autentizuje původ payloadu. Při bindu `0.0.0.0` je HMAC **primární autentizace broadcast endpointu**, nikoli pouhý defense-in-depth — kdokoli s přístupem na container-ip:8089 (Docker bridge) by jinak mohl frontu napustit.
+
+Cílový stav: oba secrety (`IFTTT_AUTH_TOKEN`, `TLAMBOT_WEBHOOK_SECRET`) jsou **povinné** a server bez nich fail-closed odmítne nastartovat.
+
+**Přechodný stav (květen 2026 — ramping IFTTT applet auth):** Po nasazení autentikace na IFTTT appletech běží server v *WARN-only* módu — při chybějícím tajemství jen logguje varování, ale startuje a propouští unauth requesty. Smyslem je odchytit legacy applety, které ještě token nezískaly, bez okamžitého výpadku pipeline. Flip na fail-closed plánován po týdnu monitoringu (viz `bin/ifttt_webhook.rb:42` + `lib/webhook/signature_verifier.rb:19` + `lib/webhook/routes/ifttt_route.rb:18`).
+
+**Důsledky:**
+- ✅ Broadcast endpoint není přímo dostupný z internetu — nginx na hostu by ho musel vědomě proxovat (dnes nikoli; proxuje jen IFTTT cestu)
+- ✅ HMAC kryje útok z Docker bridge / sousedních kontejnerů — což je s `BIND=0.0.0.0` jediná dostupná povrchová obrana
+- ✅ Údržbot (polling) vs. Tlambot (webhook) je explicitně zdokumentován — odstraňuje opakovaný omyl „cron to ovládá, zvenčí nehrozí"
+- ❌ Loopback bind (`127.0.0.1`) v Cloudron topologii **nefunguje** — ověřeno výpadkem 2026-05-23 18:44 – 2026-05-24 07:46; nezkoušet znovu bez přesunu nginx do kontejneru
+- ❌ `TLAMBOT_WEBHOOK_SECRET` v ZBNW musí být ručně sesynchronizován s podpisovým klíčem v Mastodon adminu; rotace klíče („Obnovit klíč") vyžaduje update na obou stranách, jinak broadcast padá na 401
+- ❌ Single point of failure: pokud by secret unikl nebo nginx-on-host začal proxovat broadcast cestu, broadcast vrstva je kompromitována — žádný další záchytný bod není
+
+---
+
 ## 12. Sdílená infrastruktura kódu
 
 ### ADR-043: Sjednocený `HttpClient` — žádné přímé `Net::HTTP` bypassy

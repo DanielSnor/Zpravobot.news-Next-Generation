@@ -1,5 +1,7 @@
 # frozen_string_literal: true
 
+require 'uri'
+
 # ============================================================
 # ProfileFieldsBuilder — Mastodon profile field construction
 # ============================================================
@@ -21,6 +23,10 @@
 #   - build_profile_url_fallback(handle) → custom fallback URL
 #   - build_fields(handle, current_fields, extra_data) → platform-specific field logic
 #
+# Security: all values that originate from external platforms (website,
+# handle-derived URLs) are sanitized before being written to Mastodon.
+# See sanitize_field_value / sanitize_url_field.
+#
 # ============================================================
 
 module Syncers
@@ -34,12 +40,16 @@ module Syncers
     VALID_RETENTION_DAYS = [7, 14, 30, 90, 180].freeze
     MANAGED_BY = '@zpravobot@zpravobot.news'
 
+    # Mastodon hard limit for a single field value (characters).
+    MASTODON_FIELD_VALUE_MAX = 255
+
     # Short display labels for each source platform, used in the SPRAVUJE field.
     PLATFORM_LABELS = {
       'twitter'   => 'X',
       'bluesky'   => 'Bluesky',
       'facebook'  => 'FB',
       'instagram' => 'IG',
+      'threads'   => 'Threads',
       'youtube'   => 'YT',
       'rss'       => 'RSS'
     }.freeze
@@ -68,18 +78,27 @@ module Syncers
     end
 
     # Build all 4 Mastodon metadata fields.
-    # Subclasses can override to add platform-specific field logic (e.g., website).
     # @param handle [String] Platform handle
     # @param current_fields [Array<Hash>] Current Mastodon fields
-    # @param extra_data [Hash] Additional profile data (website, source_platforms, etc.)
+    # @param extra_data [Hash] Additional profile data.
+    #   :website          → when present, used for web: instead of the current Mastodon value
+    #   :source_platforms → overrides the managed-by platform list
     # @return [Array<Hash>] 4-element fields array with :name and :value
     def build_fields(handle, current_fields, extra_data = {})
       labels = FIELD_LABELS[language]
 
+      website   = extra_data[:website]
+      web_value = if website && !website.empty?
+                    sanitize_url_field(website.chomp('/'))
+                  else
+                    extract_web_value(current_fields)
+                  end
+      web_value = '""' if web_value.empty?
+
       [
-        { name: field_prefix,      value: build_profile_url(handle) },
-        { name: 'web:',            value: extract_web_value(current_fields) },
-        { name: labels[:managed],  value: build_managed_by_value(source_platforms: extra_data[:source_platforms]) },
+        { name: field_prefix,       value: sanitize_url_field(build_profile_url(handle)) },
+        { name: 'web:',             value: web_value },
+        { name: labels[:managed],   value: build_managed_by_value(source_platforms: extra_data[:source_platforms]) },
         { name: labels[:retention], value: "#{retention_days} #{labels[:days]}" }
       ]
     end
@@ -102,6 +121,54 @@ module Syncers
       platforms = source_platforms || [platform_key]
       platform_str = platforms.map { |p| PLATFORM_LABELS[p] || p }.join(', ')
       "#{MANAGED_BY} #{labels[:from]} #{platform_str}"
+    end
+
+    # ============================================================
+    # Sanitization helpers (package-private — used by build_fields)
+    # ============================================================
+
+    # Strip HTML tags, control characters, and null bytes from an external
+    # string, then truncate to Mastodon's field-value limit.
+    #
+    # Intended for plain-text field values (display names, labels).
+    # For URL fields use sanitize_url_field instead.
+    #
+    # @param value [String, nil]
+    # @return [String] sanitized value (never nil)
+    def sanitize_field_value(value)
+      return '' if value.nil?
+
+      str = value.to_s
+      # Strip HTML tags (keep text content)
+      str = str.gsub(/<[^>]*>/, '')
+      # Remove null bytes and ASCII control characters (keep \t, \n, \r)
+      str = str.gsub(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/n, '')
+      # Collapse consecutive whitespace and strip ends
+      str = str.gsub(/[[:space:]]+/, ' ').strip
+      # Enforce Mastodon field value limit
+      str.length > MASTODON_FIELD_VALUE_MAX ? str[0, MASTODON_FIELD_VALUE_MAX] : str
+    end
+
+    # Validate and sanitize a URL intended for a Mastodon field value.
+    #
+    # Rejects any URL whose scheme is not http or https (e.g. javascript:,
+    # data:, vbscript:). Returns '' for blank or unparseable input so the
+    # caller can fall back to '""'.
+    #
+    # @param url [String, nil]
+    # @return [String] sanitized http/https URL, or ''
+    def sanitize_url_field(url)
+      return '' if url.nil? || url.to_s.strip.empty?
+
+      cleaned = sanitize_field_value(url)
+      return '' if cleaned.empty?
+
+      uri = URI.parse(cleaned)
+      return '' unless %w[http https].include?(uri.scheme)
+
+      cleaned
+    rescue URI::InvalidURIError
+      ''
     end
   end
 end

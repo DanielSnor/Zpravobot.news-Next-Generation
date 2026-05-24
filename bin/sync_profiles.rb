@@ -40,6 +40,7 @@ require_relative '../lib/syncers/bluesky_profile_syncer'
 require_relative '../lib/syncers/twitter_profile_syncer'
 require_relative '../lib/syncers/facebook_profile_syncer'
 require_relative '../lib/syncers/instagram_profile_syncer'
+require_relative '../lib/syncers/threads_profile_syncer'
 require_relative '../lib/syncers/youtube_profile_syncer'
 
 # ============================================================
@@ -191,6 +192,8 @@ class ProfileSyncRunner
       sync_facebook(source)
     when 'instagram'
       sync_instagram(source)
+    when 'threads'
+      sync_threads(source)
     when 'youtube'
       sync_youtube(source)
     when 'rss'
@@ -214,8 +217,10 @@ class ProfileSyncRunner
     id = source.id.to_s
     if id.end_with?('_facebook') || source.rss_source_type == 'facebook'
       'facebook'
-    elsif id.end_with?('_instagram')
+    elsif id.end_with?('_instagram') || source.rss_source_type == 'instagram'
       'instagram'
+    elsif id.end_with?('_threads') || source.rss_source_type == 'threads'
+      'threads'
     else
       'rss'
     end
@@ -246,318 +251,186 @@ class ProfileSyncRunner
     end
   end
 
-  def sync_bluesky(source)
-    sync_config = source.data.dig(:profile_sync) || {}
+  # Each sync_X method accepts optional handle: and sync_config: keyword args so it can be
+  # called both for native sources (no args) and for RSS/delegated sources (explicit args).
+  # This eliminates the former sync_X_for_rss duplicate methods.
 
-    mentions_config = load_mentions_config('bluesky', { type: 'prefix', value: 'https://bsky.app/profile/' })
-
+  def sync_bluesky(source, handle: source.source_handle, sync_config: source.data.dig(:profile_sync) || {})
     global = @config_loader.load_global_config
-
     syncer = Syncers::BlueskyProfileSyncer.new(
-      bluesky_handle: source.source_handle,
-      bluesky_api: global.dig(:infrastructure, :bluesky_api),
+      bluesky_handle:         handle,
+      bluesky_api:            global.dig(:infrastructure, :bluesky_api),
       bluesky_profile_prefix: global.dig(:infrastructure, :bluesky_profile_prefix),
-      mastodon_instance: source.mastodon_instance,
-      mastodon_token: source.mastodon_token,
-      language: source.data.fetch(:language, 'cs'),
-      retention_days: sync_config.fetch(:retention_days, 90),
-      mentions_config: mentions_config,
-      source_platforms: @account_platforms[source.mastodon_account]
+      mastodon_instance:      source.mastodon_instance,
+      mastodon_token:         source.mastodon_token,
+      language:               source.data.fetch(:language, 'cs'),
+      retention_days:         sync_config.fetch(:retention_days, 90),
+      mentions_config:        load_mentions_config('bluesky', { type: 'prefix', value: 'https://bsky.app/profile/' }),
+      source_platforms:       @account_platforms[source.mastodon_account]
     )
-
     run_syncer(source, syncer, sync_config)
   end
 
-  def sync_twitter(source)
-    sync_config = source.data.dig(:profile_sync) || {}
-
-    mentions_config = load_mentions_config('twitter', { type: 'domain_suffix', value: 'twitter.com' })
-
+  def sync_twitter(source, handle: source.source_handle, sync_config: source.data.dig(:profile_sync) || {})
     syncer = Syncers::TwitterProfileSyncer.new(
-      twitter_handle: source.source_handle,
-      nitter_instance: source.nitter_instance,
+      twitter_handle:    handle,
+      nitter_instance:   source.nitter_instance,
       mastodon_instance: source.mastodon_instance,
-      mastodon_token: source.mastodon_token,
-      language: source.data.fetch(:language, 'cs'),
-      retention_days: sync_config.fetch(:retention_days, 90),
-      mentions_config: mentions_config,
-      source_platforms: @account_platforms[source.mastodon_account]
+      mastodon_token:    source.mastodon_token,
+      language:          source.data.fetch(:language, 'cs'),
+      retention_days:    sync_config.fetch(:retention_days, 90),
+      mentions_config:   load_mentions_config('twitter', { type: 'domain_suffix', value: 'twitter.com' }),
+      source_platforms:  @account_platforms[source.mastodon_account]
     )
-
     run_syncer(source, syncer, sync_config)
   end
 
-  def sync_facebook(source)
-    sync_config = source.data.dig(:profile_sync) || {}
-
-    # Load platform config for Facebook-specific settings (token, cookies)
-    platform_config = @config_loader.load_platform_config('facebook')
-    mentions_config = load_mentions_config('facebook', { type: 'domain_suffix', value: 'facebook.com' })
-
-    # Get Browserless token from platform config or ENV
-    raw_token = platform_config.dig(:source, :browserless_token)
-    browserless_token = resolve_env_value(raw_token) || ENV['BROWSERLESS_TOKEN']
-    raise 'BROWSERLESS_TOKEN not configured' if browserless_token.nil? || browserless_token.empty?
-
-    # Get Facebook cookies from platform config or ENV
-    facebook_cookies = build_facebook_cookies(platform_config)
+  def sync_facebook(source, handle: source.source_handle, sync_config: source.data.dig(:profile_sync) || {})
+    platform_config   = @config_loader.load_platform_config('facebook')
+    browserless_token = load_browserless_token(platform_config)
+    facebook_cookies  = build_facebook_cookies(platform_config)
     raise 'Facebook cookies not configured' if facebook_cookies.empty?
 
     global = @config_loader.load_global_config
-
     syncer = Syncers::FacebookProfileSyncer.new(
-      facebook_handle: source.source_handle,
-      browserless_api: global.dig(:infrastructure, :browserless_api),
-      mastodon_instance: source.mastodon_instance,
-      mastodon_token: source.mastodon_token,
+      facebook_handle:   handle,
       browserless_token: browserless_token,
-      facebook_cookies: facebook_cookies,
-      language: source.data.fetch(:language, 'cs'),
-      retention_days: sync_config.fetch(:retention_days, 90),
-      mentions_config: mentions_config,
-      source_platforms: @account_platforms[source.mastodon_account]
+      browserless_api:   global.dig(:infrastructure, :browserless_api),
+      facebook_cookies:  facebook_cookies,
+      mastodon_instance: source.mastodon_instance,
+      mastodon_token:    source.mastodon_token,
+      language:          source.data.fetch(:language, 'cs'),
+      retention_days:    sync_config.fetch(:retention_days, 90),
+      mentions_config:   load_mentions_config('facebook', { type: 'domain_suffix', value: 'facebook.com' }),
+      source_platforms:  @account_platforms[source.mastodon_account]
     )
-
     run_syncer(source, syncer, sync_config)
   end
 
-  def sync_instagram(source)
-    sync_config = source.data.dig(:profile_sync) || {}
-
-    # Nativní Instagram zdroje: handle z source.handle
-    # RSS+instagram zdroje (via RSS.app): handle z social_profile — delegovat na sync_rss
-    instagram_handle = source.source_handle
+  def sync_instagram(source, handle: nil, sync_config: source.data.dig(:profile_sync) || {})
+    # Native Instagram sources have source.source_handle.
+    # RSS+instagram sources (via RSS.app) pass handle: explicitly.
+    # If neither is available, try social_profile from sync_config before skipping.
+    instagram_handle = handle || source.source_handle
     unless instagram_handle
       social_profile = sync_config[:social_profile]
-      if social_profile && social_profile[:handle]
-        return sync_instagram_for_rss(source, social_profile[:handle].to_s, sync_config)
+      if social_profile&.dig(:handle)
+        instagram_handle = social_profile[:handle].to_s
+      else
+        Logging.warn("[#{source.id}] Instagram profile sync: no source.handle configured, skipping")
+        @stats[:skipped] += 1
+        return
       end
-      Logging.warn("[#{source.id}] Instagram profile sync: no source.handle configured, skipping")
-      @stats[:skipped] += 1
-      return
     end
 
-    platform_config = @config_loader.load_platform_config('instagram')
-    mentions_config = load_mentions_config('instagram', { type: 'domain_suffix', value: 'instagram.com' })
-
-    raw_token = platform_config.dig(:source, :browserless_token)
-    browserless_token = resolve_env_value(raw_token) || ENV['BROWSERLESS_TOKEN']
-    raise 'BROWSERLESS_TOKEN not configured' if browserless_token.nil? || browserless_token.empty?
-
+    platform_config   = @config_loader.load_platform_config('instagram')
+    browserless_token = load_browserless_token(platform_config)
     instagram_cookies = build_instagram_cookies(platform_config)
     raise 'Instagram cookies not configured' if instagram_cookies.empty?
 
     global = @config_loader.load_global_config
-
     syncer = Syncers::InstagramProfileSyncer.new(
-      instagram_handle: instagram_handle,
-      browserless_api: global.dig(:infrastructure, :browserless_api),
-      mastodon_instance: source.mastodon_instance,
-      mastodon_token: source.mastodon_token,
+      instagram_handle:  instagram_handle,
       browserless_token: browserless_token,
+      browserless_api:   global.dig(:infrastructure, :browserless_api),
       instagram_cookies: instagram_cookies,
-      language: source.data.fetch(:language, 'cs'),
-      retention_days: sync_config.fetch(:retention_days, 90),
-      mentions_config: mentions_config,
-      source_platforms: @account_platforms[source.mastodon_account]
+      mastodon_instance: source.mastodon_instance,
+      mastodon_token:    source.mastodon_token,
+      language:          source.data.fetch(:language, 'cs'),
+      retention_days:    sync_config.fetch(:retention_days, 90),
+      mentions_config:   load_mentions_config('instagram', { type: 'domain_suffix', value: 'instagram.com' }),
+      source_platforms:  @account_platforms[source.mastodon_account]
     )
-
     run_syncer(source, syncer, sync_config)
   end
 
-  def sync_youtube(source)
-    sync_config = source.data.dig(:profile_sync) || {}
+  def sync_threads(source, handle: nil, sync_config: source.data.dig(:profile_sync) || {})
+    social_profile   = sync_config[:social_profile]
+    threads_handle   = handle ||
+                       social_profile&.dig(:handle)&.to_s ||
+                       source.id.to_s.sub(/_threads$/, '')
 
-    # Profile sync is opt-in for YouTube: only sources with source.handle are synced.
-    # Exception: if social_profile is configured, delegate to that platform syncer.
-    youtube_handle = source.source_handle
+    platform_config   = @config_loader.load_platform_config('threads')
+    browserless_token = load_browserless_token(platform_config)
+
+    global = @config_loader.load_global_config
+    syncer = Syncers::ThreadsProfileSyncer.new(
+      threads_handle:    threads_handle,
+      browserless_token: browserless_token,
+      browserless_api:   global.dig(:infrastructure, :browserless_api),
+      mastodon_instance: source.mastodon_instance,
+      mastodon_token:    source.mastodon_token,
+      language:          source.data.fetch(:language, 'cs'),
+      retention_days:    sync_config.fetch(:retention_days, 90),
+      mentions_config:   load_mentions_config('threads', { type: 'domain_suffix', value: 'threads.net' }),
+      source_platforms:  @account_platforms[source.mastodon_account]
+    )
+    run_syncer(source, syncer, sync_config)
+  end
+
+  def sync_youtube(source, handle: nil, sync_config: source.data.dig(:profile_sync) || {})
+    youtube_handle = handle || source.source_handle
+
+    # Profile sync is opt-in for YouTube. If no handle, try social_profile delegation.
     unless youtube_handle
       social_profile = sync_config[:social_profile]
-      if social_profile && social_profile[:platform] && social_profile[:handle]
+      if social_profile&.dig(:platform) && social_profile.dig(:handle)
         platform = social_profile[:platform].to_s
-        handle   = social_profile[:handle].to_s
+        h        = social_profile[:handle].to_s
         case platform
-        when 'facebook' then return sync_facebook_for_rss(source, handle, sync_config)
-        when 'twitter'  then return sync_twitter_for_rss(source, handle, sync_config)
-        when 'bluesky'  then return sync_bluesky_for_rss(source, handle, sync_config)
-        when 'instagram' then return sync_instagram_for_rss(source, handle, sync_config)
+        when 'facebook'  then return sync_facebook(source,  handle: h, sync_config: sync_config)
+        when 'twitter'   then return sync_twitter(source,   handle: h, sync_config: sync_config)
+        when 'bluesky'   then return sync_bluesky(source,   handle: h, sync_config: sync_config)
+        when 'instagram' then return sync_instagram(source, handle: h, sync_config: sync_config)
+        when 'threads'   then return sync_threads(source,   handle: h, sync_config: sync_config)
         end
       end
       @stats[:skipped] += 1
       return
     end
 
-    platform_config = @config_loader.load_platform_config('youtube')
-    mentions_config = load_mentions_config('youtube', { type: 'none', value: '' })
-
-    raw_token = platform_config.dig(:source, :browserless_token)
-    browserless_token = resolve_env_value(raw_token) || ENV['BROWSERLESS_TOKEN']
-    raise 'BROWSERLESS_TOKEN not configured' if browserless_token.nil? || browserless_token.empty?
+    platform_config   = @config_loader.load_platform_config('youtube')
+    browserless_token = load_browserless_token(platform_config)
 
     global = @config_loader.load_global_config
-
     syncer = Syncers::YoutubeProfileSyncer.new(
-      youtube_handle: youtube_handle,
+      youtube_handle:    youtube_handle,
       browserless_token: browserless_token,
-      browserless_api: global.dig(:infrastructure, :browserless_api),
+      browserless_api:   global.dig(:infrastructure, :browserless_api),
       mastodon_instance: source.mastodon_instance,
-      mastodon_token: source.mastodon_token,
-      language: source.data.fetch(:language, 'cs'),
-      retention_days: sync_config.fetch(:retention_days, 180),
-      mentions_config: mentions_config,
-      source_platforms: @account_platforms[source.mastodon_account]
+      mastodon_token:    source.mastodon_token,
+      language:          source.data.fetch(:language, 'cs'),
+      retention_days:    sync_config.fetch(:retention_days, 180),
+      mentions_config:   load_mentions_config('youtube', { type: 'none', value: '' }),
+      source_platforms:  @account_platforms[source.mastodon_account]
     )
-
     run_syncer(source, syncer, sync_config)
   end
 
   def sync_rss(source)
-    sync_config   = source.data.dig(:profile_sync) || {}
+    sync_config    = source.data.dig(:profile_sync) || {}
     social_profile = sync_config[:social_profile]
 
-    unless social_profile && social_profile[:platform] && social_profile[:handle]
+    unless social_profile&.dig(:platform) && social_profile.dig(:handle)
       Logging.warn("[#{source.id}] RSS profile sync: no social_profile configured, skipping")
       @stats[:skipped] += 1
       return
     end
 
     platform = social_profile[:platform].to_s
-    handle   = social_profile[:handle].to_s
+    h        = social_profile[:handle].to_s
 
     case platform
-    when 'twitter'
-      sync_twitter_for_rss(source, handle, sync_config)
-    when 'bluesky'
-      sync_bluesky_for_rss(source, handle, sync_config)
-    when 'facebook'
-      sync_facebook_for_rss(source, handle, sync_config)
-    when 'instagram'
-      sync_instagram_for_rss(source, handle, sync_config)
-    when 'youtube'
-      sync_youtube_for_rss(source, handle, sync_config)
+    when 'twitter'   then sync_twitter(source,   handle: h, sync_config: sync_config)
+    when 'bluesky'   then sync_bluesky(source,   handle: h, sync_config: sync_config)
+    when 'facebook'  then sync_facebook(source,  handle: h, sync_config: sync_config)
+    when 'instagram' then sync_instagram(source, handle: h, sync_config: sync_config)
+    when 'threads'   then sync_threads(source,   handle: h, sync_config: sync_config)
+    when 'youtube'   then sync_youtube(source,   handle: h, sync_config: sync_config)
     else
       Logging.warn("[#{source.id}] RSS profile sync: unsupported platform '#{platform}', skipping")
       @stats[:skipped] += 1
     end
-  end
-
-  def sync_twitter_for_rss(source, twitter_handle, sync_config)
-    mentions_config = load_mentions_config('twitter', { type: 'domain_suffix', value: 'twitter.com' })
-
-    syncer = Syncers::TwitterProfileSyncer.new(
-      twitter_handle: twitter_handle,
-      nitter_instance: source.nitter_instance,
-      mastodon_instance: source.mastodon_instance,
-      mastodon_token: source.mastodon_token,
-      language: source.data.fetch(:language, 'cs'),
-      retention_days: sync_config.fetch(:retention_days, 90),
-      mentions_config: mentions_config,
-      source_platforms: @account_platforms[source.mastodon_account]
-    )
-
-    run_syncer(source, syncer, sync_config)
-  end
-
-  def sync_bluesky_for_rss(source, bluesky_handle, sync_config)
-    mentions_config = load_mentions_config('bluesky', { type: 'prefix', value: 'https://bsky.app/profile/' })
-    global = @config_loader.load_global_config
-
-    syncer = Syncers::BlueskyProfileSyncer.new(
-      bluesky_handle: bluesky_handle,
-      bluesky_api: global.dig(:infrastructure, :bluesky_api),
-      bluesky_profile_prefix: global.dig(:infrastructure, :bluesky_profile_prefix),
-      mastodon_instance: source.mastodon_instance,
-      mastodon_token: source.mastodon_token,
-      language: source.data.fetch(:language, 'cs'),
-      retention_days: sync_config.fetch(:retention_days, 90),
-      mentions_config: mentions_config,
-      source_platforms: @account_platforms[source.mastodon_account]
-    )
-
-    run_syncer(source, syncer, sync_config)
-  end
-
-  def sync_facebook_for_rss(source, facebook_handle, sync_config)
-    platform_config = @config_loader.load_platform_config('facebook')
-    mentions_config = load_mentions_config('facebook', { type: 'domain_suffix', value: 'facebook.com' })
-
-    raw_token = platform_config.dig(:source, :browserless_token)
-    browserless_token = resolve_env_value(raw_token) || ENV['BROWSERLESS_TOKEN']
-    raise 'BROWSERLESS_TOKEN not configured' if browserless_token.nil? || browserless_token.empty?
-
-    facebook_cookies = build_facebook_cookies(platform_config)
-    raise 'Facebook cookies not configured' if facebook_cookies.empty?
-
-    global = @config_loader.load_global_config
-
-    syncer = Syncers::FacebookProfileSyncer.new(
-      facebook_handle: facebook_handle,
-      browserless_api: global.dig(:infrastructure, :browserless_api),
-      mastodon_instance: source.mastodon_instance,
-      mastodon_token: source.mastodon_token,
-      browserless_token: browserless_token,
-      facebook_cookies: facebook_cookies,
-      language: source.data.fetch(:language, 'cs'),
-      retention_days: sync_config.fetch(:retention_days, 90),
-      mentions_config: mentions_config,
-      source_platforms: @account_platforms[source.mastodon_account]
-    )
-
-    run_syncer(source, syncer, sync_config)
-  end
-
-  def sync_instagram_for_rss(source, instagram_handle, sync_config)
-    platform_config = @config_loader.load_platform_config('instagram')
-    mentions_config = load_mentions_config('instagram', { type: 'domain_suffix', value: 'instagram.com' })
-
-    raw_token = platform_config.dig(:source, :browserless_token)
-    browserless_token = resolve_env_value(raw_token) || ENV['BROWSERLESS_TOKEN']
-    raise 'BROWSERLESS_TOKEN not configured' if browserless_token.nil? || browserless_token.empty?
-
-    instagram_cookies = build_instagram_cookies(platform_config)
-    raise 'Instagram cookies not configured' if instagram_cookies.empty?
-
-    global = @config_loader.load_global_config
-
-    syncer = Syncers::InstagramProfileSyncer.new(
-      instagram_handle: instagram_handle,
-      browserless_api: global.dig(:infrastructure, :browserless_api),
-      mastodon_instance: source.mastodon_instance,
-      mastodon_token: source.mastodon_token,
-      browserless_token: browserless_token,
-      instagram_cookies: instagram_cookies,
-      language: source.data.fetch(:language, 'cs'),
-      retention_days: sync_config.fetch(:retention_days, 90),
-      mentions_config: mentions_config,
-      source_platforms: @account_platforms[source.mastodon_account]
-    )
-
-    run_syncer(source, syncer, sync_config)
-  end
-
-  def sync_youtube_for_rss(source, youtube_handle, sync_config)
-    platform_config = @config_loader.load_platform_config('youtube')
-    mentions_config = load_mentions_config('youtube', { type: 'none', value: '' })
-
-    raw_token = platform_config.dig(:source, :browserless_token)
-    browserless_token = resolve_env_value(raw_token) || ENV['BROWSERLESS_TOKEN']
-    raise 'BROWSERLESS_TOKEN not configured' if browserless_token.nil? || browserless_token.empty?
-
-    global = @config_loader.load_global_config
-
-    syncer = Syncers::YoutubeProfileSyncer.new(
-      youtube_handle: youtube_handle,
-      browserless_token: browserless_token,
-      browserless_api: global.dig(:infrastructure, :browserless_api),
-      mastodon_instance: source.mastodon_instance,
-      mastodon_token: source.mastodon_token,
-      language: source.data.fetch(:language, 'cs'),
-      retention_days: sync_config.fetch(:retention_days, 180),
-      mentions_config: mentions_config,
-      source_platforms: @account_platforms[source.mastodon_account]
-    )
-
-    run_syncer(source, syncer, sync_config)
   end
 
   # Load + enrich mentions config for a platform. Enrichment doplní `local_handles`
@@ -565,6 +438,15 @@ class ProfileSyncRunner
   def load_mentions_config(platform, default)
     raw = @config_loader.load_platform_config(platform)[:mentions] || default
     @config_loader.enrich_mentions_config(raw, platform: platform)
+  end
+
+  # Load Browserless.io token from platform config or BROWSERLESS_TOKEN env var.
+  def load_browserless_token(platform_config)
+    raw   = platform_config.dig(:source, :browserless_token)
+    token = resolve_env_value(raw) || ENV['BROWSERLESS_TOKEN']
+    raise 'BROWSERLESS_TOKEN not configured' if token.nil? || token.empty?
+
+    token
   end
 
   def run_syncer(source, syncer, sync_config)

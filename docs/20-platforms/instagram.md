@@ -244,7 +244,21 @@ Tyto limity jsou:
 
 ---
 
-## 13. Shrnutí
+## 13. Vztah k Threads
+
+Meta provozuje Threads jako textový pendant Instagramu. Obě platformy
+sdílí infrastrukturu (CDN, Meta Graph JSON), ale liší se v charakteru obsahu.
+
+Threads integrace v ZBNW‑NG je popsána v [`threads.md`](threads.md).
+`ThreadsProcessor` a `ThreadsProfileSyncer` jsou přímé deriváty
+IG ekvivalentů — sdílí stejné heuristiky přes `SocialTextHeuristics`.
+
+Klíčový rozdíl: Threads profily jsou **veřejné** — profile sync
+nevyžaduje session cookies.
+
+---
+
+## 14. Shrnutí
 
 Instagram integrace v ZBNW‑NG:
 

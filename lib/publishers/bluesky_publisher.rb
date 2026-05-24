@@ -1,12 +1,11 @@
 # frozen_string_literal: true
 
-require 'net/http'
-require 'uri'
 require 'json'
 require 'yaml'
 require 'time'
 
 require_relative '../support/loggable'
+require_relative '../utils/http_client'
 
 module Publishers
   # Publishes posts to Bluesky via the AT Protocol (XRPC).
@@ -37,10 +36,11 @@ module Publishers
     def initialize(account_id: 'zpravobot')
       creds      = load_credentials(account_id.to_s)
       @pds_url   = creds[:pds_url].chomp('/')
-      session    = create_session(creds[:identifier], creds[:password])
-      @access_jwt = session['accessJwt']
-      @did        = session['did']
-      @handle     = session['handle']
+      session      = create_session(creds[:identifier], creds[:password])
+      @access_jwt  = session['accessJwt']
+      @refresh_jwt = session['refreshJwt']
+      @did         = session['did']
+      @handle      = session['handle']
       log_info("[BS] Authenticated as #{@handle}")
     end
 
@@ -187,18 +187,12 @@ module Publishers
     end
 
     def xrpc_post(endpoint, body, jwt: nil)
-      uri  = URI("#{@pds_url}/xrpc/#{endpoint}")
-      http = Net::HTTP.new(uri.host, uri.port)
-      http.use_ssl      = uri.scheme == 'https'
-      http.open_timeout = OPEN_TIMEOUT
-      http.read_timeout = READ_TIMEOUT
-
-      req = Net::HTTP::Post.new(uri.path)
-      req['Content-Type']  = 'application/json'
-      req['Authorization'] = "Bearer #{jwt}" if jwt
-      req.body = JSON.generate(body)
-
-      resp = http.request(req)
+      url     = "#{@pds_url}/xrpc/#{endpoint}"
+      headers = jwt ? { 'Authorization' => "Bearer #{jwt}" } : {}
+      resp    = HttpClient.post_json(url, body,
+                  headers:      headers,
+                  open_timeout: OPEN_TIMEOUT,
+                  read_timeout: READ_TIMEOUT)
       handle_response(resp, endpoint)
     end
 
@@ -229,10 +223,16 @@ module Publishers
     end
 
     def with_retry
-      attempts = 0
+      auth_refreshed = false
+      attempts       = 0
       begin
         attempts += 1
         yield
+      rescue BlueskyAuthError
+        raise if auth_refreshed
+        refresh_session
+        auth_refreshed = true
+        retry
       rescue BlueskyRateLimitError
         raise if attempts >= MAX_RETRIES
         retry
@@ -243,6 +243,17 @@ module Publishers
         sleep(backoff)
         retry
       end
+    end
+
+    def refresh_session
+      raise BlueskyAuthError, "No refresh token available" unless @refresh_jwt
+      log_info("[BS] Access JWT expired — refreshing session")
+      session      = xrpc_post('com.atproto.server.refreshSession', nil, jwt: @refresh_jwt)
+      @access_jwt  = session['accessJwt']
+      @refresh_jwt = session['refreshJwt']
+      log_info("[BS] Session refreshed successfully")
+    rescue BlueskyPublishError => e
+      raise BlueskyAuthError, "Session refresh failed: #{e.message}"
     end
 
     def safe_parse_json(body)

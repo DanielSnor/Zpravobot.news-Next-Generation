@@ -175,7 +175,7 @@ Scheduler neobsahuje business logiku — pouze spouští jednotlivé běhy ve sp
 | IFTTT failed queue retry | 1× za hod | Opakování selhavších webhooků (mimo `DEAD_` permanentní chyby) |
 | Content sync (Bluesky, RSS, YouTube) | 10 min | Polling zdrojů; Twitter jde přes IFTTT pipeline |
 | Profile sync — Bluesky | 1× týdně | Nativní API |
-| Profile sync — Facebook + Instagram | 1× týdně | Browserless scraping |
+| Profile sync — Facebook + Instagram + Threads | 1× týdně | Browserless scraping (Threads bez cookies — veřejné profily) |
 | Profile sync — Twitter | 1× týdně na skupinu | Nitter scraping; 3 skupiny rotující po dnech týdne |
 | Profile sync — YouTube | 1× týdně | Browserless scraping |
 | Profile sync — RSS | 1× týdně | Deleguje na BS/FB/TW syncery |

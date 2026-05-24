@@ -2,7 +2,7 @@
 
 module Processors
   # Sdílené heuristiky pro rekonstrukci formátování ztraceného při RSS.app
-  # konverzi z Facebook / Instagram / (do budoucna) Threads captionů.
+  # konverzi z Facebook / Instagram / Threads captionů.
   #
   # Každý platformový procesor (FacebookProcessor, InstagramProcessor, …)
   # tento modul mixne (`include`) a v `process` volá metody v pořadí, které
@@ -13,11 +13,15 @@ module Processors
   # nepřidává další newliny.
   #
   # Heuristiky:
-  #   - decode_rss_app_artifacts:    �–  → \n– (RSS.app encoding bug)
-  #   - restore_paragraph_breaks:    emoji + space + uppercase → \n\n
-  #   - restore_hashtag_block:       trailing #-blok → \n\n#tags\n@mentions
+  #   - decode_rss_app_artifacts:      �–  → \n– (RSS.app encoding bug)
+  #   - restore_paragraph_breaks:      emoji + space + uppercase → \n\n
+  #   - restore_exclamation_title:     první věta zakončená ! → nadpis
+  #   - restore_flag_list:             vlajkový seznam → odrážky
+  #   - restore_list_breaks:           dash-seznam → odrážky
+  #   - restore_quote_breaks:          citace v uvozovkách → vlastní odstavec
+  #   - restore_hashtag_block:         trailing #-blok → \n\n#tags\n@mentions
   #   - restore_long_paragraph_breaks: dlouhé odstavce na větné hranici
-  #   - cleanup_whitespace:          normalizace mezer kolem newlinů
+  #   - cleanup_whitespace:            normalizace mezer kolem newlinů
   module SocialTextHeuristics
     LONG_PARAGRAPH_THRESHOLD = 250
 
@@ -63,6 +67,66 @@ module Processors
       text.gsub(/(?<=[^\n])(?<!#{REGIONAL})(?!#{VAR_SEL})(#{EMOJI_PATTERN}+)\s+(?=[[:upper:]])/) do
         "#{$1}\n\n"
       end
+    end
+
+    # ---------------------------------------------------------------------------
+    # Heuristika: První věta zakončená vykřičníkem = nadpis
+    #
+    # Pokud první věta celého textu (před jakýmkoli \n\n) končí !, je to nadpis
+    # a za ní patří \n\n.
+    #   "Kimi získává pole position! Max hlásí comeback..." →
+    #   "Kimi získává pole position!\n\nMax hlásí comeback..."
+    #
+    # Lookahead [[:upper:]]|\p{Emoji}+[[:upper:]] pokrývá i případ kdy větu
+    # uvozuje prefix emoji těsně před velkým písmenem (např. "! 😳Věta").
+    # Emoji na konci titulku bez navazujícího textu (např. "! 🇬🇧") se nerozdělí.
+    # ---------------------------------------------------------------------------
+    def restore_exclamation_title(text)
+      text.sub(/\A([^.!?\n]+!)\s+(?=[[:upper:]]|\p{Emoji}+[[:upper:]])/) { "#{$1}\n\n" }
+    end
+
+    # ---------------------------------------------------------------------------
+    # Heuristika: Vlajkový seznam
+    #
+    # IG/Threads posty často obsahují výčet míst/závodů s vlajkovými emoji jako bulety.
+    # RSS.app předá celý výčet jako jeden blok.
+    #
+    # Pravidlo A: text končící ":" + vlajka → \n\n před vlajkovým blokem
+    # Pravidlo B: vlajka → vlajka → \n mezi položkami (kompaktní seznam)
+    # ---------------------------------------------------------------------------
+    FLAG_EMOJI = /[\u{1F1E0}-\u{1F1FF}]{2}/  # dvojice regional indicators = jedna vlajka
+
+    def restore_flag_list(text)
+      text = text.gsub(/(:[[:space:]]*)(#{FLAG_EMOJI})/) { ":\n\n#{$2}" }
+      text.split(/\n\n/).map do |para|
+        next para if para.scan(FLAG_EMOJI).length < 2
+        para.gsub(/([[:alpha:]])[^\S\n]+(#{FLAG_EMOJI})/) { "#{$1}\n#{$2}" }
+      end.join("\n\n")
+    end
+
+    # ---------------------------------------------------------------------------
+    # Heuristika: Rekonstrukce dash-seznamu
+    #
+    # RSS.app někdy zachová "- " odrážky ale odstraní prázdné řádky mezi nimi.
+    # Podmínka: odstavec musí mít 2+ výskytů "\s+-\s+" — jinak jde o dash
+    # v nadpisu nebo textu, ne o seznam.
+    # ---------------------------------------------------------------------------
+    def restore_list_breaks(text)
+      text = text.split(/\n\n/).map do |para|
+        next para if para.scan(/\s+-\s+/).length < 2
+        para.gsub(/([^\n])\s+-\s+/, "\\1\n- ")
+      end.join("\n\n")
+      text.gsub(/((?:^|\n)-[^\n]+)(\n)(?!-)/) { "#{$1}\n\n" }
+    end
+
+    # ---------------------------------------------------------------------------
+    # Heuristika: Citace v uvozovkách → vlastní odstavec
+    #
+    # Signál: interpunkce + mezera + otevírací uvozovka + velké písmeno.
+    # Podporované uvozovky: " (straight U+0022), " (U+201C), „ (U+201E)
+    # ---------------------------------------------------------------------------
+    def restore_quote_breaks(text)
+      text.gsub(/([.!?])\s+(?=[\x22\u{201C}\u{201E}][[:upper:]])/) { "#{$1}\n\n" }
     end
 
     # ---------------------------------------------------------------------------

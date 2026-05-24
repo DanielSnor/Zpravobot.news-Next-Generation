@@ -93,6 +93,8 @@ Citlivé části konfigurace (tokeny, cookies, secrets) **nesmí být commitnuty
 |---|---|---|
 | `IFTTT_PORT` | `env.sh` | Port webhook serveru (default 8089) |
 | `IFTTT_QUEUE_DIR` | `env.sh` | Cesta k IFTTT queue adresáři |
+| `IFTTT_AUTH_TOKEN` | `env.sh` | Bearer token pro autentizaci IFTTT webhooků — bez něj server přijímá neautentizované požadavky (warn při startu) |
+| `TLAMBOT_WEBHOOK_SECRET` | `env.sh` | HMAC secret pro broadcast webhook (Tlambot) — bez něj se podpis neověřuje (warn při startu) |
 | `NITTER_INSTANCE` | `env.sh` | URL Nitter instance |
 
 **Social cookies (profile sync)**
@@ -187,7 +189,7 @@ Produkce a test jsou odděleny DB schématy (`zpravobot` / `zpravobot_test`).
 | `source_state` | Scheduling, error tracking | `source_id` (PK), `last_check`, `posts_today`, `error_count`, `last_error` |
 | `activity_log` | Diagnostický append-only log | `source_id`, `action` (fetch/publish/skip/error/…), `details` (JSONB) |
 
-Migrace jsou v `db/` — pro Cloudron produkci se používá `migrate_cloudron.sql` (idempotentní).
+Migrace jsou v `db/` — pro Cloudron produkci se používá `migrate_prod.sql` (idempotentní).
 
 Detailní schéma patří do SQL migrací, nikoli do tohoto souboru.
 

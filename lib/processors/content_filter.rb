@@ -37,9 +37,9 @@ module Processors
     # @param required_keywords [Array<String, Hash>] PHRASES_REQUIRED equivalent
     # @param content_replacements [Array<Hash>] CONTENT_REPLACEMENTS equivalent
     def initialize(banned_phrases: [], required_keywords: [], content_replacements: [])
-      @banned_phrases = Array(banned_phrases).compact
-      @required_keywords = Array(required_keywords).compact
-      @content_replacements = Array(content_replacements).compact
+      @banned_phrases = precompile_rules(Array(banned_phrases).compact)
+      @required_keywords = precompile_rules(Array(required_keywords).compact)
+      @content_replacements = precompile_replacements(Array(content_replacements).compact)
     end
 
     # Check if text contains banned content
@@ -88,28 +88,10 @@ module Processors
 
       @content_replacements.each do |replacement_rule|
         next unless replacement_rule.is_a?(Hash)
-        
-        begin
-          pattern = replacement_rule[:pattern]
-          replacement = replacement_rule[:replacement] || ''
-          flags = replacement_rule[:flags] || 'gi'
-          literal = replacement_rule[:literal]
-
-          next unless pattern
-
-          # If literal, escape regex special characters
-          regex_pattern = literal ? Regexp.escape(pattern) : pattern
-
-          # Build regex options from flags
-          options = build_regex_options(flags)
-
-          regex = Regexp.new(regex_pattern, options)
-          
-          # Handle global flag - Ruby gsub is always global
-          result = result.gsub(regex, replacement)
-        rescue RegexpError
-          next
-        end
+        regex = replacement_rule[:_compiled]
+        next unless regex
+        replacement = replacement_rule[:replacement] || ''
+        result = result.gsub(regex, replacement)
       end
 
       result
@@ -177,21 +159,21 @@ module Processors
         end
       end
 
-      # Process regex arrays (contentRegex, usernameRegex, domainRegex)
+      # Process regex arrays (contentRegex, usernameRegex, domainRegex).
+      # Použij předkompilované regexy z precompile_rule pokud existují;
+      # fallback je kompilace per call (pro volání mimo initialize / testy).
       CAMEL_TO_SNAKE.each_key do |key|
         snake = CAMEL_TO_SNAKE[key]
-        arr = rule[key] || rule[key.to_s] || rule[snake] || rule[snake.to_s]
-        next unless arr.is_a?(Array) && !arr.empty?
+        compiled = rule["_compiled_#{snake}".to_sym]
 
-        arr.each do |pattern|
-          next if pattern.nil?
-          begin
-            regex = Regexp.new(pattern.to_s, Regexp::IGNORECASE)
-            results << regex.match?(str)
-          rescue RegexpError
-            results << false
-          end
+        unless compiled
+          arr = rule[key] || rule[key.to_s] || rule[snake] || rule[snake.to_s]
+          next unless arr.is_a?(Array) && !arr.empty?
+          compiled = arr.reject(&:nil?).map { |p| compile_regex(p.to_s, Regexp::IGNORECASE) }
         end
+
+        # nil v compiled = broken pattern → false (zachovává původní semantiku)
+        compiled.each { |r| results << (r ? r.match?(str) : false) }
       end
 
       return false if results.empty?
@@ -217,12 +199,12 @@ module Processors
     end
 
     def match_rule_regex(str, rule, _lower_str)
-      pattern = rule[:pattern]
-      return false unless pattern
-      options = build_regex_options(rule[:flags] || 'i')
-      Regexp.new(pattern, options).match?(str)
-    rescue RegexpError
-      false
+      regex = rule[:_compiled] || begin
+        return false unless rule[:pattern]
+        compile_regex(rule[:pattern], build_regex_options(rule[:flags] || 'i'))
+      end
+      return false unless regex
+      regex.match?(str)
     end
 
     def match_rule_and(str, rule, _lower_str) = matches_unified_filter?(str, rule, :and)
@@ -238,6 +220,64 @@ module Processors
       when 'or'  then rules.any? { |r| matches_filter_rule?(str, r) }
       else false
       end
+    end
+
+    def precompile_replacements(rules)
+      rules.map do |rule|
+        next rule unless rule.is_a?(Hash) && rule[:pattern]
+        regex_pattern = rule[:literal] ? Regexp.escape(rule[:pattern]) : rule[:pattern]
+        options = build_regex_options(rule[:flags] || 'gi')
+        rule.merge(_compiled: Regexp.new(regex_pattern, options))
+      rescue RegexpError
+        nil
+      end.compact
+    end
+
+    # Rekurzivně předkompiluje regex patterny ve filter pravidlech (banned/required).
+    # Pro každé pravidlo vrací nový hash obohacený o `_compiled` / `_compiled_<key>`
+    # klíče; String pravidla a literal/jiné neregex typy se vracejí beze změny.
+    # Cíl: žádný Regexp.new v hot path (per-post evaluace).
+    def precompile_rules(rules)
+      rules.map { |r| precompile_rule(r) }
+    end
+
+    def precompile_rule(rule)
+      return rule unless rule.is_a?(Hash)
+
+      result = rule.dup
+      type = rule[:type]&.to_s
+
+      case type
+      when 'regex'
+        if rule[:pattern]
+          result[:_compiled] = compile_regex(rule[:pattern], build_regex_options(rule[:flags] || 'i'))
+        end
+      when 'and', 'or', 'not'
+        # Unified filter — předkompiluj contentRegex/usernameRegex/domainRegex pole.
+        # nil v poli = invalid pattern; zůstává v compiled jako nil → matchne false.
+        CAMEL_TO_SNAKE.each_key do |key|
+          snake = CAMEL_TO_SNAKE[key]
+          arr = rule[key] || rule[key.to_s] || rule[snake] || rule[snake.to_s]
+          next unless arr.is_a?(Array) && !arr.empty?
+
+          result["_compiled_#{snake}".to_sym] = arr.reject(&:nil?).map do |pattern|
+            compile_regex(pattern.to_s, Regexp::IGNORECASE)
+          end
+        end
+      when 'complex'
+        inner = rule[:rules]
+        result[:rules] = inner.map { |r| precompile_rule(r) } if inner.is_a?(Array)
+      end
+
+      result
+    end
+
+    # Kompiluje pattern → Regexp; nil pokud pattern není validní.
+    # Sdíleno mezi precompile (init time) a match fallback (per call).
+    def compile_regex(pattern, options)
+      Regexp.new(pattern.to_s, options)
+    rescue RegexpError
+      nil
     end
 
     # Build Ruby Regexp options from JavaScript-style flags
