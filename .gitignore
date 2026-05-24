@@ -34,3 +34,7 @@ vendor/bundle/
 
 # Nova IDE
 .nova/
+
+# Claude Code (per-user local config a paměť)
+CLAUDE.md
+.claude/
