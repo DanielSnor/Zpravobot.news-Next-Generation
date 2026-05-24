@@ -296,6 +296,60 @@ test("Czech chars - match", true, filter.banned?("Velká škoda"))
 test("Czech chars - case insensitive", true, filter.banned?("ŠKODA auto"))
 
 # =============================================================================
+# TEST 13: Regex precompile (defense against silent regression to per-call compile)
+# =============================================================================
+section("13. Regex Precompile (P1)")
+
+# Klíče _compiled* musí být přítomné v transformed rules — jinak hot path
+# kompiluje Regexp.new per post (~500 sources × N rules × M posts overhead).
+
+regex_rule = { type: 'regex', pattern: '\\bspam\\b', flags: 'i' }
+complex_rule = {
+  type: 'or',
+  contentRegex: ['\\bfoo\\b', '\\bbar\\b'],
+  usernameRegex: ['^bot_']
+}
+nested_rule = {
+  type: 'complex',
+  operator: 'and',
+  rules: [
+    { type: 'regex', pattern: 'inner1' },
+    { type: 'regex', pattern: 'inner2' }
+  ]
+}
+
+filter = Processors::ContentFilter.new(
+  banned_phrases: [regex_rule, complex_rule, nested_rule, "plain_string"]
+)
+rules = filter.instance_variable_get(:@banned_phrases)
+
+test("regex rule has _compiled Regexp", true, rules[0][:_compiled].is_a?(Regexp))
+test("complex/or has _compiled_content_regex array", true, rules[1][:_compiled_content_regex].is_a?(Array))
+test("complex/or _compiled_content_regex contains Regexps", true, rules[1][:_compiled_content_regex].all? { |r| r.is_a?(Regexp) })
+test("complex/or has _compiled_username_regex", true, rules[1][:_compiled_username_regex].is_a?(Array))
+test("nested complex rules also precompiled", true, rules[2][:rules][0][:_compiled].is_a?(Regexp))
+test("String rules pass through unchanged", "plain_string", rules[3])
+
+# Funkční zachování: matche musí dál fungovat identicky
+test("regex rule matches via _compiled", true, filter.banned?("This is spam text"))
+test("complex/or matches contentRegex", true, filter.banned?("foo here"))
+test("complex/or matches usernameRegex", true, filter.banned?("bot_user"))
+test("nested complex matches both inner regex", true, filter.banned?("inner1 inner2"))
+
+# Idempotence: precompile_rule volaná podruhé nesmí rozbít existující _compiled
+double_filter = Processors::ContentFilter.new(banned_phrases: [rules[0]])
+double_rules = double_filter.instance_variable_get(:@banned_phrases)
+test("idempotence: re-precompile preserves Regexp", true, double_rules[0][:_compiled].is_a?(Regexp))
+
+# Invalid regex → nil v _compiled (broken pattern), nepadá při init
+broken_filter = Processors::ContentFilter.new(
+  banned_phrases: [{ type: 'regex', pattern: '[invalid(' }]
+)
+broken_rules = broken_filter.instance_variable_get(:@banned_phrases)
+test("invalid regex precompiles to nil (no crash at init)", true, broken_rules[0][:_compiled].nil?)
+test("broken regex rule matches nothing (no exception)", false, broken_filter.banned?("anything"))
+
+# =============================================================================
 # SUMMARY
 # =============================================================================
 puts
