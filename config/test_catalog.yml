@@ -352,7 +352,14 @@ tests:
     category: unit
     tags: [offline, mastodon, publisher]
     exit_code_reliable: true
-    description: "MastodonPublisher: constants, validation, parse_error, content-based MIME detection, filename correction (no HTTP)"
+    description: "MastodonPublisher: constants, validation, parse_error, MIME delegáty, filename correction (no HTTP)"
+
+  test_mime_detector:
+    file: test/test_mime_detector.rb
+    category: unit
+    tags: [offline, utils, mime]
+    exit_code_reliable: true
+    description: "Utils::MimeDetector: magic byte detection, extension fallback, filename extension correction"
 
   test_twitter_thread_processor:
     file: test/test_twitter_thread_processor.rb

@@ -115,28 +115,26 @@ test_raises("raises ArgumentError for text > MAX_STATUS_LENGTH", ArgumentError) 
   pub2.publish(long_text)
 end
 
-# These would proceed to HTTP (which fails without real server) but should NOT raise ArgumentError
-# We test that no ArgumentError is raised — any network error is acceptable
-begin
-  pub2.publish('', media_ids: ['123'])
-  # If no error, that's unexpected (no real server) but not ArgumentError
-rescue ArgumentError
-  puts "  \e[31m\u2717\e[0m empty text WITH media should not raise ArgumentError"
-  $failed += 1
-rescue => e
-  # Network/other error is expected (no real server)
-  puts "  \e[32m\u2713\e[0m empty text with media does not raise ArgumentError (got #{e.class})"
-  $passed += 1
+# Tyto cesty by drive vedly na HTTP a overovali jsme jen ze NEpadne ArgumentError -
+# delaly ale skutecne volani na example.com (log noise, sum v reportu). Misto toho
+# stubujeme api_post; test prochazi pokud publish projde validacnim guardem bez raise.
+MockHttpResponse = Struct.new(:code, :body) unless defined?(MockHttpResponse)
+def make_stub_publisher(instance_url:, access_token:)
+  pub = Publishers::MastodonPublisher.new(instance_url: instance_url, access_token: access_token)
+  pub.define_singleton_method(:api_post) do |_path, _params|
+    MockHttpResponse.new('200', '{"id":"123","url":"https://example.com/123"}')
+  end
+  pub
 end
 
-begin
-  pub2.publish('x' * 2500)
-rescue ArgumentError
-  puts "  \e[31m\u2717\e[0m text at boundary (2500) should not raise ArgumentError"
-  $failed += 1
-rescue => e
-  puts "  \e[32m\u2713\e[0m text at boundary (2500 chars) does not raise ArgumentError (got #{e.class})"
-  $passed += 1
+stub_pub = make_stub_publisher(instance_url: 'https://example.com', access_token: 'tok')
+
+test_no_error("empty text with media projde validaci (api_post stubovan)") do
+  stub_pub.publish('', media_ids: ['123'])
+end
+
+test_no_error("text na hranici 2500 znaku projde validaci (api_post stubovan)") do
+  stub_pub.publish('x' * 2500)
 end
 
 # =============================================================================
@@ -158,37 +156,19 @@ test("non-JSON returns body text", 'Something went wrong', pub3.send(:parse_erro
 resp_empty = MockResponse.new(body: '', code: '500')
 test("empty body returns empty string", '', pub3.send(:parse_error, resp_empty))
 
-# =============================================================================
-# detect_content_type_from_bytes (private) — content-based detection
-# =============================================================================
-section("detect_content_type_from_bytes (private)")
+# Pozn.: Pokrytí detect_content_type_from_bytes (magic byte detekce) bylo
+# po R5 extrakci MimeDetectoru přesunuto do test/test_mime_detector.rb —
+# publisher tu metodu už nemá (volá MimeDetector.from_bytes interně).
+# Zde se testují jen delegáty detect_content_type / detect_content_type_from_path /
+# correct_filename_extension, které publisher i nadále veřejně vystavuje.
 
+# Sdílené fixtures + publisher instance pro testy delegátů níž
 pub4 = Publishers::MastodonPublisher.new(instance_url: 'https://example.com', access_token: 'tok')
-
-jpeg_magic = "\xFF\xD8\xFF\xE0" + ('x' * 20)
-test("JPEG magic bytes", 'image/jpeg', pub4.send(:detect_content_type_from_bytes, jpeg_magic))
-
-png_magic = "\x89PNG\r\n\x1A\n" + ('x' * 20)
-test("PNG magic bytes", 'image/png', pub4.send(:detect_content_type_from_bytes, png_magic))
-
+jpeg_magic  = "\xFF\xD8\xFF\xE0" + ('x' * 20)
+png_magic   = "\x89PNG\r\n\x1A\n" + ('x' * 20)
 gif89_magic = "GIF89a" + ('x' * 20)
-test("GIF89a magic bytes", 'image/gif', pub4.send(:detect_content_type_from_bytes, gif89_magic))
-
-gif87_magic = "GIF87a" + ('x' * 20)
-test("GIF87a magic bytes", 'image/gif', pub4.send(:detect_content_type_from_bytes, gif87_magic))
-
-webp_magic = "RIFF\x00\x00\x00\x00WEBP" + ('x' * 20)
-test("WEBP magic bytes", 'image/webp', pub4.send(:detect_content_type_from_bytes, webp_magic))
-
-mp4_magic = "\x00\x00\x00\x20ftypisom" + ('x' * 20)
-test("MP4 ftyp magic bytes", 'video/mp4', pub4.send(:detect_content_type_from_bytes, mp4_magic))
-
-webm_magic = "\x1A\x45\xDF\xA3" + ('x' * 20)
-test("WebM magic bytes", 'video/webm', pub4.send(:detect_content_type_from_bytes, webm_magic))
-
-test("nil data returns nil", nil, pub4.send(:detect_content_type_from_bytes, nil))
-test("empty data returns nil", nil, pub4.send(:detect_content_type_from_bytes, ''))
-test("unknown bytes returns nil", nil, pub4.send(:detect_content_type_from_bytes, 'x' * 20))
+webp_magic  = "RIFF\x00\x00\x00\x00WEBP" + ('x' * 20)
+mp4_magic   = "\x00\x00\x00\x20ftypisom" + ('x' * 20)
 
 # =============================================================================
 # detect_content_type (private) — content-first, extension fallback
