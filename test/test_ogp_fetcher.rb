@@ -48,6 +48,14 @@ class OgpFetcherTest
     test_extract_article_url_skips_platform_domains
     test_extract_article_url_finds_article_url
 
+    # SSRF guard — DNS validation + IP pinning (TOCTOU defense)
+    test_resolve_blocks_private_and_special_ips
+    test_resolve_allows_public_ipv4
+    test_resolve_blocks_mixed_public_and_private
+    test_resolve_prefers_ipv4_over_ipv6
+    test_resolve_returns_nil_on_resolv_error
+    test_resolve_returns_nil_on_empty_resolution
+
     puts
     puts '=' * 60
     puts "  Results: #{@passed} passed, #{@failed} failed"
@@ -221,12 +229,103 @@ class OgpFetcherTest
   end
 
   # ============================================================
+  # Tests — SSRF guard (DNS validation + IP pinning, TOCTOU defense)
+  # ============================================================
+  #
+  # `resolve_and_validate` je jádro obrany proti DNS rebinding: vrátí jednu
+  # validovanou IP, nebo nil. fetch_html_partial pak pinuje TCP přes
+  # `http.ipaddr=`, takže Net::HTTP DNS nesahá.
+  #
+  # Testy pokrývají klasifikační logiku (které IP se blokují) a chování
+  # při edge case'ech (mixed, prázdná resolution, Resolv chyba).
+
+  def test_resolve_blocks_private_and_special_ips
+    test('resolve_and_validate: blokuje všechny private/special-use IP') do
+      blocked = %w[
+        10.0.0.1 127.0.0.1 169.254.169.254 172.16.0.1 192.168.1.1
+        100.64.0.1 224.0.0.1 ::1 fc00::1 fd00::1 fe80::1 0.0.0.0
+      ]
+      blocked.each do |ip|
+        with_resolv_stub([ip]) do
+          result = Utils::OgpFetcher.new.send(:resolve_and_validate, 'attacker.example')
+          assert_nil result, "měl blokovat #{ip}"
+        end
+      end
+    end
+  end
+
+  def test_resolve_allows_public_ipv4
+    test('resolve_and_validate: vrátí public IPv4 beze změny') do
+      with_resolv_stub(['8.8.8.8']) do
+        result = Utils::OgpFetcher.new.send(:resolve_and_validate, 'public.example')
+        assert_equal '8.8.8.8', result
+      end
+    end
+  end
+
+  def test_resolve_blocks_mixed_public_and_private
+    test('resolve_and_validate: blokuje pokud ANY IP private (i když je tam public)') do
+      with_resolv_stub(['1.2.3.4', '10.0.0.1']) do
+        result = Utils::OgpFetcher.new.send(:resolve_and_validate, 'mixed.example')
+        assert_nil result
+      end
+    end
+  end
+
+  def test_resolve_prefers_ipv4_over_ipv6
+    test('resolve_and_validate: preferuje IPv4 i když je první IPv6') do
+      with_resolv_stub(['2001:db8::1', '1.2.3.4']) do
+        result = Utils::OgpFetcher.new.send(:resolve_and_validate, 'dual.example')
+        assert_equal '1.2.3.4', result
+      end
+    end
+  end
+
+  def test_resolve_returns_nil_on_resolv_error
+    test('resolve_and_validate: Resolv::ResolvError → nil (nepropouští výjimku)') do
+      with_resolv_raise(Resolv::ResolvError.new('NXDOMAIN')) do
+        result = Utils::OgpFetcher.new.send(:resolve_and_validate, 'nonexistent.example')
+        assert_nil result
+      end
+    end
+  end
+
+  def test_resolve_returns_nil_on_empty_resolution
+    test('resolve_and_validate: prázdné pole IPs → nil') do
+      with_resolv_stub([]) do
+        result = Utils::OgpFetcher.new.send(:resolve_and_validate, 'empty.example')
+        assert_nil result
+      end
+    end
+  end
+
+  # ============================================================
   # Test helpers
   # ============================================================
 
   # Run extract_og_image on HTML without network (accesses private method via send)
   def fetcher_extract(html)
     Utils::OgpFetcher.new.send(:extract_og_image, html)
+  end
+
+  # Stub Resolv.getaddresses pro dobu yieldu — vrátí předem nastavené pole IPs.
+  # Resolv je modul, proto stubujeme přes singleton_class. Po skončení obnovíme
+  # původní metodu i kdyby test vyhodil výjimku.
+  def with_resolv_stub(addresses)
+    original = Resolv.method(:getaddresses)
+    Resolv.singleton_class.send(:define_method, :getaddresses) { |_host| addresses }
+    yield
+  ensure
+    Resolv.singleton_class.send(:define_method, :getaddresses, original)
+  end
+
+  # Stub Resolv.getaddresses tak, aby vyhodil zadanou výjimku.
+  def with_resolv_raise(exception)
+    original = Resolv.method(:getaddresses)
+    Resolv.singleton_class.send(:define_method, :getaddresses) { |_host| raise exception }
+    yield
+  ensure
+    Resolv.singleton_class.send(:define_method, :getaddresses, original)
   end
 
   # Create fetcher whose fetch_html_partial returns a mock non-success response
