@@ -1,11 +1,11 @@
 # frozen_string_literal: true
 
-require 'net/http'
 require 'uri'
 require 'json'
 require 'yaml'
 require 'fileutils'
 
+require_relative '../utils/http_client'
 require_relative '../utils/html_cleaner'
 require_relative '../utils/atomic_file'
 require_relative '../publishers/mastodon_publisher'
@@ -196,15 +196,12 @@ module FF
       return { display_name: account_id, bio: nil } unless token
 
       uri = URI("#{instance}/api/v1/accounts/verify_credentials")
-      http = Net::HTTP.new(uri.host, uri.port)
-      http.use_ssl      = uri.scheme == 'https'
-      http.open_timeout = OPEN_TIMEOUT
-      http.read_timeout = READ_TIMEOUT
-
-      req = Net::HTTP::Get.new(uri)
-      req['Authorization'] = "Bearer #{token}"
-
-      response = http.request(req)
+      response = HttpClient.get(
+        uri,
+        headers: { 'Authorization' => "Bearer #{token}" },
+        open_timeout: OPEN_TIMEOUT,
+        read_timeout: READ_TIMEOUT
+      )
       unless (200..299).include?(response.code.to_i)
         log_warn("[FF] #{account_id}: HTTP #{response.code}")
         return { display_name: account_id, bio: nil }

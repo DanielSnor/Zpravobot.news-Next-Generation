@@ -50,12 +50,20 @@ test("DEFAULT_RETRY_DELAYS frozen", true, HttpClient::DEFAULT_RETRY_DELAYS.froze
 test("DEFAULT_RETRY_DELAYS values", [1, 2, 4], HttpClient::DEFAULT_RETRY_DELAYS)
 
 # =============================================================================
-# 2. build_http — HTTPS
+# 2. ConnectionPool — HTTPS configuration
 # =============================================================================
-section("build_http: HTTPS")
+# Po refaktoru (R2) sahá execute na pool přes pool_for(uri); build_http už
+# není veřejné API. Testy ověřují, že pool vyrobí správně nakonfigurované
+# Net::HTTP instance pro různé URI a timeouty.
+section("ConnectionPool: HTTPS")
+
+HttpClient.reset_pools!  # čistý start
 
 uri_https = URI('https://example.com/path')
-http_https = HttpClient.build_http(uri_https)
+pool_https = HttpClient.pool_for(uri_https)
+http_https = pool_https.checkout(HttpClient::DEFAULT_OPEN_TIMEOUT,
+                                  HttpClient::DEFAULT_READ_TIMEOUT,
+                                  HttpClient::CHECKOUT_TIMEOUT)
 
 test("HTTPS: returns Net::HTTP", true, http_https.is_a?(Net::HTTP))
 test("HTTPS: use_ssl is true", true, http_https.use_ssl?)
@@ -64,26 +72,34 @@ test("HTTPS: port is 443", 443, http_https.port)
 test("HTTPS: open_timeout default", 10, http_https.open_timeout)
 test("HTTPS: read_timeout default", 30, http_https.read_timeout)
 
+pool_https.checkin(http_https)
+
 # =============================================================================
-# 3. build_http — HTTP
+# 3. ConnectionPool — HTTP
 # =============================================================================
-section("build_http: HTTP")
+section("ConnectionPool: HTTP")
 
 uri_http = URI('http://localhost:8080/rss')
-http_plain = HttpClient.build_http(uri_http)
+pool_http = HttpClient.pool_for(uri_http)
+http_plain = pool_http.checkout(HttpClient::DEFAULT_OPEN_TIMEOUT,
+                                 HttpClient::DEFAULT_READ_TIMEOUT,
+                                 HttpClient::CHECKOUT_TIMEOUT)
 
 test("HTTP: use_ssl is false", false, http_plain.use_ssl?)
 test("HTTP: host is correct", 'localhost', http_plain.address)
 test("HTTP: port is 8080", 8080, http_plain.port)
 
-# =============================================================================
-# 4. build_http — Custom timeouts
-# =============================================================================
-section("build_http: Custom Timeouts")
+pool_http.checkin(http_plain)
 
-http_custom = HttpClient.build_http(uri_https, open_timeout: 5, read_timeout: 15)
+# =============================================================================
+# 4. ConnectionPool — Custom timeouts
+# =============================================================================
+section("ConnectionPool: Custom Timeouts")
+
+http_custom = pool_https.checkout(5, 15, HttpClient::CHECKOUT_TIMEOUT)
 test("Custom open_timeout", 5, http_custom.open_timeout)
 test("Custom read_timeout", 15, http_custom.read_timeout)
+pool_https.checkin(http_custom)
 
 # =============================================================================
 # 5. Module functions are accessible
@@ -94,7 +110,10 @@ test("get is a method", true, HttpClient.respond_to?(:get))
 test("head is a method", true, HttpClient.respond_to?(:head))
 test("get_with_retry is a method", true, HttpClient.respond_to?(:get_with_retry))
 test("execute is a method", true, HttpClient.respond_to?(:execute))
-test("build_http is a method", true, HttpClient.respond_to?(:build_http))
+test("pool_for is a method", true, HttpClient.respond_to?(:pool_for))
+test("ConnectionPool is a class", true, HttpClient::ConnectionPool.is_a?(Class))
+
+HttpClient.reset_pools!  # cleanup po testech
 
 # =============================================================================
 # Summary
