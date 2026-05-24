@@ -74,6 +74,37 @@ Květen přinesl komplexní revizi codebase ve 6 vlnách: bezpečnostní záplat
 - `SocialTextHeuristics` — sdílený modul pro `InstagramProcessor` a `ThreadsProcessor`; eliminuje duplikaci `restore_exclamation_title`, `restore_flag_list`, `restore_list_breaks`, `restore_quote_breaks`, `FLAG_EMOJI`
 - `Utils::TcoExpander` — konsolidace t.co expanderu z `twitter_nitter_adapter` a `twitter_tweet_processor` do sdíleného modulu; přidán volitelný `on_error` blok pro logování
 
+### Audit codebase (vlna 6)
+
+Komplexní revize zaměřená na výkon, spotřebu zdrojů, bezpečnost a „co bylo zapomenuto". Odlišné číslování oproti vlnám 1–5 (`S/P/R`) — používá prefixy **B** (bezpečnost), **P** (perf), **R** (resource), **F** (forgotten/cleanup), **T** (test housekeeping), aby byly odkazy během auditu jednoznačné.
+
+#### Zabezpečení
+- **B2** — ADR-055 přepsán: `IFTTT_BIND="0.0.0.0"` je vědomé rozhodnutí (Cloudron topologie — nginx běží na hostu mimo kontejner, loopback bind by ho odřízl; ověřeno 13h výpadkem 2026-05-23 18:44 → 2026-05-24 07:46). HMAC povýšen z „defense-in-depth" na **primární autentizaci** broadcast endpointu. Doplněn odstavec o přechodném WARN-only stavu (viz B1 odložené).
+- **B3** — `Utils::OgpFetcher` SSRF guard: zavřen TOCTOU mezi DNS check a `Net::HTTP.new` (útočník s krátkým TTL mohl podstrčit private IP mezi check a connect). Nově `resolve_and_validate` resolvuje jednou, validuje **všechny** vrácené IPs (any private = blok), TCP pinováno přes `http.ipaddr =`. `PRIVATE_RANGES` rozšířeno o `0.0.0.0/8`, `100.64.0.0/10` (CGNAT), `224.0.0.0/4` (multicast), `fc00::/7` (IPv6 ULA), `fe80::/10` (IPv6 link-local). 6 nových testů s mock `Resolv.getaddresses`.
+- **B4** — `Broadcast::TlambotWebhookHandler#verify_signature` odstraněn jako dead code (duplikoval `Webhook::SignatureVerifier` s rozdílnou politikou — fail-closed vs. fail-open — a vlastní ruční constant-time porovnání). Class komentář explicitně dokumentuje, že HMAC verifikuje upstream `Webhook::SignatureVerifier`.
+- **B5** — `Publishers::MastodonPublisher#sanitize_multipart_filename` + `Syncers::MastodonProfileUpdater#sanitize_multipart_filename`: filename z URL po percent-decode mohlo obsahovat `"`, `\r`, `\n` (Content-Disposition header injection / předčasná terminace multipart). Sanitizace na `[a-zA-Z0-9._-]` (stejný regex jako `Webhook::QueueWriter.sanitize`), cap 200 znaků.
+
+#### Výkon
+- **P1** — `Processors::ContentFilter`: dotaženo precompile na `banned_phrases` a `required_keywords` (předchozí vlna pokrývala jen `content_replacements`). Nový rekurzivní `precompile_rule` walks tree: `type: 'regex'` → `_compiled`, `type: 'and|or|not'` → `_compiled_content_regex` atd. arrays, `type: 'complex'` → rekurze. Helper `compile_regex` sdílený pro init i fallback. Dopad: řádově 10 000+ eliminovaných `Regexp.new` per cron tick.
+- **P2** — `Orchestrator#process_source`: sloučení duplicitního `get_source_state` (předtím volaný uvnitř `source_due?` i pro `extract_since_time`). Nově state načten jednou na začátku, propagován oběma. ~500 zdrojů → úspora ~500 DB roundtripů per cron tick.
+- **R2** — `Utils::HttpClient::ConnectionPool` — nová per-host connection pool struktura s `Mutex` + `ConditionVariable`. Drží až `MAX_POOL_SIZE_PER_HOST = 4` connections; vlákno přes `checkout` získá exkluzivní vlastnictví, `checkin` vrátí. Plný pool + vše `in_use` ⇒ vlákno čeká do `CHECKOUT_TIMEOUT = 5 s`, pak `PoolTimeoutError`. Nahrazen předchozí per-thread klíč v cache — paralelní upload média (4 vlákna k stejnému hostu) teď sdílí keep-alive místo 4 nezávislých TLS handshakes. 7 nových concurrency testů.
+
+#### Refaktoring / cleanup
+- **P3** — `Orchestrator#process_source`: odstraněn mrtvý řádek `@thread_cache[source.id] = {}` (přiřazoval String klíč, zatímco `ThreadingSupport` používá tuple klíče `[source_id, author_handle]` — entries z jiných sources se navzájem neovlivňují, per-source reset není potřeba). Komentář dokumentuje proč.
+- **P4** — `lib/reporting/source_reporter.rb`, `lib/stats/mastodon_stats.rb`, `lib/ff/friendly_follow.rb`: migrace z přímého `Net::HTTP.new` na `HttpClient.get` (ADR-043). Všechny 3 dělaly identický pattern `GET /api/v1/accounts/verify_credentials` s Bearer auth. Health checks (`lib/health/checks/*`) zůstávají záměrně mimo (chceme rychlé jednorázové dotazy bez retry).
+- **R1** — `HttpClient.close_all_connections` smazán jako dead code (nikdy nevolán, OS uklidí connections při exit procesu; long-running `ifttt_webhook.rb` nedělá outbound HTTP). `drop_cached_connection` zachován (volaný z `execute` na stale connection retry).
+- **R3** — `bin/run_zbnw.rb#acquire_lock`: explicitní `flock(...) ? true : false` (flock vrací `0`/`false`, ne `true`/`false` — defenzivní hardening proti budoucímu refaktoru typu `== true`).
+- **F3** — `cron_webhook.sh`: `setsid bundle exec ruby` místo `setsid ruby` (sjednoceno s ostatními cron skripty; chrání před tím že webhook server poběží mimo bundler kontext).
+- **F4** — smazán zakomentovaný debug `# puts` v `Formatters::TwitterFormatter#initialize`.
+- **B6** — falsy alarm: schema interpolace v `bin/instance_status.rb:163` se zdála jako SQL injection vektor, ale `DatabaseHelpers.validate_schema!` je volaná těsně před `SET search_path` (allowlist `%w[zpravobot zpravobot_test]`). Ověřeno u všech 5 callsitů v repu.
+
+#### Testy (housekeeping)
+- **T1** — `test/test_orchestrator.rb` přepsán na hybridní strukturu: `extract_since_time` unit testy běží vždy, integration část (config load + DB connect + dry-run) **graceful skip** pokud `config/sources/<source>.yml` neexistuje (nejsou v gitu, jen na serveru) nebo PostgreSQL není dostupný. Exit 0 v obou případech. Plný běh jen tam, kde existuje obojí.
+- **T2** — `test/test_mastodon_publisher.rb` opraven po R5 MimeDetector extrakci (test sahal na neexistující metodu `detect_content_type_from_bytes`). Pokrytí magic bytes detekce přesunuto do nového **`test/test_mime_detector.rb`** (52 testů — všechny formáty + edge cases). Sekce `publish — input validation` přepsána ze skutečných volání na `example.com` na stub `api_post` (eliminuje log noise + síťové volání v testech kategorie offline).
+
+#### Odložené
+- **B1** — fail-open webhook (`bin/ifttt_webhook.rb:42-46`, `lib/webhook/signature_verifier.rb:19`, `lib/webhook/routes/ifttt_route.rb:18`) zůstává v WARN-only módu jako vědomé meziobdobí během rampingu autentikace IFTTT appletů. Flip na fail-closed plánován **2026-05-30** s manuálním dohledem (verifikace logů na `Invalid signature`/`401`, identifikace případných legacy appletů bez tokenu, pak commit + nasazení).
+
 ---
 
 ## 2026-04 — Security, performance, Bluesky publishing, refaktorovací vlna
