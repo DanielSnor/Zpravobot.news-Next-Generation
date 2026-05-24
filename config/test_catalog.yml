@@ -475,7 +475,7 @@ tests:
     category: unit
     tags: [offline, broadcast, mastodon, webhook]
     exit_code_reliable: true
-    description: "TlambotWebhookHandler: payload parsing, HMAC signature, mention routing, text cleaning"
+    description: "TlambotWebhookHandler: payload parsing, mention routing, text cleaning"
 
   test_repost_author_attribution:
     file: test/test_repost_author_attribution.rb

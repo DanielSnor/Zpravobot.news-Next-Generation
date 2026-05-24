@@ -1,8 +1,9 @@
 #!/usr/bin/env ruby
 # frozen_string_literal: true
 
-# Test TlambotWebhookHandler — payload parsing, signature verification,
-# mention-based routing, text cleaning. All offline, no HTTP.
+# Test TlambotWebhookHandler — payload parsing, mention-based routing,
+# text cleaning. HMAC verification je upstream odpovědnost
+# (Webhook::SignatureVerifier), netestuje se tady. All offline, no HTTP.
 # Run: ruby test/test_tlambot.rb
 
 $LOAD_PATH.unshift File.expand_path('../lib', __dir__)
@@ -52,43 +53,12 @@ end
 # Constants
 # ============================================================
 
-handler = Broadcast::TlambotWebhookHandler.new(webhook_secret: 'test_secret_key')
+handler = Broadcast::TlambotWebhookHandler.new
 
 section('Constants')
 
 test('TRIGGER_ACCOUNT', 'tlambot', Broadcast::TlambotWebhookHandler::TRIGGER_ACCOUNT)
 test('ZPRAVOBOT_KEYWORD', 'zpravobot', Broadcast::TlambotWebhookHandler::ZPRAVOBOT_KEYWORD)
-
-# ============================================================
-# verify_signature
-# ============================================================
-
-section('verify_signature')
-
-# Compute a valid signature
-require 'openssl'
-test_body = '{"event":"status.created"}'
-valid_sig = 'sha256=' + OpenSSL::HMAC.hexdigest('SHA256', 'test_secret_key', test_body)
-
-test('valid signature returns true',
-     true, handler.verify_signature(test_body, valid_sig))
-
-test('invalid signature returns false',
-     false, handler.verify_signature(test_body, 'sha256=0000000000000000000000000000000000000000000000000000000000000000'))
-
-test('missing prefix returns false',
-     false, handler.verify_signature(test_body, 'invalid_header'))
-
-test('nil header returns false',
-     false, handler.verify_signature(test_body, nil))
-
-test('empty body with valid sig',
-     true, handler.verify_signature('', 'sha256=' + OpenSSL::HMAC.hexdigest('SHA256', 'test_secret_key', '')))
-
-# Handler with empty secret should reject
-handler_no_secret = Broadcast::TlambotWebhookHandler.new(webhook_secret: '')
-test('empty secret rejects all',
-     false, handler_no_secret.verify_signature(test_body, valid_sig))
 
 # ============================================================
 # extract_targets — mention-based routing
