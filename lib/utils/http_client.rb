@@ -433,14 +433,6 @@ module HttpClient
     end
   end
 
-  # Close all cached connections (call at end of run)
-  def close_all_connections
-    @connections_mutex.synchronize do
-      @connections.each_value { |c| c[:http].finish rescue nil }
-      @connections.clear
-    end
-  end
-
   # Drop a single cached connection (used on stale connection retry)
   def drop_cached_connection(uri)
     key = "#{uri.host}:#{uri.port}:#{Thread.current.object_id}"

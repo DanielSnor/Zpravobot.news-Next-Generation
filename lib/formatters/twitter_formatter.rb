@@ -41,9 +41,6 @@ module Formatters
       
       # Build config for UniversalFormatter
       @universal = UniversalFormatter.new(build_universal_config)
-      
-      # Log pro debugging (lze odstranit po ověření)
-      # puts "[TwitterFormatter] Delegating to UniversalFormatter"
     end
 
     # Main entry point - backwards compatible
