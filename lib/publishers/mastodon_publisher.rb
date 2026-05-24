@@ -639,9 +639,10 @@ module Publishers
 
     def build_multipart_body(boundary, data, filename, content_type, description)
       body = "".b
+      safe_filename = sanitize_multipart_filename(filename)
 
       body << "--#{boundary}\r\n".b
-      body << "Content-Disposition: form-data; name=\"file\"; filename=\"#{filename}\"\r\n".b
+      body << "Content-Disposition: form-data; name=\"file\"; filename=\"#{safe_filename}\"\r\n".b
       body << "Content-Type: #{content_type}\r\n\r\n".b
       body << data.b
       body << "\r\n".b
@@ -655,6 +656,18 @@ module Publishers
 
       body << "--#{boundary}--\r\n".b
       body
+    end
+
+    # Filename z URL může po percent-decode obsahovat ", \r, \n nebo jiné
+    # znaky, které prolomí Content-Disposition header (uzavření quoted-string,
+    # injection nové hlavičky, předčasná terminace multipart části). Redukce
+    # na bezpečnou množinu znaků problém eliminuje; pro Mastodon je filename
+    # jen technický identifikátor, ne user-facing string. Stejný regex jako
+    # Webhook::QueueWriter.sanitize pro konzistenci napříč repem.
+    def sanitize_multipart_filename(filename)
+      cleaned = filename.to_s.gsub(/[^a-zA-Z0-9._-]/, '_')
+      cleaned = 'media' if cleaned.empty?
+      cleaned[0, 200]
     end
 
     # Delegate MIME detection and extension correction to Utils::MimeDetector

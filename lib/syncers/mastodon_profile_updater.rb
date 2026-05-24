@@ -104,8 +104,9 @@ module Syncers
       end
 
       files.each do |key, file_data|
+        safe_filename = sanitize_multipart_filename(file_data[:filename])
         body << "--#{boundary}\r\n".b
-        body << "Content-Disposition: form-data; name=\"#{key}\"; filename=\"#{file_data[:filename]}\"\r\n".b
+        body << "Content-Disposition: form-data; name=\"#{key}\"; filename=\"#{safe_filename}\"\r\n".b
         body << "Content-Type: #{file_data[:content_type]}\r\n\r\n".b
         body << file_data[:data].b
         body << "\r\n".b
@@ -113,6 +114,16 @@ module Syncers
 
       body << "--#{boundary}--\r\n".b
       body
+    end
+
+    # Sanitizace filename pro Content-Disposition header — viz stejný komentář
+    # v Publishers::MastodonPublisher#sanitize_multipart_filename. ImageCacheManager
+    # už filenames generuje bezpečně ('profile.jpg' apod.), takže tento sanitizér
+    # je defense-in-depth pro budoucí callsity.
+    def sanitize_multipart_filename(filename)
+      cleaned = filename.to_s.gsub(/[^a-zA-Z0-9._-]/, '_')
+      cleaned = 'media' if cleaned.empty?
+      cleaned[0, 200]
     end
   end
 end
