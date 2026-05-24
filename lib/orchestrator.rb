@@ -183,10 +183,15 @@ module Orchestrator
     log_info("[#{source.id}] Processing...")
     @stats.increment(:processed)
 
-    # Reset thread cache for this source at start of processing
-    @thread_cache[source.id] = {}
+    # ThreadingSupport používá tuple klíče [source_id, author_handle], takže
+    # entries z jiných sources se navzájem neovlivňují — žádný per-source reset
+    # není potřeba. Globální cap MAX_THREAD_CACHE_SIZE řeší růst paměti.
 
-    unless source_due?(source)
+    # Načti state jednou — source_due? i extract_since_time pak sdílí stejný snapshot
+    # místo dvou DB queries per source (důležité při 500+ zdrojích).
+    state = @state_manager.get_source_state(source.id)
+
+    unless source_due?(source, state)
     log_info("[#{source.id}] Not due yet, skipping")
     return
     end
@@ -200,8 +205,6 @@ module Orchestrator
     if @first_run
     return process_first_run(source)
     end
-
-    state = @state_manager.get_source_state(source.id)
 
     # RSS feeds are intentionally fetched without date filtering.
     # Aggregators like RSS.app introduce delays, so articles can appear in the feed
@@ -371,8 +374,8 @@ module Orchestrator
     nil
   end
 
-  def source_due?(source)
-    state = @state_manager.get_source_state(source.id)
+  # @param state [Hash, nil] Předem načtený source_state (z process_source)
+  def source_due?(source, state)
     return true unless state
 
     last_check = state[:last_check]
