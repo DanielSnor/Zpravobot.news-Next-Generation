@@ -39,11 +39,18 @@ QUEUE_DIRS = {
             (ENV['ZBNW_DIR'] ? "#{ENV['ZBNW_DIR']}/queue/ifttt" : 'queue/ifttt')
 }.freeze
 
-# Warn on startup if secrets are not configured
-warn "WARN: IFTTT_AUTH_TOKEN not set — webhook accepts unauthenticated requests" \
-  unless AUTH_TOKEN && !AUTH_TOKEN.empty?
-warn "WARN: TLAMBOT_WEBHOOK_SECRET not set — broadcast webhook signature not verified" \
-  unless BROADCAST_SECRET && !BROADCAST_SECRET.empty?
+# Fail-closed: oba secrety jsou povinné. Bez nich by server přijímal
+# neautentizované IFTTT requesty resp. broadcasty bez ověřeného HMAC podpisu.
+# Viz ADR-055 (docs/90-meta/decisions.md).
+missing_secrets = []
+missing_secrets << 'IFTTT_AUTH_TOKEN' unless AUTH_TOKEN && !AUTH_TOKEN.empty?
+missing_secrets << 'TLAMBOT_WEBHOOK_SECRET' unless BROADCAST_SECRET && !BROADCAST_SECRET.empty?
+
+unless missing_secrets.empty?
+  warn "ERROR: webhook secrets missing: #{missing_secrets.join(', ')}"
+  warn 'Server refusing to start — nastav je v env.sh nebo přes environment variables.'
+  exit 1
+end
 
 if __FILE__ == $PROGRAM_NAME
   options = {}

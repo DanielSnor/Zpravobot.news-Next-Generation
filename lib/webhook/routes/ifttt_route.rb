@@ -15,7 +15,12 @@ module Webhook
 
       # @return [Array(Integer, Hash, String|nil)] [status, body_hash, log_message]
       def call(headers, client, query_params, max_payload_size:)
-        if @auth_token && !SignatureVerifier.secure_compare(
+        # Fail-closed: bez nastaveného @auth_token odmítá všechno. Server se sám
+        # nespustí bez IFTTT_AUTH_TOKEN (bin/ifttt_webhook.rb), tohle je defense
+        # in depth pro programaticky vytvořené instance route.
+        return [401, { error: 'Unauthorized' }] unless @auth_token && !@auth_token.empty?
+
+        unless SignatureVerifier.secure_compare(
           "Bearer #{@auth_token}", headers['authorization'].to_s
         )
           return [401, { error: 'Unauthorized' }]
