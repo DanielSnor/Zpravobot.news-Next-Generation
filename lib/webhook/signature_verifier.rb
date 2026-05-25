@@ -14,9 +14,12 @@ module Webhook
     end
 
     # Verify HMAC-SHA256 signature for broadcast webhook.
-    # Returns true when secret is not configured (allows unauthenticated in dev).
+    # Fail-closed: bez nastaveného secretu odmítá všechny requesty.
+    # bin/ifttt_webhook.rb zabrání startu serveru pokud TLAMBOT_WEBHOOK_SECRET
+    # chybí, takže v reálném provozu sem secret nil nikdy nepřijde — defense
+    # in depth pro případy, že by někdo vytvořil route programaticky.
     def verify_broadcast_signature(body, signature_header, secret:)
-      return true unless secret && !secret.empty?
+      return false unless secret && !secret.empty?
       return false unless signature_header.is_a?(String) && signature_header.start_with?('sha256=')
 
       expected = signature_header.sub('sha256=', '')

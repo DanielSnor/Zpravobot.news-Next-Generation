@@ -1023,9 +1023,7 @@ Bezpečnostní model = dvě vrstvy:
 
 2. **HMAC verifikace** (`TLAMBOT_WEBHOOK_SECRET`, musí sedět s podpisovým klíčem v Mastodonu) — autentizuje původ payloadu. Při bindu `0.0.0.0` je HMAC **primární autentizace broadcast endpointu**, nikoli pouhý defense-in-depth — kdokoli s přístupem na container-ip:8089 (Docker bridge) by jinak mohl frontu napustit.
 
-Cílový stav: oba secrety (`IFTTT_AUTH_TOKEN`, `TLAMBOT_WEBHOOK_SECRET`) jsou **povinné** a server bez nich fail-closed odmítne nastartovat.
-
-**Přechodný stav (květen 2026 — ramping IFTTT applet auth):** Po nasazení autentikace na IFTTT appletech běží server v *WARN-only* módu — při chybějícím tajemství jen logguje varování, ale startuje a propouští unauth requesty. Smyslem je odchytit legacy applety, které ještě token nezískaly, bez okamžitého výpadku pipeline. Flip na fail-closed plánován po týdnu monitoringu (viz `bin/ifttt_webhook.rb:42` + `lib/webhook/signature_verifier.rb:19` + `lib/webhook/routes/ifttt_route.rb:18`).
+Oba secrety (`IFTTT_AUTH_TOKEN`, `TLAMBOT_WEBHOOK_SECRET`) jsou **povinné**: server bez nich fail-closed odmítne nastartovat (`bin/ifttt_webhook.rb` zkontroluje při startu a `exit 1`). `SignatureVerifier.verify_broadcast_signature` i `IftttRoute#call` mají navíc defense-in-depth kontroly, které odmítnou request pokud by sem secret nil přesto přišel (např. programaticky vytvořené instance v testech).
 
 **Důsledky:**
 - ✅ Broadcast endpoint není přímo dostupný z internetu — nginx na hostu by ho musel vědomě proxovat (dnes nikoli; proxuje jen IFTTT cestu)
