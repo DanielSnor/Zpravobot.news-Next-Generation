@@ -12,6 +12,7 @@ require_relative 'checks/mastodon_check'
 require_relative 'checks/problematic_sources_check'
 require_relative 'checks/runner_health_check'
 require_relative 'checks/recurring_warnings_check'
+require_relative 'checks/ifttt_activity_check'
 
 class HealthMonitor
   def initialize(config)
@@ -21,6 +22,7 @@ class HealthMonitor
       HealthChecks::LogAnalysisCheck.new(config),
       HealthChecks::RecurringWarningsCheck.new(config),
       HealthChecks::WebhookCheck.new(config),
+      HealthChecks::IftttActivityCheck.new(config),
       HealthChecks::NitterCheck.new(config),
       HealthChecks::NitterAccountsCheck.new(config),
       HealthChecks::QueueCheck.new(config),

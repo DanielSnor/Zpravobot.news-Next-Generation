@@ -370,6 +370,37 @@ results << test(
 puts
 
 # ============================================================
+# Test 11: apply_domain_fixes + trailing slash
+# ============================================================
+puts "## apply_domain_fixes — trailing slash URL"
+
+fix_processor = Processors::UrlProcessor.new(no_trim_domains: [], domain_rewrites: [])
+
+results << test(
+  "URL se trailing slash zůstane po apply_domain_fixes + process_content (chmi.cz případ)",
+  "👉 Aktuální výstrahy sledujte na https://vystrahy-cr.chmi.cz/",
+  fix_processor.process_content(fix_processor.apply_domain_fixes(
+    "👉 Aktuální výstrahy sledujte na vystrahy-cr.chmi.cz/.", ["chmi.cz"]
+  ))
+)
+
+results << test(
+  "URL bez trailing slash projde také",
+  "Výstrahy na https://vystrahy-cr.chmi.cz",
+  fix_processor.process_content(fix_processor.apply_domain_fixes(
+    "Výstrahy na vystrahy-cr.chmi.cz.", ["chmi.cz"]
+  ))
+)
+
+results << test(
+  "URL s cestou projde (https://example.cz/page)",
+  "Text https://example.cz/page",
+  fix_processor.process_content("Text https://example.cz/page.")
+)
+
+puts
+
+# ============================================================
 # Summary
 # ============================================================
 puts "=" * 60
