@@ -234,14 +234,6 @@ module Adapters
                  .strip
       post.text = text
 
-      # Apply IFTTT-style ellipsis logic
-      ellipsis_added = false
-      if needs_ellipsis_for_ifttt_fallback?(text)
-        log "Tier 3: Adding ellipsis (text >= #{TRUNCATION_THRESHOLD} chars, no natural terminator)"
-        post.text = text.rstrip + '…'
-        ellipsis_added = true
-      end
-
       # Best-effort media from IFTTT embed_code
       embed_code = ifttt_data[:embed_code]
       if post.media.empty? && embed_code && !embed_code.empty?
@@ -250,13 +242,15 @@ module Adapters
         log "Tier 3: Extracted #{images.count} images from embed_code" if images.any?
       end
 
+      # Tier 3 data is unconditionally incomplete (we're here only because both Nitter
+      # and Syndication failed). force_read_more makes the formatter append the read-more
+      # URL; the ellipsis itself is added downstream by PostProcessor#mark_source_truncation.
       post.raw = {} unless post.raw.is_a?(Hash)
       post.raw.merge!(
         source:          'ifttt_fallback',
         tier:            3,
         truncated:       true,
-        force_read_more: true,
-        ellipsis_added:  ellipsis_added
+        force_read_more: true
       )
 
       post

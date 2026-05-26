@@ -6,19 +6,10 @@ module Adapters
     # Also contains shared post helpers: detect_post_type, build_author, etc.
     #
     # Included as instance methods in TwitterNitterAdapter.
+    #
+    # Truncation indication (appending `…` for cut-off bodies) is handled downstream
+    # by PostProcessor#mark_source_truncation — see lib/utils/truncation_detector.rb.
     module SyndicationPostBuilder
-      # Twitter's practical character limit where IFTTT starts truncating
-      TRUNCATION_THRESHOLD = 257
-
-      # Patterns for detecting natural terminators (tweet probably NOT truncated)
-      TERMINATOR_PATTERNS = {
-        punctuation: /[.!?。！？…]\s*\z/,
-        emoji:       /\p{Emoji}\s*\z/,
-        url:         /https?:\/\/\S+\s*\z/,
-        hashtag:     /#\w+\s*\z/,
-        mention:     /@\w+\s*\z/
-      }.freeze
-
       # Build a Post from Syndication API data combined with IFTTT metadata.
       # Shared between Tier 1.5 (primary syndication) and Tier 3.5 (fallback).
       #
@@ -67,23 +58,8 @@ module Adapters
 
         final_text = clean_text(expanded_text)
 
-        # Detect truncated text (Syndication truncates long tweets at ~280 chars)
-        truncated    = false
-        ellipsis_added = false
-
-        if final_text.length >= 270
-          ends_with_tco = final_text.match?(/https:\/\/t\.co\/\S+\s*$/)
-          has_terminator = has_natural_terminator?(final_text)
-
-          if ends_with_tco || !has_terminator
-            truncated = true
-            unless has_terminator || final_text.match?(/…\s*$/)
-              final_text = final_text.rstrip + '…'
-              ellipsis_added = true
-              log "Tier #{tier}: Text truncated, adding ellipsis (#{final_text.length} chars)"
-            end
-          end
-        end
+        # Truncation detection + `…` are applied downstream in
+        # PostProcessor#mark_source_truncation so all tiers share one heuristic.
 
         # For retweets: author = original author from RT @match
         author_username = if post_type[:is_repost] && post_type[:rt_original_author]
@@ -123,10 +99,7 @@ module Adapters
             ifttt_trigger:         true,
             photo_count:           syndication[:photos].count,
             has_video_thumbnail:   !!syndication[:video_thumbnail],
-            video_thumbnail_url:   syndication[:video_thumbnail],
-            truncated:             truncated,
-            force_read_more:       truncated,
-            ellipsis_added:        ellipsis_added
+            video_thumbnail_url:   syndication[:video_thumbnail]
           )
         )
       end
@@ -190,32 +163,6 @@ module Adapters
 
         match = url.match(%r{(?:twitter\.com|x\.com)/(\w+)/status/})
         match ? match[1] : 'unknown'
-      end
-
-      # Check if text needs ellipsis added for IFTTT fallback.
-      # Identical logic to IFTTT filter's Twitter-specific ellipsis handling.
-      #
-      # @param text [String] Tweet text
-      # @return [Boolean] true if ellipsis should be added
-      def needs_ellipsis_for_ifttt_fallback?(text)
-        return false if text.nil? || text.empty?
-        return false if text.length < TRUNCATION_THRESHOLD
-        return false if text.match?(/…\s*$/)
-
-        !has_natural_terminator?(text)
-      end
-
-      # Check if text ends with a natural terminator.
-      # Identical patterns to IFTTT filter's hasTerminator check.
-      #
-      # @param text [String] Text to check
-      # @return [Boolean] true if text has natural ending
-      def has_natural_terminator?(text)
-        return false if text.nil? || text.empty?
-
-        # Remove trailing t.co placeholder before checking
-        text_for_check = text.gsub(/\s*https?:\/\/t\.co\/\S+\s*\z/, '').rstrip
-        TERMINATOR_PATTERNS.any? { |_type, pattern| text_for_check.match?(pattern) }
       end
     end
   end

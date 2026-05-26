@@ -481,8 +481,8 @@ module Webhook
         end
       end
 
-      # Apply trimming — same as PostProcessor Step 5
-      text = @post_processor.trim_text(text, bot_config)
+      # Apply trimming + source truncation indicator — same as PostProcessor Steps 4.5+5
+      text = @post_processor.trim_text(text, bot_config, post: post)
 
       # Apply URL processing (domain fixes, URL cleanup) — same as PostProcessor Step 6
       text = @url_step.call(text, bot_config)

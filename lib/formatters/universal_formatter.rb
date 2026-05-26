@@ -82,6 +82,11 @@ module Formatters
     }.freeze
 
     # Platform-specific defaults
+    #
+    # truncation_indicator gating: PostProcessor#mark_source_truncation reads this
+    # to decide whether to detect source-side truncation (Syndication ~280, IFTTT 257)
+    # and append `…`. ON for Twitter (sources truncate); OFF for Bluesky/RSS/YouTube
+    # (sources deliver full content). Threshold matches the upstream cut point.
     PLATFORM_DEFAULTS = {
       twitter: {
         prefix_repost: '𝕏🔁',
@@ -91,7 +96,8 @@ module Formatters
         url_domain: TWITTER_URL_DOMAIN,
         rewrite_domains: TWITTER_REWRITE_DOMAINS,
         mentions: { type: 'local_or_domain_suffix', value: 'twitter.com' },  # Mentions transformace (local → holý, ostatní → @handle@twitter.com)
-        include_post_url_for_regular: false  # Twitter: URL jen s link card nebo Tier 3
+        include_post_url_for_regular: false,  # Twitter: URL jen s link card nebo Tier 3
+        truncation_indicator: { enabled: true, threshold: 270 }
       },
       bluesky: {
         prefix_repost: '🦋🔁',
@@ -99,12 +105,14 @@ module Formatters
         prefix_post_text: "\n",
         prefix_post_url: "\n",
         mentions: { type: 'none', value: '' },  # Bez URL transformace (kvůli náhledům)
-        include_post_url_for_regular: false  # Bluesky: URL jen z link card v textu
+        include_post_url_for_regular: false,  # Bluesky: URL jen z link card v textu
+        truncation_indicator: { enabled: false }
       },
       rss: {
         prefix_post_text: '',           # Prázdný - RSS nemá header
         prefix_post_url: "\n",
-        move_url_to_end: true
+        move_url_to_end: true,
+        truncation_indicator: { enabled: false }
         # include_post_url_for_regular: true (default)
       },
       youtube: {
@@ -112,7 +120,8 @@ module Formatters
         prefix_post_url: "\n📺 ",       # Emoji prefix pro video URL
         combine_title_and_content: true,
         title_separator: ' — ',
-        mentions: { type: 'none', value: '' }  # Bez URL transformace (kvůli náhledům)
+        mentions: { type: 'none', value: '' },  # Bez URL transformace (kvůli náhledům)
+        truncation_indicator: { enabled: false }
         # include_post_url_for_regular: true (default)
       }
     }.freeze

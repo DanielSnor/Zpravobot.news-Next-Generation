@@ -1,5 +1,7 @@
 # frozen_string_literal: true
 
+require_relative '../../utils/truncation_detector'
+
 module Adapters
   module Twitter
     # Tier decision logic for TwitterNitterAdapter.
@@ -8,8 +10,8 @@ module Adapters
     #
     # Included as instance methods in TwitterNitterAdapter.
     module TierDecision
-      # Twitter's practical character limit where IFTTT starts truncating
-      TRUNCATION_THRESHOLD = 257
+      # IFTTT truncation point — single source of truth in Utils::TruncationDetector.
+      TRUNCATION_THRESHOLD = Utils::TruncationDetector::IFTTT_THRESHOLD
 
       # Patterns for detecting truncated content
       TRUNCATION_PATTERNS = {
