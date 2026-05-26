@@ -103,6 +103,17 @@ Komplexní revize zaměřená na výkon, spotřebu zdrojů, bezpečnost a „co 
 - **T1** — `test/test_orchestrator.rb` přepsán na hybridní strukturu: `extract_since_time` unit testy běží vždy, integration část (config load + DB connect + dry-run) **graceful skip** pokud `config/sources/<source>.yml` neexistuje (nejsou v gitu, jen na serveru) nebo PostgreSQL není dostupný. Exit 0 v obou případech. Plný běh jen tam, kde existuje obojí.
 - **T2** — `test/test_mastodon_publisher.rb` opraven po R5 MimeDetector extrakci (test sahal na neexistující metodu `detect_content_type_from_bytes`). Pokrytí magic bytes detekce přesunuto do nového **`test/test_mime_detector.rb`** (52 testů — všechny formáty + edge cases). Sekce `publish — input validation` přepsána ze skutečných volání na `example.com` na stub `api_post` (eliminuje log noise + síťové volání v testech kategorie offline).
 
+### Doplnění po auditu (2026-05-26)
+
+Drobné opravy a sjednocení po dokončení vlny 6.
+
+#### Přidáno
+- **`Health::IftttActivityCheck`** — health check sledující mtime nejnovějšího souboru v `queue/ifttt/processed/`; warning pokud idle déle než `ifttt_no_webhook_minutes` (default 120 min). Threshold byl v `health_config.rb` definován, ale check chyběl. Motivace: víkendový 13h výpadek webhook bez alertu — process check procházel normálně, protože server běžel, jen nepřijímal události (viz ADR-055, B2 v auditu).
+
+#### Opraveno
+- **Tier 1.5 truncation indicator** — Twitter Blue / Note Tweets ze zdrojů s `nitter_processing: false` se publikovaly uťaté bez `…` a bez read-more URL (z exportu 14 dotčených postů napříč 3 účty během 2026-05-24 → 26). Detekce existovala jen v Nitter větvi (`TwitterNitterAdapter` / `SyndicationPostBuilder`), procesorová Syndication a Tier 3 cesta v `TwitterTweetProcessor` ji obcházela. Sjednoceno do nového sdíleného utilu **`Utils::TruncationDetector`** (heuristika: text ≥ práh **a** chybí přirozený terminátor, nebo končí holým `t.co/…`; prahy IFTTT 257, Syndication 270) + nový pipeline krok 4.5 **`PostProcessor#mark_source_truncation`**. Platformově gateováno přes `PLATFORM_DEFAULTS[*][:truncation_indicator]` (Twitter ON, Bluesky/RSS/YouTube OFF), s per-source override přes `processing.truncation_indicator`. **Note Tweets** dostávají navíc definitivní marker `is_note_tweet` ze Syndication API (přítomnost pole `note_tweet` v CDN odpovědi → bezpodmínečně truncated, obejde heuristiku — eliminuje false negatives u Note Tweetů končících tečkou; CDN endpoint plný Note Tweet text neposkytuje, ověřeno na `2058820228667023622` a `2058777581181194611`). Edit cesty (webhook `trim_text` i `process_as_update`) mají paritu s publish cestou. **89 nových testů** (49 unit + 50 integration). Odstraněna duplicita ořezového bloku v `SyndicationPostBuilder#build_syndication_post` a `TwitterNitterAdapter#process_tier3_fallback` — pipeline je nyní jediný vlastník logiky.
+- **`UrlProcessor#remove_incomplete_url_from_end`** — URL končící samotným lomítkem (např. `https://vystrahy-cr.chmi.cz/`) regex chybně klasifikoval jako neúplné a odstraňoval z textu. Opravena skupina pro volitelnou cestu + návratová hodnota; +31 testů.
+
 ---
 
 ## 2026-04 — Security, performance, Bluesky publishing, refaktorovací vlna
