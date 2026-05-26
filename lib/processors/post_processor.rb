@@ -399,7 +399,15 @@ module Processors
       cfg = resolve_truncation_indicator_config(source_config)
       return text unless cfg[:enabled]
 
-      result = Utils::TruncationDetector.detect_and_mark(text, threshold: cfg[:threshold])
+      # Definitive cut-off signal from source (Syndication API's note_tweet field):
+      # bypass heuristic — text IS truncated even if it happens to end with a period.
+      definitive = post.respond_to?(:raw) && post.raw.is_a?(Hash) && post.raw[:is_note_tweet] == true
+
+      result = if definitive
+                 Utils::TruncationDetector.mark_as_truncated(text)
+               else
+                 Utils::TruncationDetector.detect_and_mark(text, threshold: cfg[:threshold])
+               end
       return text unless result[:truncated]
 
       post.raw = {} unless post.raw.is_a?(Hash)

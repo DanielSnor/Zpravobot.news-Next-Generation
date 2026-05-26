@@ -236,6 +236,40 @@ test 'existing raw → preserves tier', 1.5, post.raw[:tier]
 test 'existing raw → adds force_read_more', true, post.raw[:force_read_more]
 
 # =============================================================================
+# is_note_tweet — definitive signal bypasses heuristic
+# =============================================================================
+section 'is_note_tweet: definitive truncation marker'
+
+# Note Tweet ending with a period (heuristic would say "ok") → still marked truncated
+note_with_period = 'a' * 269 + ' ends with a period.'
+post = StubPost.new(raw: { is_note_tweet: true })
+result = mark(processor, note_with_period, post, twitter_config)
+test 'note_tweet + ends with period → ellipsis added (bypass heuristic)', true, result.end_with?('…')
+test 'note_tweet → force_read_more set', true, post.raw[:force_read_more]
+test 'note_tweet → truncated set', true, post.raw[:truncated]
+test 'note_tweet → preserves is_note_tweet flag', true, post.raw[:is_note_tweet]
+
+# Note Tweet short text (heuristic would skip below threshold) → still marked
+short_note = 'Short text that ends fine.'
+post = StubPost.new(raw: { is_note_tweet: true })
+result = mark(processor, short_note, post, twitter_config)
+test 'note_tweet + short text → still marked truncated', true, result.end_with?('…')
+test 'note_tweet + short text → force_read_more set', true, post.raw[:force_read_more]
+
+# is_note_tweet: false should not trigger (regression guard)
+post = StubPost.new(raw: { is_note_tweet: false })
+result = mark(processor, LONG_WITH_PERIOD, post, twitter_config)
+test 'is_note_tweet=false + long with period → unchanged', LONG_WITH_PERIOD, result
+test 'is_note_tweet=false + long with period → no force_read_more', nil, post.raw[:force_read_more]
+
+# Gating still applies: Bluesky source with is_note_tweet → still off
+bsky_config = { id: 'bsky_test', platform: 'bluesky', processing: {} }
+post = StubPost.new(raw: { is_note_tweet: true })
+result = mark(processor, note_with_period, post, bsky_config)
+test 'bluesky + is_note_tweet → gating off, unchanged', note_with_period, result
+test 'bluesky + is_note_tweet → no raw flips', nil, post.raw[:force_read_more]
+
+# =============================================================================
 # Summary
 # =============================================================================
 puts

@@ -213,6 +213,13 @@ terminátor (interpunkce, emoji, hashtag, mention, URL) **nebo** text končí
 holým `t.co/…` odkazem. Práh i zapnutí jsou konfigurovatelné per‑zdroj
 přes `processing.truncation_indicator` (viz [Konfigurace](#13-konfigurace)).
 
+**Note Tweets (Twitter Blue)**: Syndication API u Note Tweetů vrací pole
+`note_tweet` (jen GraphQL ID, plný text endpoint neposkytuje — to je za
+autentizovaným API mimo náš dosah). Přítomnost pole je ale **definitivní signál**,
+že `data['text']` je uťatý. `SyndicationMediaFetcher` propaguje `is_note_tweet:`
+flag až do `post.raw`, kde `mark_source_truncation` heuristiku obejde a označí
+text bezpodmínečně — i kdyby náhodou končil tečkou.
+
 ---
 
 ## 5. Získávání obsahu

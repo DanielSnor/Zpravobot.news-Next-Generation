@@ -99,7 +99,8 @@ module Adapters
             ifttt_trigger:         true,
             photo_count:           syndication[:photos].count,
             has_video_thumbnail:   !!syndication[:video_thumbnail],
-            video_thumbnail_url:   syndication[:video_thumbnail]
+            video_thumbnail_url:   syndication[:video_thumbnail],
+            is_note_tweet:         syndication[:is_note_tweet] == true
           )
         )
       end

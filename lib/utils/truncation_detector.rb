@@ -50,6 +50,21 @@ module Utils
       { text: new_text, truncated: true, ellipsis_added: !already_marked }
     end
 
+    # Unconditionally mark text as truncated (idempotent).
+    # Use when the caller has a definitive truncation signal from the source
+    # (e.g. Syndication API's `note_tweet` field = "this IS a Note Tweet, body
+    # is cut at ~280") and the heuristic would be redundant or wrong.
+    #
+    # @param text [String]
+    # @return [Hash] { text: String, truncated: Boolean, ellipsis_added: Boolean }
+    def mark_as_truncated(text)
+      return blank_result(text) if text.nil? || text.empty?
+
+      already_marked = text.match?(/…\s*\z/)
+      new_text       = already_marked ? text : "#{text.rstrip}…"
+      { text: new_text, truncated: true, ellipsis_added: !already_marked }
+    end
+
     # @param text [String]
     # @return [Boolean] true if text ends with punctuation/emoji/URL/hashtag/mention
     def has_natural_terminator?(text)

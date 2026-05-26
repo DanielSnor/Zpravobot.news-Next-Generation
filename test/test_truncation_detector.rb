@@ -149,6 +149,28 @@ r = T.detect_and_mark(long_257, threshold: T::SYNDICATION_THRESHOLD)
 test 'Syndication threshold lets 260-char text through (below 270)', false, r[:truncated]
 
 # =============================================================================
+# mark_as_truncated (force variant for definitive signal)
+# =============================================================================
+section 'mark_as_truncated: unconditional marking'
+
+r = T.mark_as_truncated('Short text that ends with a period.')
+test 'short text with period → still marked truncated', true, r[:truncated]
+test 'short text with period → ellipsis appended', true, r[:text].end_with?('…')
+
+r = T.mark_as_truncated('Already marked…')
+test 'already marked → truncated true', true, r[:truncated]
+test 'already marked → ellipsis_added false', false, r[:ellipsis_added]
+test 'already marked → no double ellipsis', 'Already marked…', r[:text]
+
+r = T.mark_as_truncated(nil)
+test 'nil → text nil', nil, r[:text]
+test 'nil → not truncated', false, r[:truncated]
+
+r = T.mark_as_truncated('')
+test 'empty → text empty', '', r[:text]
+test 'empty → not truncated', false, r[:truncated]
+
+# =============================================================================
 # Summary
 # =============================================================================
 puts

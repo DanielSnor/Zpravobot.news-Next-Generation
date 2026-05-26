@@ -397,7 +397,8 @@ module Processors
           video_thumbnail_url: syndication[:video_thumbnail],
           video_thumbnail_only: video_thumbnail_only,
           link_card_url: link_card_url,  # Article URL pro OGP fetch (nil pokud nebyla nalezena)
-          card_image: syndication[:card_image] # Twitter pre-fetched card image (pbs.twimg.com)
+          card_image: syndication[:card_image], # Twitter pre-fetched card image (pbs.twimg.com)
+          is_note_tweet: syndication[:is_note_tweet] == true # Definitive cut-off marker (Twitter Blue)
         }
       )
     end
