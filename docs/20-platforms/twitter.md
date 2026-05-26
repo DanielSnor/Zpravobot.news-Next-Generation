@@ -202,6 +202,24 @@ ZBNW‑NG ho využívá jako:
 
 Limitace Syndication API: neoficiální; pro Twitter Blue tweety text zkracuje na ~280 znaků; bez thread kontextu.
 
+### Indikace zkráceného textu
+
+Tweety, které dorazí zkrácené (Syndication ~280 znaků, IFTTT 257 znaků v Tier 3),
+jsou v pipeline označeny tečkovou trojtečkou `…` a flagem `force_read_more`,
+který způsobí přidání read‑more URL k Mastodon postu. Detekce probíhá v kroku 6
+pipeline (`PostProcessor#mark_source_truncation` → `Utils::TruncationDetector`)
+a je sdílená napříč všemi Tiery. Heuristika: text ≥ práh **a** chybí přirozený
+terminátor (interpunkce, emoji, hashtag, mention, URL) **nebo** text končí
+holým `t.co/…` odkazem. Práh i zapnutí jsou konfigurovatelné per‑zdroj
+přes `processing.truncation_indicator` (viz [Konfigurace](#13-konfigurace)).
+
+**Note Tweets (Twitter Blue)**: Syndication API u Note Tweetů vrací pole
+`note_tweet` (jen GraphQL ID, plný text endpoint neposkytuje — to je za
+autentizovaným API mimo náš dosah). Přítomnost pole je ale **definitivní signál**,
+že `data['text']` je uťatý. `SyndicationMediaFetcher` propaguje `is_note_tweet:`
+flag až do `post.raw`, kde `mark_source_truncation` heuristiku obejde a označí
+text bezpodmínečně — i kdyby náhodou končil tečkou.
+
 ---
 
 ## 5. Získávání obsahu
@@ -452,6 +470,8 @@ Klíčové per-source přepisy:
 | `source.handle` | Twitter handle sledovaného účtu |
 | `target.mastodon_account` | Cílový Mastodon účet |
 | `nitter_processing.enabled` | `true` (default) nebo `false` (Syndication only) |
+| `processing.truncation_indicator.enabled` | Přepis platformového defaultu (Twitter = `true`); vypnutí pro zdroj, který dodává plný text vlastní cestou |
+| `processing.truncation_indicator.threshold` | Délka, od níž se hledá chybějící terminátor (default 270 pro Twitter, 257 pro IFTTT‑only Tier 3) |
 | `profile_sync.enabled` | Zapnutí/vypnutí profile syncu |
 | `profile_sync.language` | Jazyk metadata polí (`cs`, `sk`, `en`) |
 | `profile_sync.retention_days` | Retence dat v Mastodon profilu (7/30/90/180 dní) |

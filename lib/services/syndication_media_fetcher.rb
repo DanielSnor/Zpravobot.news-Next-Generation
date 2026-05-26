@@ -12,10 +12,12 @@
 # Použití:
 #   result = Services::SyndicationMediaFetcher.fetch('1234567890')
 #   result[:success]         # true/false
-#   result[:text]            # Plný text tweetu
+#   result[:text]            # Text tweetu (POZOR: pro Note Tweets je vždy uťatý na ~280)
 #   result[:photos]          # Array of photo URLs
 #   result[:video_thumbnail] # Video thumbnail URL nebo nil
 #   result[:display_name]    # User display name
+#   result[:is_note_tweet]   # true = Twitter Blue Note Tweet (text je definitivně uťatý;
+#                            #         CDN endpoint plný obsah Note Tweetu nevrací — jen ID)
 # ============================================================
 
 require 'net/http'
@@ -163,6 +165,9 @@ module Services
         username: data.dig('user', 'screen_name'),
         created_at: data['created_at'],
         poll_data: extract_poll_data(data),
+        # Definitive truncation signal: Note Tweet present means `text` is cut at ~280
+        # and the full body lives behind an authenticated endpoint we don't reach.
+        is_note_tweet: !data['note_tweet'].nil?,
         error: nil
       }
     end
@@ -357,6 +362,7 @@ module Services
         username: nil,
         created_at: nil,
         poll_data: nil,
+        is_note_tweet: false,
         error: error
       }
     end

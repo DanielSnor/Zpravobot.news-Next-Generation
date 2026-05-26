@@ -185,10 +185,11 @@ Kroky pipeline v pořadí:
 3. **Filtrování obsahu** – aplikace konfigurovatelných filtrů
 4. **Formátování** – převod `Post` na text Mastodon statusu
 5. **Content replacement** – úpravy textu dle pravidel
-6. **Trimming** – ořez na povolený limit znaků
-7. **URL processing** – zpracování odkazů
-8. **Media enrichment** – stažení a příprava médií
-9. **Publikace** – předání publisheru
+6. **Indikace ořezu zdroje** – detekce neúplného textu od zdroje a přidání `…`
+7. **Trimming** – ořez na povolený limit znaků
+8. **URL processing** – zpracování odkazů
+9. **Media enrichment** – stažení a příprava médií
+10. **Publikace** – předání publisheru
 
 Podrobnější poznámky ke klíčovým krokům:
 
@@ -198,6 +199,7 @@ Podrobnější poznámky ke klíčovým krokům:
 | Detekce editací | Jaccard + Containment similarity (práh 80 %); zvládá Twitter edity i Bluesky delete+repost |
 | Filtrování obsahu | Konfigurovatelná pravidla: `banned_phrases`, `required_keywords`, `content_replacements`; ukončí pipeline pokud nevyhovuje |
 | Formátování | Platformový formatter obaluje sdílenou `UniversalFormatter` (text, trim, URL, vlákna, mentions) |
+| Indikace ořezu zdroje | Heuristika `Utils::TruncationDetector` (text ≥ práh + chybí přirozený terminátor → `…`); flipuje `post.raw[:force_read_more]` pro read-more URL. Platformově gateováno (Twitter ON @ 270, Bluesky/RSS/YouTube OFF); přepis přes `processing.truncation_indicator` na úrovni zdroje |
 | Trimming | Tři strategie: `smart` (hledá konec věty v tolerančním okně), `word`, `hard` |
 | Media enrichment | pHash video dedup (Hamming distance); OGP image fetch ze zdrojového článku; async upload do Mastodon v2 API |
 | OGP fetch — SSRF ochrana | `OgpFetcher` blokuje private IP rozsahy (10/8, 172.16/12, 192.168/16, 127/8, 169.254/16 + IPv6 ekvivalenty) před i po každém redirectu; private IP → tichý skip s warningem |

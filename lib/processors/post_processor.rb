@@ -27,6 +27,7 @@ require_relative 'media_dedup'
 require_relative '../utils/http_client'
 require_relative 'thumbnail_phash'
 require_relative '../utils/ogp_fetcher'
+require_relative '../utils/truncation_detector'
 require_relative 'edit_detector'
 
 MENTION_BLOCKER_PNG_PATH = File.join(__dir__, '../../assets/white_strip_1280x1.png')
@@ -147,6 +148,11 @@ module Processors
       @format_step.call(ctx)
       formatted_text = ctx.formatted_text
 
+      # Step 4.5: Mark source-side truncation (Syndication API ~280, IFTTT 257).
+      # Adds `…` and sets force_read_more so the formatter appends a read-more URL.
+      # Runs BEFORE process_content so trim does not interact with the marker.
+      formatted_text = mark_source_truncation(formatted_text, post, source_config)
+
       # Step 5: Process content (trim, normalize)
       fallback_url_for_trim = build_trim_fallback_url(post, source_config)
       processed_text = process_content(formatted_text, source_config, fallback_url: fallback_url_for_trim)
@@ -235,8 +241,11 @@ module Processors
     end
 
     # Public wrapper around process_content for use in edit paths that need
-    # identical trimming behaviour as the normal publish pipeline (Step 5).
-    def trim_text(text, source_config, fallback_url: nil)
+    # identical trimming behaviour as the normal publish pipeline.
+    # Pass `post:` to also run Step 4.5 (source truncation indicator); without
+    # it, callers get pure Step 5 (trim/normalize) for backward compatibility.
+    def trim_text(text, source_config, fallback_url: nil, post: nil)
+      text = mark_source_truncation(text, post, source_config) if post
       process_content(text, source_config, fallback_url: fallback_url)
     end
 
@@ -292,6 +301,7 @@ module Processors
       )
       @format_step.call(update_ctx)
       formatted_text = update_ctx.formatted_text
+      formatted_text = mark_source_truncation(formatted_text, post, source_config)
       fallback_url_for_trim = build_trim_fallback_url(post, source_config)
       processed_text = process_content(formatted_text, source_config, fallback_url: fallback_url_for_trim)
       processed_text = @url_step.call(processed_text, source_config)
@@ -370,6 +380,58 @@ module Processors
       { success: false, error: 'edit_not_allowed' }
     rescue StandardError => e
       { success: false, error: e.message }
+    end
+
+    # ============================================
+    # Step 4.5: Source Truncation Indicator
+    # ============================================
+
+    # Detect that the source delivered an incomplete body (Syndication API cuts at ~280,
+    # IFTTT at 257) and append `…` so the reader sees that the text was cut.
+    # Also flips post.raw[:force_read_more] so UniversalFormatter appends a read-more URL.
+    #
+    # Gated by source_config[:processing][:truncation_indicator] (per-source override)
+    # or PLATFORM_DEFAULTS[platform][:truncation_indicator] (platform default).
+    # Disabled platforms return text unchanged.
+    def mark_source_truncation(text, post, source_config)
+      return text if text.nil? || text.empty?
+
+      cfg = resolve_truncation_indicator_config(source_config)
+      return text unless cfg[:enabled]
+
+      # Definitive cut-off signal from source (Syndication API's note_tweet field):
+      # bypass heuristic — text IS truncated even if it happens to end with a period.
+      definitive = post.respond_to?(:raw) && post.raw.is_a?(Hash) && post.raw[:is_note_tweet] == true
+
+      result = if definitive
+                 Utils::TruncationDetector.mark_as_truncated(text)
+               else
+                 Utils::TruncationDetector.detect_and_mark(text, threshold: cfg[:threshold])
+               end
+      return text unless result[:truncated]
+
+      post.raw = {} unless post.raw.is_a?(Hash)
+      post.raw[:truncated]       = true
+      post.raw[:force_read_more] = true
+      post.raw[:ellipsis_added]  = result[:ellipsis_added] if result[:ellipsis_added]
+
+      result[:text]
+    end
+
+    # Merge per-source truncation_indicator config with PLATFORM_DEFAULTS fallback.
+    def resolve_truncation_indicator_config(source_config)
+      src_cfg = source_config.dig(:processing, :truncation_indicator) || {}
+
+      platform_def = {}
+      if defined?(Formatters::UniversalFormatter)
+        platform = source_config[:platform]&.to_sym
+        platform_def = (Formatters::UniversalFormatter::PLATFORM_DEFAULTS[platform] || {})[:truncation_indicator] || {}
+      end
+
+      {
+        enabled:   src_cfg.fetch(:enabled,   platform_def.fetch(:enabled,   false)),
+        threshold: src_cfg.fetch(:threshold, platform_def.fetch(:threshold, Utils::TruncationDetector::SYNDICATION_THRESHOLD))
+      }
     end
 
     # ============================================
