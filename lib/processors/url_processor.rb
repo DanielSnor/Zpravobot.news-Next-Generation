@@ -272,10 +272,11 @@ module Processors
 
 	  # Check if URL looks complete (ends properly); accept 2-char TLDs (.cz, .sk, etc.)
 	  # and multi-level domains (ticketing.hcverva.cz) — hostname allows dots.
-	  # Final-char check is part of optional path group so 2-char TLDs don't fail
-	  # (backtracking works for 3+ char TLDs but not for exactly 2-char TLDs).
-	  is_complete = potential_url_clean.match?(%r{https?://[a-zA-Z0-9][a-zA-Z0-9.\-]*\.[a-zA-Z]{2,}(?:/[^\s]*[a-zA-Z0-9/_\-~])?$})
-	  return result.strip if is_complete
+	  # Inner path content is optional so trailing-slash-only URLs (https://domain.cz/)
+	  # are accepted; without the inner ?, the group requires a char after / and fails.
+	  is_complete = potential_url_clean.match?(%r{https?://[a-zA-Z0-9][a-zA-Z0-9.\-]*\.[a-zA-Z]{2,}(?:/(?:[^\s]*[a-zA-Z0-9/_\-~])?)?$})
+	  # URL is complete — return text with sentence terminator stripped from URL end
+	  return (result[0...url_start_index] + potential_url_clean).strip if is_complete
 
 	  # Remove incomplete URL
 	  result[0...url_start_index].strip
