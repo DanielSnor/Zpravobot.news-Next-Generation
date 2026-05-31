@@ -95,15 +95,11 @@ url:
     # Specifické služby
     - flashsco.re
     - piped.video
-    - herohero.co
-    - forendors.cz
     # České/slovenské
     - 1url.cz
     - jdem.cz
     - sdu.sk
     - sqzr.cz
-    - rozhl.as
-    - czch.tv
   domain_rewrites:
     - to: youtu.be
       domains:
@@ -128,3 +124,6 @@ infrastructure:
   bluesky_profile_prefix: https://bsky.app/profile/
   browserless_api: https://chrome.browserless.io/content
   webhook_health_url: http://localhost:8080/health
+  # Katalog zdrojů (bin/build_catalog.rb → Surfer). Env override: SURFER_URL / SURFER_TEST_URL.
+  catalog_prod_url: https://katalog.zpravobot.news
+  catalog_test_url: https://katalog-test.zpravobot.news

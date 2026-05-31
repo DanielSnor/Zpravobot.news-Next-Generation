@@ -41,6 +41,8 @@ Normální provoz zajišťuje scheduler automaticky — CLI je pro výjimečné 
 | `instance_status.rb` | `bin/` | One-shot JSON snapshot stavu instance |
 | `zpravobot_stats.rb` | `bin/` | Týdenní digest #ZpravobotTOP10 |
 | `trending_post.rb` | `bin/` | Automatické quote posty pro trendy |
+| `build_catalog.rb` | `bin/` | Generování + upload katalogu zdrojů na Surfer |
+| `catalog_dump.rb` | `bin/` | Kontrolní výpis agregovaných dat katalogu |
 | `analyze_domain_fixes.rb` | `scripts/` | Analýza a doplnění `url_domain_fixes` dle Mastodon profilů |
 
 ---
@@ -298,6 +300,34 @@ ruby bin/trending_post.rb
 # Náhled bez publikace
 ruby bin/trending_post.rb --dry-run
 ```
+
+---
+
+## Katalog zdrojů (`build_catalog.rb`, `catalog_dump.rb`)
+
+Generuje statický web [katalog.zpravobot.news](https://katalog.zpravobot.news) a nahrává ho na Surfer. Spouštěno automaticky každou neděli ve 20:30 (po `zpravobot_stats.rb`). Plný popis architektury a deploye viz [`catalog.md`](catalog.md).
+
+```bash
+# Build + upload na produkci
+ruby bin/build_catalog.rb
+
+# Build + upload na test instanci
+ruby bin/build_catalog.rb --upload-test
+
+# Jen lokální build (náhled, bez tokenu)
+ruby bin/build_catalog.rb --no-upload && cd tmp/catalog && python3 -m http.server
+
+# Kontrola agregovaných dat před generací
+ruby bin/catalog_dump.rb --count
+```
+
+| Přepínač (`build_catalog.rb`) | Default | Popis |
+|---|---|---|
+| `--no-upload` | upload zapnut | Jen build do `tmp/catalog` |
+| `--upload-test` | prod | Upload na katalog-test (test token) |
+| `--no-stubs` | stuby zapnuty | Bez per-účet sdílecích stubů |
+| `--output DIR` | `tmp/catalog` | Build adresář |
+| `--test` | `false` | Schéma `zpravobot_test` |
 
 ---
 

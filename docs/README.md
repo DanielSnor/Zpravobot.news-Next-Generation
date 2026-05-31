@@ -131,6 +131,7 @@ Každá vrstva odpovídá na jinou otázku:
 | [monitoring.md](40-tools/monitoring.md) | Údržbot — 11 health checků, AlertStateManager, Command Listener, formáty alertů |
 | [runtime.md](40-tools/runtime.md) | Cron model, scheduling priorit, IFTTT queue, profil sync rotace |
 | [integration.md](40-tools/integration.md) | Browserless.io, RSS.app, IFTTT integrace |
+| [catalog.md](40-tools/catalog.md) | Katalog zdrojů — aggregator, renderer, web (filtry/řezy/modal/SEO/I18n), build & deploy na Surfer |
 | [testing.md](40-tools/testing.md) | Test runner, katalog testů, architektura frameworku, jak přidat test |
 
 ---

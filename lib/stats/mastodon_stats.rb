@@ -30,7 +30,7 @@ module Stats
     # Fetch verify_credentials for all accounts in config
     # Silently skips accounts that fail (log warn per account).
     # @param delay [Float] sleep between requests to avoid rate limiting (default: 0.3s)
-    # @return [Hash] { account_id => { followers:, statuses:, display_name:, username: } }
+    # @return [Hash] { account_id => { followers:, statuses:, display_name:, username:, avatar:, note:, created_at: } }
     def fetch_all(delay: 0.3)
       result = {}
       total  = @accounts.size
@@ -77,7 +77,10 @@ module Stats
         followers:    data['followers_count'].to_i,
         statuses:     data['statuses_count'].to_i,
         display_name: data['display_name'].to_s,
-        username:     data['username'].to_s
+        username:     data['username'].to_s,
+        avatar:       data['avatar'].to_s,
+        note:         data['note'].to_s,
+        created_at:   data['created_at'].to_s
       }
     rescue => e
       log_warn("[MastodonStats] #{account_id}: #{e.class} #{e.message}")

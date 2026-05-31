@@ -127,6 +127,16 @@ module Config
     def mastodon_account_ids
       mastodon_accounts_cache.keys
     end
+
+    # Load raw mastodon_accounts.yml as a symbolized hash.
+    # Keys are account_id symbols, values are the account config hashes
+    # (token, aggregator, type, family, categories, instance, ...).
+    # Used by the catalog generator, which needs full per-account metadata
+    # (type/family/categories), not just credentials.
+    # @return [Hash{Symbol=>Hash}]
+    def load_all_mastodon_accounts
+      mastodon_accounts_cache
+    end
     # List all source IDs (excluding examples)
     # @return [Array<String>]
     def source_ids

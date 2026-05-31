@@ -138,6 +138,7 @@ ruby bin/run_zbnw.rb --dry-run              # Bez publikování
 ruby bin/sync_profiles.rb --platform bluesky  # Sync profilů
 ruby bin/health_monitor.rb --details          # Health check
 ruby bin/run_tests.rb                         # Testy
+ruby bin/build_catalog.rb --no-upload         # Lokální build katalogu zdrojů
 ```
 
 ---
@@ -145,7 +146,7 @@ ruby bin/run_tests.rb                         # Testy
 ## Struktura projektu
 
 ```
-bin/                   # Vstupní body (17 skriptů)
+bin/                   # Vstupní body (22 skriptů)
   run_zbnw.rb          # Hlavní runner (cron)
   ifttt_webhook.rb     # IFTTT webhook HTTP server
   health_monitor.rb    # Údržbot health monitoring
@@ -153,6 +154,7 @@ bin/                   # Vstupní body (17 skriptů)
   create_source.rb     # Interaktivní průvodce konfigurací zdrojů
   manage_source.rb     # Správa zdrojů — pause/resume/retire
   run_tests.rb         # Test runner s generátorem reportů
+  build_catalog.rb     # Generátor katalogu zdrojů → Surfer
   ...                  # broadcast, stats, trending, cleanup
 
 lib/                   # Zdrojový kód (~20K řádků)
@@ -166,6 +168,7 @@ lib/                   # Zdrojový kód (~20K řádků)
   health/              # Health monitor (11 checků, AlertStateManager)
   monitoring/          # Command Listener + handlery
   config/              # ConfigLoader, SourceConfig
+  catalog/             # Generátor katalogu zdrojů (aggregator, renderer, web)
   ...                  # broadcast, stats, trending, source_wizard, webhook
 
 config/                # Konfigurace
@@ -258,7 +261,7 @@ Detailní dokumentace je v [`docs/`](docs/README.md):
 | [`10-system/`](docs/10-system/) | Systémový přehled, pipeline |
 | [`20-platforms/`](docs/20-platforms/) | Twitter, Bluesky, Facebook, Instagram, YouTube, RSS |
 | [`30-infrastructure/`](docs/30-infrastructure/) | Cloudron, infrastruktura |
-| [`40-tools/`](docs/40-tools/) | CLI nástroje, Nitter, monitoring, runtime, testování |
+| [`40-tools/`](docs/40-tools/) | CLI nástroje, Nitter, monitoring, runtime, katalog zdrojů, testování |
 | [`50-operations/`](docs/50-operations/) | Runbook, deployment, troubleshooting, maintenance |
 | [`90-meta/`](docs/90-meta/) | Architektonická rozhodnutí, principy |
 
@@ -345,6 +348,7 @@ Twitter uses a 5-tier fallback: IFTTT only → IFTTT + Syndication API → IFTTT
 | **MastodonPublisher** | `lib/publishers/mastodon_publisher.rb` | Async media upload (v2), threading, non-blocking rate limit handling |
 | **StateManager** | `lib/state/state_manager.rb` | Facade → 5 PostgreSQL repositories |
 | **Health Monitor** | `lib/health/` | 11 automated checks with smart deduped alerting |
+| **Source Catalog** | `lib/catalog/` | Static directory site (aggregator + renderer → Surfer), filters/charts/SEO/i18n |
 
 ## Key Design Decisions
 
@@ -365,6 +369,8 @@ Twitter uses a 5-tier fallback: IFTTT only → IFTTT + Syndication API → IFTTT
 | Every 10 min | Health check + alerting |
 | Hourly | IFTTT failed queue retry |
 | Weekly (day rotation) | Profile sync (Mon=BS, Tue=FB+IG, Wed–Fri=TW, Sat=RSS, Sun=YT) |
+| Weekly Sun 20:00 | Stats digest (#ZpravobotTOP10) |
+| Weekly Sun 20:30 | Source catalog build + upload (katalog.zpravobot.news) |
 | Daily 08:00 | Heartbeat |
 
 ## Testing

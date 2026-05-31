@@ -92,6 +92,59 @@ module Stats
       nil
     end
 
+    # Load the most recent snapshot for every account (regardless of date).
+    # Used by the catalog generator, which always wants the freshest numbers
+    # rather than a snapshot from a specific week.
+    # @return [Hash] { account_id => { followers:, statuses:, posts_week:, snapshot_date: } }
+    #                empty hash if the table has no rows
+    def latest_snapshot
+      result = @db.conn.exec(
+        <<~SQL
+          SELECT DISTINCT ON (account_id)
+                 account_id, followers, statuses, posts_week, snapshot_date
+          FROM account_stats_snapshot
+          ORDER BY account_id, snapshot_date DESC
+        SQL
+      )
+      snapshot = {}
+      result.each do |row|
+        snapshot[row['account_id']] = {
+          followers:     row['followers']&.to_i,
+          statuses:      row['statuses']&.to_i,
+          posts_week:    row['posts_week']&.to_i,
+          snapshot_date: row['snapshot_date']
+        }
+      end
+      snapshot
+    rescue PG::Error => e
+      log_warn("[SnapshotStore] Failed to load latest snapshot: #{e.message}")
+      {}
+    end
+
+    # Load the oldest snapshot date for every account. The catalog uses this
+    # as a proxy for "when was this bot added" (created_at) — we don't track
+    # the real creation date anywhere, but the first weekly snapshot is a
+    # reasonable lower bound. Accounts never snapshotted are simply absent.
+    # @return [Hash] { account_id => 'YYYY-MM-DD' } (oldest snapshot_date per account)
+    #                empty hash if the table has no rows
+    def oldest_snapshot_dates
+      result = @db.conn.exec(
+        <<~SQL
+          SELECT account_id, MIN(snapshot_date) AS created_at
+          FROM account_stats_snapshot
+          GROUP BY account_id
+        SQL
+      )
+      dates = {}
+      result.each do |row|
+        dates[row['account_id']] = row['created_at'].to_s
+      end
+      dates
+    rescue PG::Error => e
+      log_warn("[SnapshotStore] Failed to load oldest snapshot dates: #{e.message}")
+      {}
+    end
+
     # Remove snapshots older than the retention window
     # @param keep_weeks [Integer] how many weeks to retain (default: 52 = 1 year)
     # @return [Integer] number of deleted rows
