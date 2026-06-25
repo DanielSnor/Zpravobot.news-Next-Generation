@@ -336,12 +336,14 @@ module Processors
     def initialize(config_loader)
       @config_loader = config_loader
       @url_processor = nil
+      @global_config = nil
     end
 
     def call(text, source_config)
       return text unless defined?(Processors::UrlProcessor)
 
-      url_processor = get_url_processor
+      source_no_trim = source_config.dig(:url, :no_trim_domains) || []
+      url_processor = get_url_processor(extra_no_trim: source_no_trim)
       processing = source_config[:processing] || {}
 
       source_fixes = processing[:url_domain_fixes] || []
@@ -355,13 +357,20 @@ module Processors
 
     private
 
-    def get_url_processor
-      @url_processor ||= begin
-        global_config = @config_loader.load_global_config rescue {}
-        no_trim_domains = global_config.dig(:url, :no_trim_domains) || []
-        domain_rewrites = global_config.dig(:url, :domain_rewrites) || []
-        Processors::UrlProcessor.new(no_trim_domains: no_trim_domains, domain_rewrites: domain_rewrites)
-      end
+    def get_url_processor(extra_no_trim: [])
+      cfg = @global_config ||= (@config_loader.load_global_config rescue {})
+      global_no_trim   = cfg.dig(:url, :no_trim_domains) || []
+      domain_rewrites  = cfg.dig(:url, :domain_rewrites) || []
+
+      return @url_processor ||= Processors::UrlProcessor.new(
+        no_trim_domains: global_no_trim,
+        domain_rewrites: domain_rewrites
+      ) if extra_no_trim.empty?
+
+      Processors::UrlProcessor.new(
+        no_trim_domains: global_no_trim + extra_no_trim,
+        domain_rewrites: domain_rewrites
+      )
     end
   end
 
