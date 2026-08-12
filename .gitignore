@@ -4,11 +4,15 @@ docs - OLD/
 *.private.md
 
 # Secrets and credentials
+# Vzory končí * záměrně — pokrývají i odkládací kopie (-copy, .bak, .orig).
+# Šablony .example se vracejí zpět negací na konci bloku.
 env.sh
-config/mastodon_accounts.yml
-config/bluesky_accounts.yml
-config/global.yml
+config/mastodon_accounts.yml*
+config/mastodon_accounts_*
+config/bluesky_accounts.yml*
+config/global.yml*
 config/sources/*
+!config/*.example
 
 # Logs
 *.log
