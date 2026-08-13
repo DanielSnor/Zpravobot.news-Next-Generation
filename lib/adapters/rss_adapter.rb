@@ -129,7 +129,13 @@ module Adapters
       log "Too many redirects (#{MAX_REDIRECTS}) for #{url}", level: :error
       raise "Too many redirects (#{MAX_REDIRECTS}) for #{url}"
     rescue StandardError => e
-      log "Fetch error for #{url}: #{e.message}", level: :error
+      # WARN, ne ERROR: selhání stažení feedu je u RSS přechodné. Stahuje se bez
+      # `since` filtru a dedupuje podle GUID, takže co teď nedojde, přijde příští
+      # běh — nic se neztrácí. Typicky uříznutá odpověď u velkých feedů za CDN
+      # („not well formed XML", „invalid byte sequence", HTTP 522).
+      # Chyba se dál `raise`uje, takže Runner ji zaznamená a započítá jako dřív;
+      # mění se JEN úroveň téhle jedné hlášky.
+      log "Fetch error for #{url}: #{e.message}", level: :warn
       raise
     end
 

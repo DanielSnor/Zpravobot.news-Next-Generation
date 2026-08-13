@@ -19,10 +19,11 @@ require_relative '../lib/publishers/mastodon_publisher'
 # Configuration
 # ============================================
 
-# Mastodon credentials - UPDATE THESE or use config file
+# Mastodon credentials - set via env vars (see --help)
+# Token is checked lazily in run_e2e_test, so --help and --dry-run work without it.
 MASTODON_CONFIG = {
   instance_url: ENV['MASTODON_INSTANCE'] || 'https://zpravobot.news',
-  access_token: ENV['MASTODON_TOKEN'] or abort('Set MASTODON_TOKEN env variable')
+  access_token: ENV['MASTODON_TOKEN']
 }.freeze
 
 # Default Bluesky handle for testing
@@ -89,6 +90,8 @@ def run_e2e_test(handle:, dry_run: false)
   puts "✅ BlueskyFormatter initialized"
   
   unless dry_run
+    abort('Set MASTODON_TOKEN env variable (or use --dry-run)') unless MASTODON_CONFIG[:access_token]
+
     publisher = Publishers::MastodonPublisher.new(
       instance_url: MASTODON_CONFIG[:instance_url],
       access_token: MASTODON_CONFIG[:access_token]

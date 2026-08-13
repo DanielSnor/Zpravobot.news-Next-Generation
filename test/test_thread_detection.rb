@@ -14,7 +14,6 @@
 $LOAD_PATH.unshift File.expand_path('../lib', __dir__)
 
 require_relative '../lib/adapters/twitter_adapter'
-require_relative '../lib/adapters/twitter_thread_fetcher'
 require_relative '../lib/formatters/twitter_formatter'
 require_relative '../lib/models/post'
 require_relative '../lib/models/author'
@@ -28,12 +27,6 @@ class ThreadDetectionTest
     @adapter = Adapters::TwitterAdapter.new(
       handle: @handle,
       nitter_instance: @nitter_instance
-    )
-    
-    @thread_fetcher = Adapters::TwitterThreadFetcher.new(
-      handle: @handle,
-      nitter_instance: @nitter_instance,
-      use_cache: false  # Disable cache for testing
     )
     
     @formatter = Formatters::TwitterFormatter.new(
@@ -73,16 +66,9 @@ class ThreadDetectionTest
         puts "    Reply to: @#{post.reply_to_handle}"
         puts "    Text: #{truncate(post.text, 100)}"
         
-        # Phase 2: Fetch thread context (optional)
-        if ENV['FETCH_CONTEXT'] == 'true'
-          puts "\n    📥 Fetching thread context (Phase 2)..."
-          context = @thread_fetcher.fetch_thread_context(post.url)
-          post.thread_context = context
-          
-          puts "    Position: #{context[:position]}/#{context[:total]}"
-          puts "    Before: #{context[:before].length} tweets"
-          puts "    After: #{context[:after].length} tweets"
-        end
+        # Phase 2 (dotažení kontextu vlákna) tu záměrně není — samostatný
+        # fetcher už neexistuje, threading řeší TwitterTweetProcessor
+        # interně (pokrývá ho test_twitter_thread_processor).
         
         # Format output
         puts "\n    📝 Formatted output:"
