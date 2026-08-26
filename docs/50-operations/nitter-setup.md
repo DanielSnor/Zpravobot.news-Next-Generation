@@ -13,8 +13,14 @@ Viz [`../40-tools/nitter.md`](../40-tools/nitter.md) pro architekturu, endpointy
 
 ---
 
-Tento dokument **doplňuje** oficiální instalaci Nitteru o specifika potřebná pro ZBNW‑NG.
-Základní instalaci řeší: https://github.com/zedeus/nitter
+Tento dokument **doplňuje** instalaci Nitteru o specifika potřebná pro ZBNW‑NG.
+
+⚠️ **Původní projekt skončil.** X Corp rozeslala 24. 8. 2026 cease and desist
+požadující trvalé odstranění Nitter instancí i repozitáře; `nitter.net` je
+offline a upstream repozitář archivovaný. ZBNW‑NG neběží na upstreamu, ale na
+jednom z forků, a zdrojový kód je zrcadlený privátně pro případ, že by původní
+repozitáře z GitHubu zmizely. Konkrétní upstream, adresy zrcadel a postup
+obnovy patří do `docs-private/`.
 
 Neobsahuje citlivé údaje — credentials, IP adresy ani konkrétní konfigurační hodnoty patří do `docs-private/`.
 
@@ -125,9 +131,12 @@ Zdravotní stav průběžně monitoruje Údržbot (NitterCheck + NitterAccountsC
 ### Aktualizace Nitteru
 
 Nitter parsuje HTML Twitter/X — **změna struktury HTML na straně Twitteru může rozbít parsing** bez varování. Doporučení:
-- sleduj Nitter release notes a issues na GitHubu
 - po aktualizaci ověř Tier 2 enrichment na vzorkovém tweetu
 - pokud parsing přestane fungovat, zkontroluj nejprve verzi Nitteru před laděním ZBNW‑NG kódu
+
+Upstream vývoj po cease and desist skončil, nové opravy odjinud nepřijdou.
+Aktualizovat lze už jen na commity, které vznikly do srpna 2026 a jsou uložené
+v zrcadlech — viz `docs-private/`.
 
 ### Monitoring
 
