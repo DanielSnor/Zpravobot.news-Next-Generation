@@ -19,26 +19,16 @@ module State
     end
 
     # Update source state after successful check
-    #
-    # `last_success` slouží zároveň jako watermark pro `since` okno
-    # (Orchestrator#extract_since_time). Když run nezpracoval všechno, co měl
-    # k dispozici (max_posts_per_run), musí watermark ZŮSTAT — jinak odložené
-    # posty vypadnou z okna a už nikdy nepřijdou. `last_check` se posouvá vždy,
-    # takže scheduling i health checky vidí, že zdroj žije.
-    #
     # @param source_id [String] Source identifier
     # @param posts_published [Integer] Number of posts published in this run
-    # @param last_success_at [Time, nil] kam postavit watermark; nil = NOW()
-    #   (hodnotu, ne příznak — INSERT větev jinak nemá co „ponechat" a NOW()
-    #   by odložené posty vyhodila z okna hned při prvním běhu nového zdroje)
-    def mark_check_success(source_id, posts_published: 0, last_success_at: nil)
+    def mark_check_success(source_id, posts_published: 0)
       @db.conn.exec_params(
         <<~SQL,
           INSERT INTO source_state (source_id, last_check, last_success, posts_today, last_reset, error_count)
-          VALUES ($1, NOW(), COALESCE($3::timestamptz, NOW()), $2, CURRENT_DATE, 0)
+          VALUES ($1, NOW(), NOW(), $2, CURRENT_DATE, 0)
           ON CONFLICT (source_id) DO UPDATE SET
           last_check = NOW(),
-          last_success = COALESCE($3::timestamptz, NOW()),
+          last_success = NOW(),
           posts_today = CASE
             WHEN source_state.last_reset < CURRENT_DATE THEN $2
             ELSE source_state.posts_today + $2
@@ -47,7 +37,7 @@ module State
           error_count = 0,
           last_error = NULL
         SQL
-        [source_id, posts_published, last_success_at]
+        [source_id, posts_published]
       )
     end
 

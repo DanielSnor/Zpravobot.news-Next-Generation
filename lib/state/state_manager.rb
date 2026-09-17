@@ -102,9 +102,8 @@ module State
       @source_state.get_source_state(source_id)
     end
 
-    def mark_check_success(source_id, posts_published: 0, last_success_at: nil)
-      @source_state.mark_check_success(source_id, posts_published: posts_published,
-        last_success_at: last_success_at)
+    def mark_check_success(source_id, posts_published: 0)
+      @source_state.mark_check_success(source_id, posts_published: posts_published)
     end
 
     def mark_check_error(source_id, error_message)

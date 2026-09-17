@@ -4,7 +4,6 @@ require 'time' # Pro Time.parse v source_due?
 require_relative 'logging'
 require_relative 'config/config_loader'
 require_relative 'support/threading_support'
-require_relative 'support/batch_selector'
 require_relative 'stats/run_stats'
 require_relative 'support/loggable'
 require_relative 'state/state_manager'
@@ -219,27 +218,10 @@ module Orchestrator
     log_info("[#{source.id}] Fetched #{posts.length} posts")
     @state_manager.log_fetch(source.id, posts_found: posts.length)
 
-    # Výběr dávky (dedup → nejstarší první → limit) je v Support::BatchSelector,
-    # ať se dá otestovat bez DB a sítě. Dedup běží JEŠTĚ PŘED limitem, jinak by
-    # dávka utrácela budget na posty, které PostProcessor stejně zahodí jako
-    # duplikát — a u Twitteru by se kvůli nim předtím zbytečně tahal Nitter.
-    # Predikát je záměrně týž, jaký používá PostProcessor::DeduplicationStep.
     max_posts = source.max_posts_per_run
-    batch = Support::BatchSelector.call(posts, max_posts: max_posts) do |post|
-    @state_manager.published?(source.id, post.id || post.url)
-    end
-    posts = batch.selected
-    deferred = batch.deferred
-
-    if batch.already_published.positive?
-    log_info("[#{source.id}] #{batch.already_published} už publikovaných přeskočeno")
-    end
-    if deferred.positive?
-    log_warn("[#{source.id}] #{deferred} postů nad limit #{max_posts} — odloženo na příští běh")
-    end
+    posts = posts.sort_by { |p| p.published_at || Time.at(0) }.last(max_posts)
 
     published_count = 0
-    interrupted = false
     posts.each do |post|
     break if $shutdown_requested
     result = if source.platform == 'twitter'
@@ -250,25 +232,11 @@ module Orchestrator
     published_count += 1 if result == :published
     if result == :rate_limited
       log_warn("[#{source.id}] Rate limited — deferring remaining #{posts.length - posts.index(post) - 1} posts")
-      interrupted = true
       break
     end
     end
 
-    # Watermark (`last_success`) je zároveň hranice `since` okna. Když se něco
-    # odložilo, patří na poslední ZPRACOVANÝ post, aby příští běh dostal zbytek;
-    # jinak na NOW(). Pravidlo i obě pasti jsou v BatchSelector.watermark_for.
-    @state_manager.mark_check_success(
-    source.id,
-    posts_published: published_count,
-    last_success_at: Support::BatchSelector.watermark_for(
-      batch,
-      interrupted: interrupted,
-      shutdown: $shutdown_requested ? true : false,
-      window_used: source.platform != 'rss',
-      previous: state && state[:last_success] ? Time.parse(state[:last_success].to_s) : nil
-    )
-    )
+    @state_manager.mark_check_success(source.id, posts_published: published_count)
   rescue Adapters::YouTubeTransientError => e
     log_warn("[#{source.id}] #{e.message}")
     @state_manager.log_transient_error(source.id, message: e.message)
