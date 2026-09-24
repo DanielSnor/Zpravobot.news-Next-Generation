@@ -14,7 +14,7 @@
 set -e
 
 PROD_DIR="/app/data/zbnw-ng"
-BACKUP_DIR="/app/data/zbnw-ng-backups"
+BACKUP_DIR="/app/data/archive"
 TIMESTAMP=$(date +"%Y%m%d-%H%M%S")
 BACKUP_FILE="$BACKUP_DIR/prod_backup_${TIMESTAMP}.tar.gz"
 
