@@ -6,7 +6,7 @@
 # ============================================================
 # Tests for:
 # - PREFIX_SELF_REFERENCE (localized self-repost/quote text)
-# - URL_REPLACE (twitter.com -> xcancel.com)
+# - URL_REPLACE (twitter.com -> x.com)
 # - URL_DOMAIN_FIXES (add https:// to bare domains)
 # - RSS_MAX_INPUT_CHARS (pre-truncation)
 # ============================================================
@@ -194,13 +194,13 @@ end
 # Test 3: URL_REPLACE - TwitterFormatter (via UniversalFormatter)
 # ============================================================
 puts "\n" + "=" * 60
-puts "Test 3: URL_REPLACE - twitter.com -> xcancel.com"
+puts "Test 3: URL_REPLACE - twitter.com -> x.com"
 puts "=" * 60
 
 # URL rewriting is done by UniversalFormatter (delegated from TwitterFormatter)
-# TwitterFormatter defaults: url_domain: 'xcancel.com', rewrite_domains: [twitter.com, x.com, nitter.net]
+# TwitterFormatter defaults: url_domain: 'x.com', rewrite_domains: [twitter.com, x.com, xn.zpravobot.news, xcancel.com, nitter.net]
 
-test "TwitterFormatter rewrites twitter.com URLs in text to xcancel.com" do
+test "TwitterFormatter rewrites twitter.com URLs in text to x.com" do
   # Test with URL embedded in text (regular posts don't include post URL by default)
   post = Post.new(
     platform: 'twitter',
@@ -212,21 +212,21 @@ test "TwitterFormatter rewrites twitter.com URLs in text to xcancel.com" do
   )
   formatter = Formatters::TwitterFormatter.new(source_name: 'Test')
   result = formatter.format(post)
-  assert_contains(result, "xcancel.com", "Should rewrite twitter.com to xcancel.com in text")
+  assert_contains(result, "x.com", "Should rewrite twitter.com to x.com in text")
 end
 
-test "TwitterFormatter rewrites x.com URLs in text to xcancel.com" do
+test "TwitterFormatter rewrites nitter.net URLs in text to x.com" do
   post = Post.new(
     platform: 'twitter',
     id: '12345',
     url: 'https://x.com/user/status/12345',
-    text: 'Check out https://x.com/other/status/999',
+    text: 'Check out https://nitter.net/other/status/999',
     published_at: Time.now,
     author: Author.new(username: 'user', full_name: 'User', url: 'https://x.com/user')
   )
   formatter = Formatters::TwitterFormatter.new(source_name: 'Test')
   result = formatter.format(post)
-  assert_contains(result, "xcancel.com", "Should rewrite x.com to xcancel.com in text")
+  assert_contains(result, "x.com", "Should rewrite nitter.net to x.com in text")
 end
 
 # ============================================================
@@ -317,7 +317,7 @@ puts "=" * 60
 puts
 puts "Implemented features:"
 puts "  ✅ PREFIX_SELF_REFERENCE - localized self-repost/quote text (cs/sk/en)"
-puts "  ✅ URL_REPLACE - twitter.com/x.com -> xcancel.com"
+puts "  ✅ URL_REPLACE - twitter.com/nitter.net -> x.com"
 puts "  ✅ URL_DOMAIN_FIXES - add https:// to bare domains"
 puts "  ✅ RSS_MAX_INPUT_CHARS - pre-truncation for long HTML"
 puts

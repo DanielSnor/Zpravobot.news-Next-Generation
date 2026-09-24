@@ -240,7 +240,7 @@ results << test("Twitter quote header contains @handle@twitter.com and post URL 
 
   # Twitter default is local_or_domain_suffix; without local_handles all handles get @twitter.com
   assert_contains(result, '@quoted_user@twitter.com', 'Should contain @handle@twitter.com in quote header')
-  assert_contains(result, 'xcancel.com', 'Post URL should be rewritten to xcancel')
+  assert_contains(result, 'x.com', 'Post URL should be rewritten to x.com')
 end
 
 section("Test 4: Example output comparison")

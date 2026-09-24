@@ -24,8 +24,8 @@ require_relative '../utils/format_helpers'
 module Formatters
   # Default Twitter URL domain and rewrite domains
   # Sourced from config/global.yml twitter section; these are compile-time fallbacks
-  TWITTER_URL_DOMAIN = 'xcancel.com'
-  TWITTER_REWRITE_DOMAINS = %w[twitter.com x.com nitter.net].freeze
+  TWITTER_URL_DOMAIN = 'x.com'
+  TWITTER_REWRITE_DOMAINS = %w[twitter.com x.com xn.zpravobot.news xcancel.com nitter.net].freeze
 
   class UniversalFormatter
     # Default configuration (can be overridden per-source)

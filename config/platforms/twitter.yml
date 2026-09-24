@@ -83,22 +83,28 @@ formatting:
     en: "own post"
 
   # URL rewriting
-  url_domain: "nitter.net"
+  url_domain: "x.com"
   rewrite_domains:
     - "twitter.com"
     - "x.com"
     - "xn.zpravobot.news"
     - "xcancel.com"
+    - "nitter.net"
 
 # ------------------------------------------------------------
 # URL - Úprava odkazů
 # ------------------------------------------------------------
+# Cíl odkazů je x.com — nitter.net i xcancel.com od 24. 8. 2026 neběží
+# (cease and desist od X Corp), obě domény vracejí HTTP 200 s právním
+# oznámením, takže rozbitý odkaz nepozná ani monitoring.
+# Klíč `domain:` byl odstraněn — nečetl ho žádný kód.
 url:
-  domain: "nitter.net"
+  replace_to: "https://x.com/"
   replace_from:
     - "https://twitter.com/"
     - "https://x.com/"
-  replace_to: "https://nitter.net/"
+    - "https://xcancel.com/"
+    - "https://nitter.net/"
 
 # ------------------------------------------------------------
 # MENTIONS - Zpracování zmínek

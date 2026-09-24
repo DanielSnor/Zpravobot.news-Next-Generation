@@ -264,8 +264,9 @@ full_output = fmt.format(post_full)
 
 test("full output contains question text", true, full_output.include?('Who would you want'))
 test("full output contains poll block", true, full_output.include?('📊'))
-test("full output contains post URL (rewritten to xcancel.com)", true, full_output.include?('xcancel.com/someuser/status/1909505876543'))
-test("full output does NOT contain x.com URL", false, full_output.include?('x.com/someuser'))
+test("full output contains post URL (rewritten to x.com)", true, full_output.include?('x.com/someuser/status/1909505876543'))
+test("full output does NOT contain dead nitter.net URL", false, full_output.include?('nitter.net'))
+test("full output does NOT contain dead xcancel.com URL", false, full_output.include?('xcancel.com'))
 
 # Normal tweet without poll should NOT get URL appended (Twitter Tier 1/2 behavior unchanged)
 post_no_poll_twitter = Post.new(
@@ -278,7 +279,7 @@ post_no_poll_twitter = Post.new(
 )
 
 no_poll_output = fmt.format(post_no_poll_twitter)
-test("regular tweet without poll: no URL added", false, no_poll_output.include?('xcancel.com'))
+test("regular tweet without poll: no URL added", false, no_poll_output.include?('x.com/someuser'))
 
 # =============================================================================
 puts

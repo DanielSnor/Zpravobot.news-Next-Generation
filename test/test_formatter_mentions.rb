@@ -59,6 +59,7 @@ module FormatterMentionTests
 
     test_bluesky_formatter
     test_twitter_formatter
+    test_twitter_mentions_rewrite_dead_domains
     test_rss_formatter_facebook
     test_rss_formatter_instagram
     test_rss_formatter_standard
@@ -96,7 +97,7 @@ module FormatterMentionTests
 
     # Mention expansion with suffix format: @user (URL)
     formatter = Formatters::TwitterFormatter.new(
-      mentions: { type: 'suffix', value: 'https://xcancel.com/' }
+      mentions: { type: 'suffix', value: 'https://x.com/' }
     )
 
     # Regular post with mentions
@@ -106,8 +107,30 @@ module FormatterMentionTests
     )
 
     result = formatter.format(post)
-    assert_contains(result, "@CNN (https://xcancel.com/CNN)", "Twitter mention CNN")
-    assert_contains(result, "@elonmusk (https://xcancel.com/elonmusk)", "Twitter mention elonmusk")
+    assert_contains(result, "@CNN (https://x.com/CNN)", "Twitter mention CNN")
+    assert_contains(result, "@elonmusk (https://x.com/elonmusk)", "Twitter mention elonmusk")
+
+    puts
+  end
+
+  # nitter.net i xcancel.com od 24. 8. 2026 neběží. Obě jsou v
+  # TWITTER_REWRITE_DOMAINS, takže i zmínka nastavená na mrtvou doménu
+  # musí skončit na x.com — jinak by čtenář klikl na právní oznámení.
+  def test_twitter_mentions_rewrite_dead_domains
+    puts "Test: TwitterFormatter rewrites mentions pointing at dead domains"
+
+    ['https://xcancel.com/', 'https://nitter.net/'].each do |dead|
+      formatter = Formatters::TwitterFormatter.new(
+        mentions: { type: 'suffix', value: dead }
+      )
+      post = Post.new(
+        text: "Breaking: @CNN reports something",
+        author: Author.new(username: 'ct24zive')
+      )
+      result = formatter.format(post)
+      assert_contains(result, "@CNN (https://x.com/CNN)", "mention via #{dead} lands on x.com")
+      assert_not_contains(result, dead.sub('https://', '').chomp('/'), "no #{dead} left in output")
+    end
 
     puts
   end
