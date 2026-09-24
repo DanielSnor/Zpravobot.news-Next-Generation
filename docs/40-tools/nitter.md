@@ -113,8 +113,8 @@ Per-source override je možný přes `source.nitter_instance` v YAML konfiguraci
 | Položka | Synchronizuje | Poznámka |
 |---|---|---|
 | Bio / description | ✅ | Z Nitter HTML profilu |
-| Avatar | ✅ | S cache (7 dní TTL) |
-| Banner | ✅ | S cache (7 dní TTL) |
+| Avatar | ✅ | S cache (14 dní TTL); upload jen při změně obsahu |
+| Banner | ✅ | S cache (14 dní TTL); upload jen při změně obsahu |
 | Metadata pole 1 | ✅ | `𝕏` → URL Twitter profilu |
 | Metadata pole 3 | ✅ | `spravuje:` → @zpravobot |
 | Metadata pole 4 | ✅ | `retence:` → počet dní |

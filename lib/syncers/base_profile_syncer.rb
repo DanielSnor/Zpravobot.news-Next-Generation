@@ -58,7 +58,8 @@ module Syncers
         cache_dir: @cache_dir,
         use_cache: @use_cache,
         download_options: image_download_options,
-        validate_content_type: validate_image_content_type?
+        validate_content_type: validate_image_content_type?,
+        upload_scope: platform_key
       )
 
       @profile_updater = MastodonProfileUpdater.new(
@@ -146,7 +147,8 @@ module Syncers
     # @param sync_banner [Boolean] Whether to sync banner
     # @param sync_bio [Boolean] Whether to sync bio/description
     # @param sync_fields [Boolean] Whether to update all 4 metadata fields
-    # @param force [Boolean] Force re-download images even if cached
+    # @param force [Boolean] Force re-download images even if cached (and re-upload
+    #   even if unchanged since the last upload)
     # @return [Hash] Result with changes made
     def sync!(sync_avatar: true, sync_banner: true, sync_bio: true, sync_fields: true, force: false)
       log "Starting profile sync: #{platform_name} → Mastodon"
@@ -188,8 +190,12 @@ module Syncers
         avatar_data = @image_cache.download_image_cached(profile[:avatar_url], 'avatar', force: force)
         if avatar_data
           log_image_result('Avatar', avatar_data)
-          files[:avatar] = avatar_data
-          changes << 'avatar'
+          if !force && @image_cache.unchanged_since_upload?('avatar', avatar_data[:data], cached_at: avatar_data[:cached_at])
+            log '  ✔ Avatar unchanged since last upload, skipping'
+          else
+            files[:avatar] = avatar_data
+            changes << 'avatar'
+          end
         else
           log '  ⚠️ Avatar download failed, skipping avatar sync', level: :warn
         end
@@ -203,8 +209,12 @@ module Syncers
         banner_data = @image_cache.download_image_cached(b_url, 'banner', force: force)
         if banner_data
           log_image_result(b_label.capitalize, banner_data)
-          files[:header] = banner_data
-          changes << 'banner'
+          if !force && @image_cache.unchanged_since_upload?('banner', banner_data[:data], cached_at: banner_data[:cached_at])
+            log "  ✔ #{b_label.capitalize} unchanged since last upload, skipping"
+          else
+            files[:header] = banner_data
+            changes << 'banner'
+          end
         end
       end
 
@@ -220,6 +230,8 @@ module Syncers
       if result[:success]
         log '✅ Profile synced successfully!', level: :success
         log "  Changes: #{changes.join(', ')}"
+        @image_cache.record_upload('avatar', files[:avatar][:data]) if files[:avatar]
+        @image_cache.record_upload('banner', files[:header][:data]) if files[:header]
         if changes.include?('avatar') && result[:account]
           masto_avatar = result[:account]['avatar']
           log "  Mastodon avatar: #{masto_avatar}"

@@ -16,6 +16,19 @@ Tento changelog je psaný **chronologicky po měsících** (projekt nepoužívá
 ---
 
 ---
+## 2026-09 — Stabilní URL avatarů
+
+### Opraveno
+- **Profile sync nahrává avatar a banner jen při změně obsahu.** Mastodon při každém uploadu vytvoří nový soubor a starý smaže, takže dosavadní „nahrát pokaždé“ měnilo URL avatarů při každém běhu (~120 účtů denně) a katalog ukazoval do týdne od plného buildu u většiny účtů náhradní ikonu. `ImageCacheManager` si vedle cache drží SHA256 posledního úspěšného uploadu (`<typ>_<handle>.uploaded`); `BaseProfileSyncer#sync!` upload přeskočí, když se digest shoduje (`force: true` přeskočení vypne, `clear_cache` záznam smaže). Test `test_profile_sync_upload_skip`
+- TTL obrázkové cache 7 → 14 dní — Twitter se synchronizuje po skupinách jednou týdně, takže sedmidenní TTL vypršelo přesně před dalším během a cache nikdy nezabrala
+
+---
+## 2026-08 — Odkazy na x.com
+
+### Opraveno
+- Přepis odkazů z Twitteru míří na `x.com`; `nitter.net` i `xcancel.com` od 24. 8. 2026 neběží (C&D od X Corp) a jsou v `rewrite_domains`, aby ani zmínka nastavená na mrtvou doménu nevedla na právní oznámení
+
+---
 ## 2026-05 — Security hardening, výkonová revize, strukturální refaktoring
 
 Květen přinesl komplexní revizi codebase ve 6 vlnách: bezpečnostní záplaty, výkonové optimalizace a strukturální refaktoring zvyšující udržitelnost. Paralelně proběhla stabilizace RSS‑social větve a upgrade modelu.

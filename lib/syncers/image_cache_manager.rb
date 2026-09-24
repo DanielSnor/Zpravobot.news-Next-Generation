@@ -39,15 +39,28 @@ module Syncers
   class ImageCacheManager
     include Support::Loggable
 
-    IMAGE_CACHE_TTL = 86_400 * 7 # 7 days in seconds
+    # 14 dní: Twitter se synchronizuje po skupinách jednou týdně, takže TTL 7 dní
+    # vypršelo přesně v okamžiku dalšího běhu a cache nikdy nezabrala.
+    IMAGE_CACHE_TTL = 86_400 * 14 # 14 days in seconds
     DEFAULT_CACHE_DIR = (ENV['ZBNW_DIR'] ? "#{ENV['ZBNW_DIR']}/cache/profiles" : 'cache/profiles').freeze
 
-    def initialize(source_handle:, cache_dir:, use_cache:, download_options: {}, validate_content_type: false)
+    # Cache soubory zapsané před zavedením záznamů o uploadu byly starým kódem
+    # vždy i nahrány — chybějící záznam u nich neznamená selhání uploadu.
+    # Nasazeno 24. 9. 2026 večer; poslední běh starého kódu zapsal cache ráno.
+    # Po 2026-10-08 (14denní TTL) už žádný takový soubor v cache není a větev
+    # v `unchanged_since_upload?` lze odstranit.
+    UPLOAD_RECORDS_SINCE = Time.utc(2026, 9, 24, 12)
+
+    # @param upload_scope [String, nil] rozliší záznamy o uploadu pro stejný handle
+    #   na různých platformách (typicky platform_key syncera)
+    def initialize(source_handle:, cache_dir:, use_cache:, download_options: {}, validate_content_type: false,
+                   upload_scope: nil)
       @source_handle = source_handle
       @cache_dir = cache_dir
       @use_cache = use_cache
       @download_options = download_options
       @validate_content_type = validate_content_type
+      @upload_scope = upload_scope
 
       ensure_cache_dir if use_cache
     end
@@ -70,6 +83,57 @@ module Syncers
 
       write_image_cache(cache_key, image_data[:data], image_data[:content_type], image_data[:filename])
       image_data.merge(from_cache: false)
+    end
+
+    # ============================================
+    # Záznam o naposledy nahraném obrázku
+    # ============================================
+    #
+    # Mastodon při každém uploadu avataru/banneru vytvoří nový soubor a starý
+    # smaže, i když jsou bajty totožné. Aby URL avatarů zůstávaly stabilní
+    # (katalog, sdílecí stuby), nahrává se obrázek jen když se změnil jeho
+    # SHA256 proti poslednímu úspěšnému uploadu. Záznam žije vedle cache
+    # v souboru <type>_<handle>[.<scope>].uploaded, nezávisle na URL obrázku.
+
+    # @param type [String] 'avatar' nebo 'banner'
+    # @param data [String] binární obsah obrázku
+    # @param cached_at [Time, nil] mtime cache souboru, ze kterého data pocházejí
+    # @return [Boolean] true, když byl přesně tento obsah už úspěšně nahrán
+    def unchanged_since_upload?(type, data, cached_at: nil)
+      return false unless @use_cache
+
+      recorded = uploaded_digest(type)
+      if recorded.nil? && cached_at && cached_at < UPLOAD_RECORDS_SINCE
+        # Přechodné pravidlo, viz UPLOAD_RECORDS_SINCE.
+        record_upload(type, data)
+        return true
+      end
+
+      !recorded.nil? && recorded == self.class.digest(data)
+    end
+
+    # Zapíše digest po úspěšném uploadu.
+    def record_upload(type, data)
+      return unless @use_cache
+
+      Utils::AtomicFile.write(uploaded_digest_path(type), self.class.digest(data))
+    rescue StandardError => e
+      log "  ⚠️ Upload record write error: #{e.message}", level: :warn
+    end
+
+    # @return [String, nil] digest posledního uploadu, nil když záznam chybí
+    def uploaded_digest(type)
+      path = uploaded_digest_path(type)
+      return nil unless File.exist?(path)
+
+      value = File.read(path).strip
+      value.empty? ? nil : value
+    rescue StandardError
+      nil
+    end
+
+    def self.digest(data)
+      Digest::SHA256.hexdigest(data.to_s)
     end
 
     # ============================================
@@ -98,6 +162,13 @@ module Syncers
           end
         end
 
+        # Záznamy o posledním uploadu — po vyčištění cache se obrázek nahraje znovu.
+        %w[avatar banner].each do |type|
+          Dir.glob(File.join(cache_dir, "#{type}_#{handle_key}{,.*}.uploaded")).each do |f|
+            File.delete(f) rescue nil
+          end
+        end
+
         deleted
       end
 
@@ -107,7 +178,7 @@ module Syncers
       def cache_stats(cache_dir: DEFAULT_CACHE_DIR)
         FileUtils.mkdir_p(cache_dir) unless Dir.exist?(cache_dir)
 
-        files = Dir.glob(File.join(cache_dir, '*')).reject { |f| f.end_with?('.meta') }
+        files = Dir.glob(File.join(cache_dir, '*')).reject { |f| f.end_with?('.meta', '.uploaded') }
         total_size = files.sum { |f| File.size(f) rescue 0 }
 
         {
@@ -129,6 +200,13 @@ module Syncers
       hash = Digest::SHA256.hexdigest(url)[0, 16]
       handle_key = @source_handle.gsub(/[^a-zA-Z0-9]/, '_')
       "#{prefix}_#{handle_key}_#{hash}"
+    end
+
+    def uploaded_digest_path(type)
+      handle_key = @source_handle.gsub(/[^a-zA-Z0-9]/, '_')
+      scope = @upload_scope.to_s.gsub(/[^a-zA-Z0-9]/, '_')
+      name = scope.empty? ? "#{type}_#{handle_key}.uploaded" : "#{type}_#{handle_key}.#{scope}.uploaded"
+      File.join(@cache_dir, name)
     end
 
     def cache_path(key)

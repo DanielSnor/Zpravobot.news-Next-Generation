@@ -534,6 +534,13 @@ tests:
     exit_code_reliable: true
     description: "BaseProfileSyncer: build_managed_by_value, platform labels, multi-platform, localization, build_fields output (TASK-2)"
 
+  test_profile_sync_upload_skip:
+    file: test/test_profile_sync_upload_skip.rb
+    category: unit
+    tags: [offline, syncer]
+    exit_code_reliable: true
+    description: "BaseProfileSyncer: avatar/banner se nahrává jen při změně bajtů (stabilní URL na Mastodonu)"
+
   test_image_cache_manager:
     file: test/test_image_cache_manager.rb
     category: unit

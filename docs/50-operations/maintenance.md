@@ -280,7 +280,7 @@ Reaguj, pokud se objeví:
 **Co:**
 - logy starší než 7 dní (`runner_*.log`, `*.log`)
 - processed queue soubory starší než 3 dny
-- cache profily se vypršelým TTL (7 dní)
+- cache profily se vypršelým TTL (14 dní; expiraci řeší `ImageCacheManager` při čtení, soubory `*.uploaded` se nemažou)
 
 **Kdy:** disk usage roste nad normál, nebo manuálně měsíčně
 

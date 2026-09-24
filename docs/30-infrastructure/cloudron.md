@@ -58,7 +58,7 @@ Standardní struktura aplikace:
 │   ├── processing/               # Právě zpracovávané
 │   └── failed/                   # Neúspěšné (pro debug; DEAD_ prefix = archiv)
 ├── cache/
-│   ├── profiles/                 # Avatar/banner cache (7 dní TTL)
+│   ├── profiles/                 # Avatar/banner cache (14 dní TTL) + *.uploaded (digest posledního uploadu)
 │   └── threads/                  # Thread context cache
 ├── cron_*.sh                     # Cron wrappery
 ├── env.sh                        # ⚠️ ENV proměnné — mimo Git
