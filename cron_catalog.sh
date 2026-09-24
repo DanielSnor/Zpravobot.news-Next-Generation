@@ -11,11 +11,13 @@
 #   ./cron_catalog.sh --upload-test   # plný build na TEST (ruční)
 #   ./cron_catalog.sh --posts-only --upload-test   # posty na TEST (ruční)
 #
-# Crontab (PROD):
-#   # Účty + web — týdně (Ne 20:30)
+# Crontab (PROD, od 25. 9. 2026):
+#   # Účty + web — denně ráno po syncu profilů (avatary mají čerstvé URL)
+#   17 6 * * *        /app/data/zbnw-ng/cron_catalog.sh
+#   # Posty + Vyhledávání (sdílený posts.json) — 3× denně
+#   17 0,12,18 * * *  /app/data/zbnw-ng/cron_catalog.sh --posts-only
+#   # Týdenní plný build (Ne 20:30) zůstal, denní ho ale pokrývá
 #   30 20 * * 0       /app/data/zbnw-ng/cron_catalog.sh
-#   # Posty + Vyhledávání (sdílený posts.json) — 4× denně
-#   17 0,6,12,18 * * * /app/data/zbnw-ng/cron_catalog.sh --posts-only
 #
 # TEST (/app/data/zbnw-ng-test) spouštíme jen ručně s --upload-test.
 #

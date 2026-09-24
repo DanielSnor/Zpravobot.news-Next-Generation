@@ -71,7 +71,7 @@ module Catalog
 
       mastodon_data = fetch_mastodon_data(eligible)
       snapshot_data = fetch_snapshot_data
-      previous_data = fetch_previous_snapshot_data
+      previous_data = fetch_previous_snapshot_data(snapshot_data)
       created_dates = fetch_created_at_dates
 
       records = eligible.map do |account_id, creds|
@@ -219,14 +219,26 @@ module Catalog
       {}
     end
 
-    # Snapshot ~1 týden zpět (followers, posts_week) pro výpočet "skokanů týdne".
-    # Když historie chybí, vrací {} → delty zůstanou nil (účet do skokanů nepatří).
-    def fetch_previous_snapshot_data
+    # Snapshot ~1 týden před NEJNOVĚJŠÍM snapshotem (followers, posts_week) pro
+    # výpočet "skokanů týdne". Kotvou je datum nejnovějšího snapshotu, ne datum
+    # buildu: snapshoty vznikají týdně (neděle 20:00), build jede denně a okno
+    # ±3 dny kolem "dnes − 7" by od čtvrtka do neděle chytilo nejnovější snapshot
+    # a všechny delty by byly nulové. Když historie chybí, vrací {} → delty nil.
+    def fetch_previous_snapshot_data(latest)
       store = @snapshot_store || Stats::SnapshotStore.new(@db)
-      store.previous_snapshot(Date.today, weeks_back: 1) || {}
+      anchor = latest_snapshot_date(latest) || Date.today
+      store.previous_snapshot(anchor, weeks_back: 1) || {}
     rescue StandardError => e
       log_warn("[DataAggregator] Předchozí snapshot selhal: #{e.message}")
       {}
+    end
+
+    # Datum nejnovějšího snapshotu napříč účty; nil bez dat nebo bez snapshot_date.
+    def latest_snapshot_date(latest)
+      newest = latest.values.filter_map { |s| s[:snapshot_date] }.max
+      newest && Date.parse(newest.to_s)
+    rescue ArgumentError, TypeError
+      nil
     end
 
     # account_id => 'YYYY-MM-DD' nejstaršího snapshotu (proxy za "přidán dne").

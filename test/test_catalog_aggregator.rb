@@ -71,15 +71,18 @@ end
 # Snapshot store stub
 snapshot_store = Object.new
 def snapshot_store.latest_snapshot
-  { 'ct24' => { followers: 1234, posts_week: 42, statuses: 5000 } }
+  { 'ct24' => { followers: 1234, posts_week: 42, statuses: 5000, snapshot_date: '2026-09-20 20:00:00' } }
 end
 
 def snapshot_store.oldest_snapshot_dates
   { 'ct24' => '2024-03-15' }
 end
 
-# Předchozí týdenní snapshot pro výpočet skokanů (jen ct24)
-def snapshot_store.previous_snapshot(_date, weeks_back: 1)
+# Předchozí týdenní snapshot pro výpočet skokanů (jen ct24). Zachytí kotvu:
+# musí to být datum nejnovějšího snapshotu, ne datum buildu (build jede denně).
+$previous_anchor = nil
+def snapshot_store.previous_snapshot(date, weeks_back: 1)
+  $previous_anchor = date
   { 'ct24' => { followers: 1000, posts_week: 30 } }
 end
 
@@ -91,6 +94,9 @@ agg = Catalog::DataAggregator.new(
 )
 records = agg.aggregate
 by_id = records.to_h { |r| [r[:id], r] }
+
+puts '--- Skokani: kotva předchozího snapshotu ---'
+failures += 1 unless check('previous_snapshot dostal datum nejnovějšího snapshotu', Date.new(2026, 9, 20), $previous_anchor)
 
 puts '--- Filtrování ---'
 # Projdou: ct24, multilang, dvtv (agregátor s family).

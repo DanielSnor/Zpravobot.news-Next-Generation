@@ -21,6 +21,7 @@ Tento changelog je psaný **chronologicky po měsících** (projekt nepoužívá
 ### Opraveno
 - **Profile sync nahrává avatar a banner jen při změně obsahu.** Mastodon při každém uploadu vytvoří nový soubor a starý smaže, takže dosavadní „nahrát pokaždé“ měnilo URL avatarů při každém běhu (~120 účtů denně) a katalog ukazoval do týdne od plného buildu u většiny účtů náhradní ikonu. `ImageCacheManager` si vedle cache drží SHA256 posledního úspěšného uploadu (`<typ>_<handle>.uploaded`); `BaseProfileSyncer#sync!` upload přeskočí, když se digest shoduje (`force: true` přeskočení vypne, `clear_cache` záznam smaže). Test `test_profile_sync_upload_skip`
 - TTL obrázkové cache 7 → 14 dní — Twitter se synchronizuje po skupinách jednou týdně, takže sedmidenní TTL vypršelo přesně před dalším během a cache nikdy nezabrala
+- Cron katalogu: plný build (účty + web) denně v 6:17 po ranním syncu profilů místo jednou týdně; `--posts-only` 3× denně (0:17, 12:17, 18:17). Účet, který avatar opravdu změní, má v katalogu mrtvou ikonu nejvýš do dalšího rána
 
 ---
 ## 2026-08 — Odkazy na x.com

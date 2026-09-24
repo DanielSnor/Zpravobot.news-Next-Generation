@@ -1,6 +1,6 @@
 # Katalog zdrojů
 
-Statický web [katalog.zpravobot.news](https://katalog.zpravobot.news), který zveřejňuje všechny zdroje běžící na instanci a umožňuje je procházet, filtrovat a sdílet. Generuje se dávkově (týdně) jako sada statických souborů a nahrává na Surfer (Cloudron static hosting).
+Statický web [katalog.zpravobot.news](https://katalog.zpravobot.news), který zveřejňuje všechny zdroje běžící na instanci a umožňuje je procházet, filtrovat a sdílet. Generuje se dávkově (plný build denně, posty 3× denně) jako sada statických souborů a nahrává na Surfer (Cloudron static hosting).
 
 Použité pojmy viz [`../00-overview/terminologie.md`](../00-overview/terminologie.md).
 
@@ -141,11 +141,15 @@ ruby bin/catalog_dump.rb --no-mastodon # přeskočit Mastodon API (rychlé, bez 
 
 ## Cron
 
-Spouští se týdně v neděli **po** `zpravobot_stats.rb` (potřebuje aktuální snapshot):
+Přes wrapper `cron_catalog.sh` (sourcuje `env.sh`, loguje do `logs/catalog_full_YYYYMMDD.log` / `catalog_posts_YYYYMMDD.log`). Od 25. 9. 2026 plný build **denně ráno po syncu profilů** (2:00), aby katalog nesl čerstvé URL avatarů; posty a vyhledávání 3× denně:
 
 ```cron
-30 20 * * 0  cd /app/data/zbnw-ng && ruby bin/build_catalog.rb 2>&1 >> logs/catalog.log
+17 6 * * *        /app/data/zbnw-ng/cron_catalog.sh                # účty + web
+17 0,12,18 * * *  /app/data/zbnw-ng/cron_catalog.sh --posts-only   # posts.json
+30 20 * * 0       /app/data/zbnw-ng/cron_catalog.sh                # týdenní, denní ho pokrývá
 ```
+
+Snapshot z `zpravobot_stats.rb` (neděle 20:00) se bere nejnovější dostupný; skokani týdne se počítají proti snapshotu o týden starším než ten nejnovější, ne než datum buildu.
 
 ---
 
