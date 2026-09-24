@@ -76,12 +76,19 @@ do_rsync \
 echo ""
 
 # ============================================================
-# 2. lib/**/*.rb
+# 2. lib/**/*.rb + frontend šablony katalogu (lib/catalog/templates/*)
+#    POZOR: katalog má v lib/ i ne-rb assety (app.js, app.css, index.html.erb,
+#    header.jpg) — bez nich se na server přenese jen Ruby a web zůstane starý.
 # ============================================================
-echo -e "${CYAN}=== lib/**/*.rb ===${NC}"
+echo -e "${CYAN}=== lib/**/*.rb + lib/catalog/templates/* ===${NC}"
 do_rsync \
     --include='*/' \
     --include='*.rb' \
+    --include='*.erb' \
+    --include='*.js' \
+    --include='*.css' \
+    --include='*.jpg' \
+    --include='*.png' \
     --exclude='*' \
     "$LOCAL_DIR/lib/" "$REMOTE:$TEST_DIR/lib/"
 echo ""

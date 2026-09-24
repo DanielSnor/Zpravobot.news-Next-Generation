@@ -40,6 +40,20 @@ tests:
     exit_code_reliable: true
     description: "HTML entity decoding and tag stripping"
 
+  test_catalog_aggregator:
+    file: test/test_catalog_aggregator.rb
+    category: unit
+    tags: [offline, config]
+    exit_code_reliable: true
+    description: "Catalog DataAggregator: zdroj-merge, filtrování, fallbacky"
+
+  test_catalog_posts_collector:
+    file: test/test_catalog_posts_collector.rb
+    category: unit
+    tags: [offline, config]
+    exit_code_reliable: true
+    description: "Catalog PostsCollector: row→záznam mapping, sekce, skokani"
+
   test_url_processor:
     file: test/test_url_processor.rb
     category: unit
@@ -165,6 +179,20 @@ tests:
     tags: [offline, formatter, twitter]
     exit_code_reliable: false
     description: "Smart truncation for 500-char limit"
+
+  test_truncation_detector:
+    file: test/test_truncation_detector.rb
+    category: unit
+    tags: [offline, processor]
+    exit_code_reliable: true
+    description: "TruncationDetector: rozpoznání uťatého textu (note_tweet, indikátory)"
+
+  test_truncation_indicator_integration:
+    file: test/test_truncation_indicator_integration.rb
+    category: unit
+    tags: [offline, processor, formatter]
+    exit_code_reliable: true
+    description: "Unifikovaná indikace uťatého textu skrz PostProcessor + UniversalFormatter"
 
   test_ifttt_parity:
     file: test/test_ifttt_parity.rb
@@ -402,6 +430,7 @@ tests:
     tags: [offline, processor]
     exit_code_reliable: true
     description: "PipelineSteps: DeduplicationStep, EditDetectionStep, ContentFilterStep, UrlProcessingStep"
+
 
   test_state_repositories:
     file: test/test_state_repositories.rb

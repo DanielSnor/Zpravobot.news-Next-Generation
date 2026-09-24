@@ -29,6 +29,13 @@
   <meta name="twitter:description" content="<%= page_description %>">
   <meta name="twitter:image" content="<%= share_image %>">
 
+  <!-- Anonymní návštěvnost (Umami, self-hosted na OSCLOUD; bez cookies, bez osobních dat).
+       TODO: doplnit data-website-id katalogu a odkomentovat. -->
+  <script defer src="https://analytics.oscloud.cz/script.js" data-website-id="7dd260d4-9e5d-4c16-aa37-5b608977df49"></script>
+  
+  <!-- Mastodon rel me -->
+  <a rel="me" href="https://zpravobot.news/@zpravobot">Mastodon</a>
+
   <link rel="stylesheet" href="app.css">
 </head>
 <body data-updated="<%= updated_iso %>">
@@ -40,18 +47,34 @@
       </button>
       <div class="hero-overlay hero-overlay-tl">
         <h1><span class="brand-prefix" data-i18n="brand_prefix">Katalog</span> <span class="brand-domain">Zprávobot.news</span></h1>
-        <p class="claim" data-i18n="claim">Objev své oblíbené zdroje na Mastodonu</p>
-      </div>
-      <div class="hero-overlay hero-overlay-tr lang-switch" id="lang-switch" aria-label="Jazyk / Language">
-        <button type="button" data-lang="cs">CZ</button>
-        <span class="lang-sep" aria-hidden="true">|</span>
-        <button type="button" data-lang="en">EN</button>
+        <p class="claim" data-i18n="claim">Objev své oblíbené mastodonní boty</p>
       </div>
       <a class="hero-overlay hero-overlay-br main-account"
          href="https://zpravobot.news"
          target="_blank" rel="noopener">Zpravobot.news</a>
     </div>
   </header>
+
+  <nav class="navbar" id="navbar" aria-label="Navigace">
+    <div class="navbar-inner">
+      <button class="navbar-burger" id="sidebar-toggle" type="button"
+              aria-expanded="false" aria-controls="sidebar-body" aria-label="Menu">
+        <span class="burger-icon" aria-hidden="true"><span></span><span></span><span></span></span>
+        <span class="burger-label" id="sidebar-toggle-label">Menu</span>
+      </button>
+      <div class="navbar-views" id="view-switch" aria-label="Pohled / View">
+        <button type="button" class="navbar-link" data-view="ucty" data-i18n="view_accounts">Účty</button>
+        <button type="button" class="navbar-link" data-view="posty" data-i18n="view_posts">Posty</button>
+        <button type="button" class="navbar-link" data-view="search" data-i18n="view_search">Vyhledávání</button>
+        <button type="button" class="navbar-link" data-view="about" data-i18n="view_about">O katalogu</button>
+      </div>
+      <div class="lang-switch navbar-lang" id="lang-switch" aria-label="Jazyk / Language">
+        <button type="button" data-lang="cs">CZ</button>
+        <span class="lang-sep" aria-hidden="true">|</span>
+        <button type="button" data-lang="en">EN</button>
+      </div>
+    </div>
+  </nav>
 
   <nav class="tabs" id="tabs" aria-label="Řezy katalogu">
     <button class="tab is-active" data-slice="all" data-i18n="nav_all">Vše</button>
@@ -76,13 +99,60 @@
     <p class="tabs-count"><strong id="visible-count"><%= account_count %></strong> <span data-i18n="count_of">z</span> <span id="total-count"><%= account_count %></span> <span data-i18n="count_sources">zdrojů</span></p>
   </nav>
 
+  <nav class="tabs" id="posts-tabs" aria-label="Řezy postů" hidden>
+    <button class="tab is-active" data-ptab="all" data-i18n="nav_all">Vše</button>
+    <span class="tab-sep" data-i18n="nav_charts">Žebříčky</span>
+    <button class="tab" data-ptab="10">Top 10</button>
+    <button class="tab" data-ptab="50">Top 50</button>
+    <span class="tab-sep" data-i18n="nav_risers">Skokani týdne</span>
+    <button class="tab" data-ptab="risers_ratio" data-i18n="prisers_ratio">Poměrem</button>
+    <button class="tab" data-ptab="risers_abs" data-i18n="prisers_abs">Dosahem</button>
+    <p class="tabs-count" id="posts-meta"></p>
+  </nav>
+
+  <nav class="tabs" id="search-tabs" aria-label="Řezy výsledků" hidden>
+    <button class="tab is-active" data-stab="all" data-i18n="nav_all">Vše</button>
+    <span class="tab-sep" data-i18n="nav_charts">Žebříčky</span>
+    <button class="tab" data-stab="10">Top 10</button>
+    <button class="tab" data-stab="50">Top 50</button>
+    <span class="tab-sep" data-i18n="nav_risers">Skokani týdne</span>
+    <button class="tab" data-stab="risers_ratio" data-i18n="prisers_ratio">Poměrem</button>
+    <button class="tab" data-stab="risers_abs" data-i18n="prisers_abs">Dosahem</button>
+    <p class="tabs-count" id="search-meta"></p>
+  </nav>
+
   <main class="layout">
     <aside class="sidebar" id="sidebar">
-      <button class="sidebar-toggle" id="sidebar-toggle" aria-expanded="false" aria-controls="sidebar-body">
-        <span data-i18n="filters_toggle">Filtry</span> <span class="sidebar-toggle-icon" aria-hidden="true">▾</span>
-      </button>
-
       <div class="sidebar-body" id="sidebar-body">
+        <nav class="filter-group views-nav" id="views-nav" aria-label="Pohledy">
+          <h2 data-i18n="nav_views">Pohledy</h2>
+          <div class="filter-buttons">
+            <button type="button" class="filter-chip view-link" data-view="ucty" data-i18n="view_accounts">Účty</button>
+            <button type="button" class="filter-chip view-link" data-view="posty" data-i18n="view_posts">Posty</button>
+            <button type="button" class="filter-chip view-link" data-view="search" data-i18n="view_search">Vyhledávání</button>
+            <button type="button" class="filter-chip view-link" data-view="about" data-i18n="view_about">O katalogu</button>
+          </div>
+        </nav>
+
+        <div class="filter-group slices-heading" id="slices-heading">
+          <h2 data-i18n="nav_slices">Rychlé filtry</h2>
+        </div>
+
+        <section class="filter-group search-nav" id="accounts-nav" hidden aria-label="Účty">
+          <h2 data-i18n="accounts_nav_title">Účty</h2>
+          <p class="search-nav-desc" data-i18n="accounts_nav_desc">Katalog botů běžících na zpravobot.news. Filtruj podle oblasti, typu, jazyka a tagů, vyhledávej podle jména nebo handle a řaď podle počtu sledujících či aktivity. Kliknutím na účet zobrazíš detail.</p>
+        </section>
+
+        <section class="filter-group search-nav" id="posts-nav" hidden aria-label="Posty">
+          <h2 data-i18n="posts_nav_title">Posty</h2>
+          <p class="search-nav-desc" data-i18n="posts_nav_desc">Nejlepší příspěvky botů za poslední týden. Přepínej žebříčky (Top 10/50, skokani týdne), filtruj podle oblasti, textu a hashtagů a řaď podle boostů, oblíbených nebo data.</p>
+        </section>
+
+        <section class="filter-group search-nav" id="search-nav" hidden aria-label="Vyhledávání">
+          <h2 data-i18n="view_search">Vyhledávání</h2>
+          <p class="search-nav-desc" data-i18n="search_nav_desc">Hledá v účtech katalogu i v jejich nejlepších příspěvcích za poslední týden. Nezáleží na velikosti písmen ani diakritice (napíšeš „bouzkova", najde „Bouzková").</p>
+        </section>
+
         <div class="filter-search">
           <label for="search" data-i18n="search_label">Vyhledat</label>
           <input type="search" id="search" placeholder="Jméno nebo handle…" data-i18n-ph="search_ph" autocomplete="off">
@@ -98,6 +168,28 @@
           </select>
         </div>
 
+        <div class="filter-sort filter-sort-posts" id="posts-sort-wrap" hidden>
+          <label for="posts-sort-select" data-i18n="sort_label">Řadit</label>
+          <select id="posts-sort-select">
+            <option value="date_asc" data-i18n="psort_date_asc">Od nejstaršího</option>
+            <option value="date" data-i18n="psort_date">Nejnovější</option>
+            <option value="engagement" data-i18n="psort_engagement">Nejvíce boostů + favů</option>
+            <option value="reblogs" data-i18n="psort_reblogs">Nejvíce boostů</option>
+            <option value="favourites" data-i18n="psort_favourites">Nejvíce favů</option>
+          </select>
+        </div>
+
+        <div class="filter-sort filter-sort-search" id="search-sort-wrap" hidden>
+          <label for="search-sort-select" data-i18n="sort_label">Řadit</label>
+          <select id="search-sort-select">
+            <option value="relevance" data-i18n="ssort_relevance">Podle shody</option>
+            <option value="date" data-i18n="psort_date">Nejnovější</option>
+            <option value="engagement" data-i18n="psort_engagement">Nejvíce boostů + favů</option>
+            <option value="reblogs" data-i18n="psort_reblogs">Nejvíce boostů</option>
+            <option value="favourites" data-i18n="psort_favourites">Nejvíce favů</option>
+          </select>
+        </div>
+
         <section class="filter-group" data-filter="family">
           <h2 data-i18n="head_topic">Oblast</h2>
           <div class="filter-buttons">
@@ -110,6 +202,12 @@
             <button class="filter-btn fam-news" data-value="news" data-i18n="fam_news">Zprávy</button>
             <button class="filter-btn fam-lifestyle" data-value="lifestyle" data-i18n="fam_lifestyle">Životní styl</button>
           </div>
+        </section>
+
+        <section class="filter-group filter-hashtags" id="post-hashtags-group" data-filter="hashtag" hidden>
+          <h2 data-i18n="head_hashtags">Hashtagy</h2>
+          <div id="post-hashtag-selected" class="tag-selected"></div>
+          <div id="post-hashtag-chips" class="tag-chips"></div>
         </section>
 
         <section class="filter-group" data-filter="type">
@@ -143,10 +241,35 @@
           <div id="tag-chips" class="tag-chips"></div>
         </section>
 
+        <nav class="filter-group about-nav" id="about-nav" data-filter="about" hidden aria-label="O katalogu">
+          <h2 data-i18n="about_menu_about">O katalogu</h2>
+          <p class="search-nav-desc" data-i18n="about_menu_about_desc">Katalog zprávobotů z instance Zprávobot.news. Pomáhá lidem najít zajímavé zdroje informací poskytované na této instanci.</p>
+          <div class="filter-buttons">
+            <button class="filter-chip about-link active" data-about="about" data-i18n="about_nav_about">O katalogu</button>
+          </div>
+
+          <h2 data-i18n="about_menu_howto">Jak pracovat</h2>
+          <p class="search-nav-desc" data-i18n="about_menu_howto_desc">Několik tipů, jak co nejlépe využít možností, které Katalog poskytuje pro práci s:</p>
+          <div class="filter-buttons">
+            <button class="filter-chip about-link" data-about="accounts" data-i18n="about_nav_accounts">Účty</button>
+            <button class="filter-chip about-link" data-about="posts" data-i18n="about_nav_posts">Posty</button>
+            <button class="filter-chip about-link" data-about="search" data-i18n="about_nav_search">Vyhledáváním</button>
+          </div>
+
+          <h2 data-i18n="about_menu_other">Ostatní</h2>
+          <p class="search-nav-desc" data-i18n="about_menu_other_desc">A nakonec několik závěrečných informací — časté dotazy, technické pozadí, o autorovi a jak projekt podpořit.</p>
+          <div class="filter-buttons">
+            <button class="filter-chip about-link" data-about="faq" data-i18n="about_nav_faq">FAQ</button>
+            <button class="filter-chip about-link" data-about="tech" data-i18n="about_nav_tech">Technické řešení</button>
+            <button class="filter-chip about-link" data-about="author" data-i18n="about_nav_author">O autorovi</button>
+          </div>
+        </nav>
+
         <button id="reset-filters" class="reset-btn" data-i18n="reset" hidden>Zrušit filtry</button>
       </div>
     </aside>
 
+    <!-- ===================== POHLED: ÚČTY ===================== -->
     <section class="catalog">
       <p id="slice-note" class="slice-note" hidden></p>
 
@@ -155,6 +278,7 @@
       </div>
 
       <div id="cards" class="cards-grid" aria-live="polite"></div>
+      <div id="cards-sentinel" aria-hidden="true"></div>
 
       <div id="empty-state" class="empty-state" hidden>
         <p data-i18n="empty_title">Žádný zdroj neodpovídá filtrům.</p>
@@ -162,17 +286,528 @@
         <button id="empty-reset" class="reset-btn" data-i18n="empty_reset">Reset filtrů</button>
       </div>
     </section>
+
+    <!-- ===================== POHLED: POSTY ===================== -->
+    <section class="catalog posts-view" id="posts-view" hidden>
+      <div id="posts-loading" class="loading-state" hidden>
+        <span class="spinner" aria-hidden="true"></span> <span data-i18n="posts_loading">Načítám posty…</span>
+      </div>
+
+      <div id="posts-grid" class="cards-grid posts-grid" aria-live="polite"></div>
+
+      <div id="posts-empty" class="empty-state" hidden>
+        <p data-i18n="posts_empty">Žádný post neodpovídá filtrům.</p>
+      </div>
+
+      <div id="posts-unavailable" class="empty-state" hidden>
+        <p data-i18n="posts_unavailable">Posty se aktualizují každý týden.</p>
+      </div>
+    </section>
+
+    <!-- ===================== POHLED: VYHLEDÁVÁNÍ ===================== -->
+    <section class="search-view" id="search-view" hidden>
+      <div class="search-hero">
+        <span class="search-wordmark search-wordmark-l">Zprávobot</span>
+        <img class="search-logo" src="maskot.png" alt="Zprávobot maskot" loading="lazy"
+             onerror="this.style.display='none'">
+        <span class="search-wordmark search-wordmark-r">katalog</span>
+      </div>
+      <div class="search-bar">
+        <input type="search" id="search-q" autocomplete="off"
+               placeholder="Hledat účty i posty…" data-i18n-ph="search_ph_view">
+      </div>
+      <p class="search-tagline" data-i18n="search_tagline">Prohledá účty katalogu i jejich nejlepší příspěvky — bez ohledu na diakritiku a bez přihlášení.</p>
+      <p class="search-tip" data-i18n="search_tip">Tip: víc slov = musí být všechna; přesnou frázi dej do uvozovek („…"), slovo vylučíš mínusem (-slovo).</p>
+      <div id="search-results" class="search-results"></div>
+    </section>
+
+    <!-- ===================== POHLED: O KATALOGU ===================== -->
+    <section class="about-view" id="about-view" hidden>
+
+      <!-- O SLONÍKOVI -->
+      <article class="about-content" data-about-section="about">
+        <div data-lang-block="cs">
+          <h2>O katalogu</h2>
+          <p><strong>Katalog</strong> je koncipovaný jako katalog zprávobotů z instance
+            <a href="https://zpravobot.news" target="_blank" rel="noopener">Zprávobot.news</a>.
+            Pomáhá lidem najít zajímavé zdroje informací poskytované na této instanci.</p>
+          <p>Katalog nabízí tři pohledy:</p>
+          <ul>
+            <li><strong>Účty</strong> — prohledávatelný katalog profilů roztříděný podle
+              oblastí, typu a jazyka.</li>
+            <li><strong>Posty</strong> — týdenní žebříčky nejúspěšnějších příspěvků.</li>
+            <li><strong>Vyhledávání</strong> — fulltext napříč účty i příspěvky; nezáleží
+              na diakritice a není potřeba přihlášení.</li>
+          </ul>
+          <h3>Odkud data pocházejí</h3>
+          <p>Účty katalogu jsou zprávoboti nakonfigurovaní na instanci Zprávobot.news.
+            Profilová data (jméno, avatar, bio, počet sledujících) se berou z Mastodon
+            API instance; oblast, typ a tagy jsou zařazené ručně. Metriky (sledující,
+            aktivita) se obnovují jednou týdně.</p>
+          <p>Posty jsou nejlepší příspěvky botů za poslední týden — text i ohlas (boosty,
+            oblíbené) se čtou přímo z databáze instance. Vyhledávání pak hledá lokálně
+            nad účty katalogu a jejich příspěvky.</p>
+          <p>Katalog je zaměřený výhradně na <strong>zprávoboty z instance Zprávobot.news</strong>
+            — účty, které nepocházejí z této instance, do něj nejsou a nebudou zařazeny.</p>
+        </div>
+        <div data-lang-block="en" hidden>
+          <h2>About the catalog</h2>
+          <p>The <strong>catalog</strong> is designed as a directory of news bots
+            („zprávoboti") from the
+            <a href="https://zpravobot.news" target="_blank" rel="noopener">Zprávobot.news</a>
+            instance. It helps people find interesting sources of information provided on
+            this instance.</p>
+          <p>The catalog offers three views:</p>
+          <ul>
+            <li><strong>Accounts</strong> — a searchable catalog of profiles sorted by
+              topic, type and language.</li>
+            <li><strong>Posts</strong> — weekly charts of the best-performing posts.</li>
+            <li><strong>Search</strong> — full text across accounts and posts;
+              diacritics-insensitive, no login needed.</li>
+          </ul>
+          <h3>Where the data comes from</h3>
+          <p>Catalog accounts are news bots configured on the Zprávobot.news instance.
+            Profile data (name, avatar, bio, follower count) comes from the instance's
+            Mastodon API; topic, type and tags are assigned manually. Metrics (followers,
+            activity) are refreshed once a week.</p>
+          <p>Posts are the best bot posts from the past week — both the text and the
+            engagement (boosts, favourites) are read directly from the instance's database.
+            Search then looks locally across catalog accounts and their posts.</p>
+          <p>The catalog focuses exclusively on <strong>news bots from the Zprávobot.news
+            instance</strong> — accounts that do not originate from this instance are not
+            and will not be included.</p>
+        </div>
+      </article>
+
+      <!-- JAK PRACOVAT S VYHLEDÁVÁNÍM -->
+      <article class="about-content" data-about-section="search" hidden>
+        <div data-lang-block="cs">
+          <h2>Jak pracovat s Vyhledáváním</h2>
+          <p>Do pole napiš, co hledáš — Katalog naráz prohledá <strong>účty i příspěvky</strong>
+            na instanci Zprávobot.news. Nezáleží na velikosti písmen ani diakritice
+            (napíšeš „bouzkova", najde „Bouzková") a není potřeba se přihlašovat.</p>
+          <h3>Co prohledává</h3>
+          <p>Hledá v příspěvcích botů za posledních zhruba <strong>7 dní</strong>
+            (čtených z databáze instance) a v seznamu účtů.
+            Výsledky jsou ve dvou sekcích — <strong>Účty</strong> a <strong>Posty</strong> —
+            se stejnými kartami jako v tabech Účty a Posty.</p>
+          <p>Při <strong>jednom nebo dvou písmenech</strong> funguje jako <strong>napovídač účtů</strong> —
+            vypíše účty, jejichž jméno (nebo handle) tím začíná (např. „da" → David, Dan, Danuše).
+            Od <strong>tří písmen</strong> běží plné hledání v účtech i příspěvcích.</p>
+          <p>Když napíšeš víc slov, musí se objevit <strong>všechna</strong> (logické „a zároveň").
+            Přesnou frázi uzavři do <strong>uvozovek</strong> — např. <code>„jarní úklid"</code>
+            najde jen příspěvky, kde jsou ta slova hned za sebou. Slovo <strong>vyloučíš mínusem</strong> —
+            <code>praha -kolo</code> najde příspěvky s „praha" bez „kolo".</p>
+          <figure class="about-figure">
+            <img src="search-results.png" alt="Náhled výsledků vyhledávání" loading="lazy" onerror="this.closest('figure').remove()">
+          </figure>
+          <h3>Filtry a žebříčky</h3>
+          <ul>
+            <li><strong>Oblast (dle účtu)</strong> a <strong>Hashtagy</strong> — zúží nalezené příspěvky (oblast je téma autora).</li>
+            <li><strong>Řadit</strong> — podle shody, nejnovější, nebo dle boostů/oblíbených.</li>
+            <li><strong>Top 10 / 50</strong> a <strong>Skokani týdne</strong> (Poměrem / Dosahem) — žebříčky nalezených příspěvků.</li>
+          </ul>
+        </div>
+        <div data-lang-block="en" hidden>
+          <h2>Working with Search</h2>
+          <p>Type what you're looking for — the catalog searches <strong>accounts and posts</strong>
+            on the Zprávobot.news instance at once. It's case- and diacritics-insensitive
+            (type "bouzkova", it finds "Bouzková") and no login is needed.</p>
+          <h3>What it searches</h3>
+          <p>It searches the bots' posts from roughly the last <strong>7 days</strong>
+            (read from the instance's database) and the list of accounts. Results come in two sections — <strong>Accounts</strong> and
+            <strong>Posts</strong> — using the same cards as the Accounts and Posts tabs.</p>
+          <p>With <strong>one or two letters</strong> it acts as an <strong>account autocomplete</strong> —
+            it lists accounts whose name (or handle) starts with them (e.g. "da" → David, Dan).
+            From <strong>three letters</strong> the full search across accounts and posts runs.</p>
+          <p>With multiple words, <strong>all</strong> of them must appear (logical AND). Wrap an
+            exact phrase in <strong>quotes</strong> — e.g. <code>"spring cleanup"</code> matches
+            only posts where those words appear right next to each other. <strong>Exclude a word
+            with a minus</strong> — <code>praha -kolo</code> finds posts with "praha" but without "kolo".</p>
+          <figure class="about-figure">
+            <img src="search-results.png" alt="Search results preview" loading="lazy" onerror="this.closest('figure').remove()">
+          </figure>
+          <h3>Filters and charts</h3>
+          <ul>
+            <li><strong>Topic (by account)</strong> and <strong>Hashtags</strong> — narrow the found posts (topic is the author's).</li>
+            <li><strong>Sort</strong> — by relevance, newest, or by boosts/favourites.</li>
+            <li><strong>Top 10 / 50</strong> and <strong>Weekly risers</strong> (by ratio / by reach) — charts of the found posts.</li>
+          </ul>
+        </div>
+      </article>
+
+      <!-- JAK PRACOVAT S ÚČTY -->
+      <article class="about-content" data-about-section="accounts" hidden>
+        <div data-lang-block="cs">
+          <h2>Jak pracovat s Účty</h2>
+          <p>Pohled <strong>Účty</strong> je hlavní seznam profilů. Každá karta ukazuje
+            jméno, handle, oblast, krátké bio a počet sledujících. Kliknutím na kartu
+            otevřeš detail.</p>
+          <figure class="about-figure">
+            <img src="card-account.png" alt="Náhled karty účtu" loading="lazy" onerror="this.closest('figure').remove()">
+          </figure>
+          <h3>Filtrování (levý panel)</h3>
+          <ul>
+            <li><strong>Vyhledat</strong> — fulltext ve jméně i handle.</li>
+            <li><strong>Oblast</strong> — tematické zařazení (Zprávy, Kultura, Sport,
+              Věda &amp; technika, Stát, Byznys, Humor, Životní styl).</li>
+            <li><strong>Typ účtu</strong> — osoba, médium, organizace, tým, ostatní.</li>
+            <li><strong>Jazyk</strong> — čeština, slovenština, angličtina.</li>
+            <li><strong>Tag</strong> — jemnější štítky; začni psát a vyber z nabídky.
+              Více tagů funguje jako „a zároveň".</li>
+          </ul>
+          <p>Aktivní filtry zrušíš tlačítkem <em>Zrušit filtry</em>.</p>
+          <h3>Řazení a žebříčky</h3>
+          <p>V levém panelu (na mobilu v menu) přepneš <strong>Řadit</strong> (abecedně, nejvíc
+            sledujících, nejaktivnější, nejnověji přidané). Pruh <strong>Žebříčky</strong> nad
+            seznamem nabízí hotové výběry: <em>Top sledovaných / aktivních</em>,
+            <em>Skokani týdne</em> (největší nárůst sledujících či aktivity) a
+            <em>Nedávno přidané</em>.</p>
+          <p>Pruh <strong>Platforma</strong> navíc nabízí řez podle zdroje, ze kterého
+            zprávobot zrcadlí — <em>X, Bluesky, Facebook, Instagram, Threads, YouTube</em>
+            nebo <em>RSS</em>.</p>
+          <h3>Detail a sledování</h3>
+          <p>V detailu najdeš celé bio, tagy, metriky a původní profil(y). Tlačítko
+            <em>Otevřít profil</em> tě přenese na profil bota na Zprávobot.news, odkud ho
+            můžeš ze své vlastní instance začít sledovat.</p>
+          <figure class="about-figure">
+            <img src="card-account-detail.png" alt="Náhled detailu účtu" loading="lazy" onerror="this.closest('figure').remove()">
+          </figure>
+        </div>
+        <div data-lang-block="en" hidden>
+          <h2>Working with Accounts</h2>
+          <p>The <strong>Accounts</strong> view is the main list of profiles. Each card
+            shows the name, handle, topic, a short bio and the follower count. Click a
+            card to open its detail.</p>
+          <figure class="about-figure">
+            <img src="card-account.png" alt="Account card preview" loading="lazy" onerror="this.closest('figure').remove()">
+          </figure>
+          <h3>Filtering (left panel)</h3>
+          <ul>
+            <li><strong>Search</strong> — full text in name and handle.</li>
+            <li><strong>Topic</strong> — thematic area (News, Culture, Sports,
+              Science &amp; tech, Government, Business, Humor, Lifestyle).</li>
+            <li><strong>Account type</strong> — person, media, organization, team, other.</li>
+            <li><strong>Language</strong> — Czech, Slovak, English.</li>
+            <li><strong>Tag</strong> — finer labels; start typing and pick from the list.
+              Multiple tags act as "and".</li>
+          </ul>
+          <p>Clear active filters with the <em>Clear filters</em> button.</p>
+          <h3>Sorting and charts</h3>
+          <p>In the left panel (in the menu on mobile) switch <strong>Sort</strong>
+            (alphabetically, most followers, most active, recently added). The
+            <strong>Charts</strong> bar above the list offers ready-made picks:
+            <em>Top followed / active</em>, <em>Weekly risers</em> (biggest growth in
+            followers or activity) and <em>Recently added</em>.</p>
+          <p>A <strong>Platform</strong> bar additionally slices accounts by the source the
+            bot mirrors — <em>X, Bluesky, Facebook, Instagram, Threads, YouTube</em> or
+            <em>RSS</em>.</p>
+          <h3>Detail and following</h3>
+          <p>The detail shows the full bio, tags, metrics and original profile(s). The
+            <em>Open profile</em> button takes you to the bot's profile on Zprávobot.news, from
+            where you can follow it via your own instance.</p>
+          <figure class="about-figure">
+            <img src="card-account-detail.png" alt="Account detail preview" loading="lazy" onerror="this.closest('figure').remove()">
+          </figure>
+        </div>
+      </article>
+
+      <!-- JAK PRACOVAT S POSTY -->
+      <article class="about-content" data-about-section="posts" hidden>
+        <div data-lang-block="cs">
+          <h2>Jak pracovat s Posty</h2>
+          <p>Pohled <strong>Posty</strong> ukazuje <strong>žebříčky nejlepších příspěvků</strong>
+            botů za posledních 7 dní. Data se aktualizují několikrát denně.</p>
+          <h3>Řazení a žebříčky</h3>
+          <ul>
+            <li><strong>Řadit</strong> (levý panel): nejvíce boostů + favů, nejvíce
+              boostů, nejvíce favů, nejnovější, od nejstaršího.</li>
+            <li><strong>Top 10 / Top 50</strong>: zkrátí žebříček.</li>
+            <li><strong>Skokani týdne</strong>: příspěvky, které výrazně překonaly
+              obvyklý dosah svého účtu — ve dvou pohledech:
+              <ul>
+                <li><em>Poměrem</em> — kolikrát překonaly průměr účtu (vynese i menší
+                  účty s neobvykle úspěšným postem).</li>
+                <li><em>Dosahem</em> — o kolik absolutně překonaly průměr účtu
+                  (zvýhodňuje účty s velkým dosahem).</li>
+              </ul>
+            </li>
+          </ul>
+          <h3>Filtrování</h3>
+          <p>Posty filtruješ podle <strong>Oblasti (dle účtu)</strong> — téma je dané autorem,
+            ne jednotlivým postem — <strong>fulltextem</strong> (text postu i jméno účtu) a podle
+            <strong>Hashtagů</strong> (nabídka nejčastějších hashtagů z právě zobrazených postů,
+            více funguje jako „a zároveň"). Hashtagy přímo v textu příspěvku jsou klikatelné.</p>
+          <h3>Karta postu</h3>
+          <p>Avatar i jméno účtu jsou prolink na <strong>profil</strong>. Dole najdeš
+            počet boostů 🔁, oblíbení ⭐ a datum 📅; odkaz <em>Otevřít na Mastodonu</em>
+            vede na původní příspěvek.</p>
+          <figure class="about-figure">
+            <img src="card-post.png" alt="Náhled karty postu" loading="lazy" onerror="this.closest('figure').remove()">
+          </figure>
+        </div>
+        <div data-lang-block="en" hidden>
+          <h2>Working with Posts</h2>
+          <p>The <strong>Posts</strong> view shows <strong>charts of the best posts</strong>
+            from the bots over the last 7 days. Data is refreshed several times a day.</p>
+          <h3>Sorting and charts</h3>
+          <ul>
+            <li><strong>Sort</strong> (left panel): most boosts + favs, most boosts,
+              most favs, newest, oldest first.</li>
+            <li><strong>Top 10 / Top 50</strong>: trims the chart.</li>
+            <li><strong>Weekly risers</strong>: posts that clearly beat their account's
+              usual reach — in two views:
+              <ul>
+                <li><em>By ratio</em> — how many times they beat the account's average
+                  (surfaces smaller accounts with an unusually successful post).</li>
+                <li><em>By reach</em> — how far they beat the average in absolute terms
+                  (favors high-reach accounts).</li>
+              </ul>
+            </li>
+          </ul>
+          <h3>Filtering</h3>
+          <p>Filter posts by <strong>Topic (by account)</strong> — the topic comes from the
+            author, not the individual post — <strong>full text</strong> (post text and account
+            name) and by <strong>Hashtags</strong> (the most frequent hashtags from the currently
+            shown posts; multiple act as "and"). Hashtags inside the post text are clickable.</p>
+          <h3>Post card</h3>
+          <p>Both the avatar and the account name link to the <strong>profile</strong>.
+            At the bottom you'll find boosts 🔁, favourites ⭐ and the date 📅; the
+            <em>Open on Mastodon</em> link goes to the original post.</p>
+          <figure class="about-figure">
+            <img src="card-post.png" alt="Post card preview" loading="lazy" onerror="this.closest('figure').remove()">
+          </figure>
+        </div>
+      </article>
+
+      <!-- FAQ -->
+      <article class="about-content" data-about-section="faq" hidden>
+        <div data-lang-block="cs">
+          <h2>FAQ — časté otázky</h2>
+          <h3>Nechci být v Katalogu a Zprávobot.news.</h3>
+          <p>Jsi vlastník účtu a nechceš v Katalogu a na instanci Zprávobot.news být? Napiš na
+            <a href="https://zpravobot.news/@zpravobot" target="_blank" rel="noopener">@zpravobot@zpravobot.news</a>
+            a účet odstraníme.</p>
+          <h3>Nevidím tu nikde zprávobota svého oblíbeného účtu. Proč?</h3>
+          <p>Nejspíš proto, že o něm nevíme. Pokud máš tip na nového zajímavého zprávobota,
+            napiš nám a pokud bude připadat zajímavý i nám, přidáme ho.</p>
+          <h3>Jak se počítají žebříčky a Skokani?</h3>
+          <p>Nic složitého ani váženého. <strong>Engagement</strong> příspěvku = boosty + oblíbení.
+            Žebříčky postů řadí podle engagementu (nebo podle data / boostů / oblíbených, dle volby).</p>
+          <p><strong>Skokani týdne</strong> jsou příspěvky, které výrazně překonaly <em>obvyklý</em>
+            výkon svého účtu:</p>
+          <ul>
+            <li><strong>Poměrem</strong> = engagement ÷ průměr účtu — kolikrát příspěvek překonal
+              svůj průměr (vynese i menší účet s jedním povedeným postem).</li>
+            <li><strong>Dosahem</strong> = engagement − průměr účtu — o kolik ho překonal absolutně
+              (zvýhodní účty s velkým dosahem).</li>
+          </ul>
+          <p>Skokani se počítají jen u účtů s aspoň 3 příspěvky v daném okně, ať průměr není náhoda.
+            Okno je <strong>jeden týden</strong> (posledních 7 dní) a platí stejně pro Posty
+            i Vyhledávání.</p>
+          <h3>To je skvělý projekt, který bych moc rád finančně podpořil. Jak to mohu udělat?</h3>
+          <p>Mockrát děkujeme! Zprávobot.news a Katalog můžeš podpořit takto:</p>
+          <ul class="faq-support">
+            <li>🏦 IBAN: <strong>CZ8830300000001001612070</strong></li>
+            <li>🖥️ <a href="https://forendors.cz/zpravobot" target="_blank" rel="noopener">forendors.cz/zpravobot</a></li>
+            <li>☕️ <a href="https://ko-fi.com/zpravobot" target="_blank" rel="noopener">ko-fi.com/zpravobot</a></li>
+            <li>💳 <a href="https://revolut.me/zpravobot" target="_blank" rel="noopener">revolut.me/zpravobot</a></li>
+          </ul>
+          <figure class="about-figure qr">
+            <img src="qr.jpg" alt="QR kód pro platbu" loading="lazy" onerror="this.closest('figure').remove()">
+          </figure>
+        </div>
+        <div data-lang-block="en" hidden>
+          <h2>FAQ</h2>
+          <h3>I don't want to be in the Catalog and on Zprávobot.news.</h3>
+          <p>Are you the account owner and don't want to be in the Catalog and on the
+            Zprávobot.news instance? Write to
+            <a href="https://zpravobot.news/@zpravobot" target="_blank" rel="noopener">@zpravobot@zpravobot.news</a>
+            and we'll remove the account.</p>
+          <h3>I can't find the news bot for my favourite account anywhere. Why?</h3>
+          <p>Probably because we don't know about it. If you have a tip for a new, interesting
+            news bot, write to us — and if we find it interesting too, we'll add it.</p>
+          <h3>How are the charts and risers calculated?</h3>
+          <p>Nothing complex or weighted. A post's <strong>engagement</strong> = boosts + favourites.
+            Post charts are ranked by engagement (or by date / boosts / favourites, as you choose).</p>
+          <p><strong>Weekly risers</strong> are posts that clearly beat their account's <em>usual</em>
+            performance:</p>
+          <ul>
+            <li><strong>By ratio</strong> = engagement ÷ the account's average — how many times the
+              post beat its own average (surfaces smaller accounts with a stand-out post).</li>
+            <li><strong>By reach</strong> = engagement − the account's average — how far it beat it
+              in absolute terms (favours high-reach accounts).</li>
+          </ul>
+          <p>Risers are computed only for accounts with at least 3 posts in the window, so the
+            average isn't a fluke. The window is <strong>one week</strong> (the last 7 days) and
+            is the same for both Posts and Search.</p>
+          <h3>This is a great project and I'd love to support it financially. How?</h3>
+          <p>Thank you so much! You can support Zprávobot.news and the Catalog here:</p>
+          <ul class="faq-support">
+            <li>🏦 IBAN: <strong>CZ8830300000001001612070</strong></li>
+            <li>🖥️ <a href="https://forendors.cz/zpravobot" target="_blank" rel="noopener">forendors.cz/zpravobot</a></li>
+            <li>☕️ <a href="https://ko-fi.com/zpravobot" target="_blank" rel="noopener">ko-fi.com/zpravobot</a></li>
+            <li>💳 <a href="https://revolut.me/zpravobot" target="_blank" rel="noopener">revolut.me/zpravobot</a></li>
+          </ul>
+          <figure class="about-figure qr">
+            <img src="qr.jpg" alt="Payment QR code" loading="lazy" onerror="this.closest('figure').remove()">
+          </figure>
+        </div>
+      </article>
+
+      <!-- TECHNICKÉ ŘEŠENÍ -->
+      <article class="about-content" data-about-section="tech" hidden>
+<div data-lang-block="cs">
+  <h2>Technické řešení</h2>
+  <p>Katalog je úmyslně jednoduchý: web je <strong>čistě statický</strong> (HTML, CSS
+    a trocha vanilla JavaScriptu), bez serverové aplikace, bez přihlašování a bez cookies.
+    Návštěvnost měříme jen <strong>anonymně a agregovaně</strong> (self-hosted
+    <a href="https://umami.is" target="_blank" rel="noopener">Umami</a> na OSCLOUD), bez
+    osobních údajů. Veškerá logika se odehrává předem v dávkových skriptech (Ruby) — web
+    jen zobrazuje hotová data (<code>data.json</code>, <code>posts.json</code>).</p>
+  <h3>Sběr dat</h3>
+  <p>Katalog běží na stejném serveru jako instance Zprávobot.news, takže sahá rovnou na
+    její data. Dvě dávky:</p>
+  <ul>
+    <li><strong>Účty</strong> (<code>data.json</code>, týdně) — spojí konfiguraci botů
+      (oblast, typ, tagy), jejich zdroje (platforma, jazyk) a profilová data z Mastodon
+      API instance (jméno, avatar, bio, počet sledujících) plus týdenní snapshot
+      (sledující, aktivita, skokani).</li>
+    <li><strong>Posty</strong> (<code>posts.json</code>, několikrát denně) — jeden SQL
+      dotaz přímo do Postgres databáze instance: veřejné příspěvky botů za posledních
+      7 dní i s ohlasem (boosty, oblíbené). Z nich se spočítají žebříčky a skokani.</li>
+  </ul>
+  <h3>Kategorizace</h3>
+  <p>Oblast, typ a tagy má každý účet zařazené <strong>ručně</strong> v konfiguraci —
+    kurátorováno, ne automaticky.</p>
+  <h3>Vyhledávání</h3>
+  <p>Hledá se <strong>kompletně v prohlížeči</strong> nad staženými soubory
+    <code>data.json</code> (účty) a <code>posts.json</code> (posty) — deterministicky,
+    bez ohledu na diakritiku (normalizace NFKD), bez odesílání dotazů na server a bez
+    přihlášení.</p>
+  <h3>Metriky a žebříčky</h3>
+  <p>Metriky jsou záměrně jednoduché a počítané z veřejných čísel: <strong>engagement</strong>
+    = boosty + oblíbené; <strong>Skokani</strong> porovnávají příspěvek s průměrným výkonem
+    jeho účtu (min. 3 posty v okně). Žádné vážené skóre ani skrytá magie — vše jde dopočítat
+    z dat, která zobrazujeme.</p>
+  <h3>Provoz a publikace</h3>
+  <p>Hotová data (katalog i žebříčky postů) se nahrávají na statický hosting. Kód je
+    oddělený od dat a přístupové tokeny nikdy nejsou součástí webu. Katalog pracuje výhradně
+    s <strong>veřejnými daty z vlastní instance</strong>.</p>
+  <h3>Otevřený kód</h3>
+  <p>Katalog (web i dávkové skripty) je součástí open-source projektu
+    <a href="https://github.com/DanielSnor/Zpravobot.news-Next-Generation" target="_blank" rel="noopener">Zpravobot.news-Next-Generation</a>
+    na GitHubu — <strong>zdarma</strong> a pod svobodnou licencí
+    <a href="https://unlicense.org" target="_blank" rel="noopener">Unlicense</a> (uvolněno do
+    veřejné domény). Můžeš si ho prohlédnout, použít i upravit.</p>
+</div>
+<div data-lang-block="en" hidden>
+  <h2>Technical details</h2>
+  <p>The catalog is deliberately simple: the site is <strong>fully static</strong> (HTML,
+    CSS and a bit of vanilla JavaScript), with no server application, no login and no cookies.
+    Traffic is measured only <strong>anonymously and in aggregate</strong> (self-hosted
+    <a href="https://umami.is" target="_blank" rel="noopener">Umami</a> on OSCLOUD), with no
+    personal data. All the logic happens beforehand in batch scripts (Ruby) — the site
+    just displays ready-made data (<code>data.json</code>, <code>posts.json</code>).</p>
+  <h3>Data collection</h3>
+  <p>The catalog runs on the same server as the Zprávobot.news instance, so it reaches its
+    data directly. Two batches:</p>
+  <ul>
+    <li><strong>Accounts</strong> (<code>data.json</code>, weekly) — combines the bot
+      configuration (topic, type, tags), their sources (platform, language) and profile
+      data from the instance's Mastodon API (name, avatar, bio, follower count) plus a
+      weekly snapshot (followers, activity, risers).</li>
+    <li><strong>Posts</strong> (<code>posts.json</code>, several times a day) — a single
+      SQL query straight into the instance's Postgres database: public bot posts from the
+      last 7 days with their engagement (boosts, favourites). Charts and risers are
+      computed from them.</li>
+  </ul>
+  <h3>Categorization</h3>
+  <p>Topic, type and tags are assigned to each account <strong>manually</strong> in the
+    configuration — curated, not automated.</p>
+  <h3>Search</h3>
+  <p>Searching happens <strong>entirely in the browser</strong> over the downloaded
+    <code>data.json</code> (accounts) and <code>posts.json</code> (posts) — deterministic,
+    diacritics-insensitive (NFKD normalization), with no queries sent to a server and no
+    login.</p>
+  <h3>Metrics and charts</h3>
+  <p>Metrics are deliberately simple and computed from public numbers: <strong>engagement</strong>
+    = boosts + favourites; <strong>risers</strong> compare a post to its account's average
+    performance (min. 3 posts in the window). No weighted scores or hidden magic —
+    everything can be derived from the data we display.</p>
+  <h3>Operation and publishing</h3>
+  <p>The finished data (catalog and post charts) is uploaded to static hosting. Code is
+    kept separate from data and access tokens are never part of the website. The catalog
+    works exclusively with <strong>public data from its own instance</strong>.</p>
+  <h3>Open source</h3>
+  <p>The catalog (both the website and the batch scripts) is part of the open-source project
+    <a href="https://github.com/DanielSnor/Zpravobot.news-Next-Generation" target="_blank" rel="noopener">Zpravobot.news-Next-Generation</a>
+    on GitHub — <strong>free</strong> and under the
+    <a href="https://unlicense.org" target="_blank" rel="noopener">Unlicense</a> (released into
+    the public domain). You're welcome to inspect, use and modify it.</p>
+</div>
+      </article>
+
+      <!-- O AUTOROVI -->
+      <article class="about-content" data-about-section="author" hidden>
+        <div data-lang-block="cs">
+          <h2>O autorovi</h2>
+          <img class="author-photo" src="daniel.jpg" alt="Daniel Šnor" loading="lazy" onerror="this.style.display='none'">
+          <p>Za Katalogem stojí <strong>Daniel Šnor</strong> — nadšenec do Mastodonu a celé
+            sítě fediverse z českého prostředí.</p>
+          <p>Provozuje projekt <a href="https://zpravobot.news" target="_blank" rel="noopener">Zprávobot.news</a> —
+            veřejně prospěšnou službu, která zrcadlí oblíbené primárně české a slovenské
+            X/Twitter účty, přinášející na Mastodon a BlueSky jinak chybějící zprávy,
+            sport, informace o technologiích, kultuře, a někdy i humor.</p>
+          <p>Katalog vznikl jako jeho přirozené rozšíření, Mastodon totiž v aktuální verzi
+            neposkytoval použitelný seznam účtů instance, a zatímco Zprávobot.news přivádí obsah,
+            Katalog ho pomáhá najít. Ostatně, díky zpětné vazbě uživatelů se Katalog stal
+            předlohou pro <a href="https://slonik.online" target="_blank" rel="noopener">Slonik.online</a>.</p>
+          <p>Mastodonu a celé síti fediverse fandí jako otevřené a decentralizované alternativě
+            ke komerčním sítím — bez algoritmů, reklam a sledování uživatelů. Zprávobot, Katalog
+            i Sloník jsou jeho příspěvkem k tomu, aby tu byl český a slovenský obsah lépe vidět
+            a snáz se objevoval.</p>
+          <p>Máš nápad, připomínku, nebo nechceš být v katalogu? Napiš na
+            <a href="https://mastodon.social/@danielsnor" target="_blank" rel="noopener">@danielsnor@mastodon.social</a>.</p>
+        </div>
+        <div data-lang-block="en" hidden>
+          <h2>About the author</h2>
+          <img class="author-photo" src="daniel.jpg" alt="Daniel Šnor" loading="lazy" onerror="this.style.display='none'">
+          <p>The Catalog is made by <strong>Daniel Šnor</strong> — a Czech enthusiast of Mastodon
+            and the wider fediverse.</p>
+          <p>He runs the <a href="https://zpravobot.news" target="_blank" rel="noopener">Zprávobot.news</a>
+            project — a public-benefit service that mirrors popular, primarily Czech and
+            Slovak X/Twitter accounts, bringing to Mastodon and BlueSky
+            otherwise-missing news, sport, technology, culture,
+            and sometimes humor.</p>
+          <p>The Catalog grew out of it as a natural extension — Mastodon in its current version
+            didn't offer a usable list of an instance's accounts, and while Zprávobot.news brings
+            in content, the Catalog helps you find it. In fact, thanks to user feedback the Catalog
+            became the blueprint for <a href="https://slonik.online" target="_blank" rel="noopener">Slonik.online</a>.</p>
+          <p>He's a fan of Mastodon and the wider fediverse as an open, decentralized
+            alternative to commercial networks — no algorithms, ads or user tracking. Zprávobot,
+            the Catalog and Sloník are his contribution to making Czech and Slovak content more
+            visible and easier to discover here.</p>
+          <p>Have an idea, feedback, or want to be removed from the catalog? Write to
+            <a href="https://mastodon.social/@danielsnor" target="_blank" rel="noopener">@danielsnor@mastodon.social</a>.</p>
+        </div>
+      </article>
+    </section>
   </main>
 
   <footer class="site-footer">
     <div class="footer-inner">
-      <p><span data-i18n="footer_updated">Katalog naposledy aktualizován</span> <strong><%= updated_label %></strong><span id="updated-relative" class="updated-relative"></span>.</p>
-      <p><span data-i18n="footer_owner">Jsi vlastník účtu a chceš jej z katalogu odstranit? Napiš na</span>
-        <a href="https://zpravobot.news/@<%= main_account.split('@')[1] %>" target="_blank" rel="noopener"><%= main_account %></a>.</p>
+      <p class="footer-meta"><span data-i18n="footer_updated">Katalog naposledy aktualizován</span> <strong><%= updated_label %></strong><span id="updated-relative" class="updated-relative"></span>.<span id="footer-posts" hidden> <span data-i18n="footer_posts_updated">Posty a vyhledávání aktualizovány</span> <strong id="posts-updated-date"></strong>.</span></p>
+      <a class="footer-sponsor" href="https://oscloud.cz" target="_blank" rel="noopener" title="OSCLOUD">
+        <span class="footer-sponsor-text" data-i18n="footer_sponsor">Tento web běží
+díky podpoře</span>
+        <img class="footer-sponsor-logo" src="oscloud.png" alt="OSCLOUD" height="24" onerror="this.style.display='none'">
+      </a>
     </div>
   </footer>
 
   <dialog id="detail-modal" class="detail-modal" aria-label="Detail zdroje"></dialog>
+  <dialog id="embed-modal" class="embed-modal" aria-label="Náhled příspěvku"></dialog>
 
   <script src="app.js"></script>
 </body>

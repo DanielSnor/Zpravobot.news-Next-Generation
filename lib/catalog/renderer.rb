@@ -26,7 +26,13 @@ module Catalog
 
     TEMPLATE_DIR = File.expand_path('templates', __dir__)
     STATIC_ASSETS = %w[app.js app.css].freeze
-    IMAGE_ASSETS  = %w[header.jpg].freeze   # binární — kopírují se beze změny
+    # Binární assety — kopírují se beze změny. Kromě hlavičky a sponzorského loga
+    # i ilustrace pro pohled „O katalogu" (screenshoty UI, autor, QR).
+    IMAGE_ASSETS  = %w[
+      header.jpg oscloud.png maskot.png
+      card-account.png card-account-detail.png card-post.png
+      daniel.jpg qr.jpg search-results.png
+    ].freeze
     MAIN_ACCOUNT = '@zpravobot@zpravobot.news'
 
     PAGE_TITLE       = 'Katalog Zprávobot.news'
@@ -42,12 +48,14 @@ module Catalog
     # @param account_stubs [Boolean] generovat per-účet sdílecí HTML stuby
     #   (zdroj/<id>.html) s vlastním OG — vyžaduje site_url.
     # @return [Array<String>] absolutní cesty zapsaných souborů
-    def render(records, output_dir:, updated_at: Time.now, site_url: nil, account_stubs: true)
+    def render(records, output_dir:, updated_at: Time.now, site_url: nil, account_stubs: true, posts: nil)
       FileUtils.mkdir_p(output_dir)
       site = site_url.to_s.chomp('/')
 
       written = []
       written << write_file(output_dir, 'data.json', JSON.generate(records))
+      # posts.json — top příspěvky pro Posty/Search view (volitelné; lazy-fetch v JS)
+      written << write_file(output_dir, 'posts.json', JSON.generate(posts)) if posts
       written << write_file(output_dir, 'index.html', render_index(records, updated_at, site))
       unless site.empty?
         written << write_file(output_dir, 'sitemap.xml', render_sitemap(updated_at, site))
@@ -57,8 +65,10 @@ module Catalog
         written << write_file(output_dir, asset, File.read(template_path(asset)))
       end
       IMAGE_ASSETS.each do |asset|
+        src = template_path(asset)
+        next unless File.exist?(src)   # volitelné obrázky (např. maskot.png) — přeskoč, dokud nejsou
         dest = File.join(output_dir, asset)
-        FileUtils.cp(template_path(asset), dest)
+        FileUtils.cp(src, dest)
         written << dest
       end
 

@@ -109,12 +109,51 @@ a { color: inherit; text-decoration: none; }
 }
 .hero-overlay-tl { top: 38px; left: 44px; }
 .hero-overlay-tr { top: 38px; right: 44px; }
+.hero-overlay-bl { left: 44px; bottom: 38px; }
 .hero-overlay-br { right: 44px; bottom: 38px; text-align: right; }
 
 /* Přepínač jazyka CZ | EN — vpravo nahoře v hlavičkovém obrázku */
 .lang-switch { display: flex; align-items: center; gap: 6px; }
+/* ---------- Navigace pod herem (sticky lišta, místo tabů přes obrázek) ---------- */
+.navbar {
+  position: sticky; top: 0; z-index: 50;
+  background: var(--bg-panel); border-bottom: 1px solid var(--border);
+}
+/* Vnitřní kolona zarovnaná s herem i obsahem (max-width 1280, padding 24). */
+.navbar-inner {
+  max-width: 1280px; margin: 0 auto; padding: 8px 24px;
+  display: flex; align-items: center; gap: 12px;
+}
+.navbar-views { display: flex; flex-wrap: wrap; gap: 6px; }
+.navbar-link {
+  border: 1px solid var(--border); background: var(--bg-card); color: var(--text);
+  padding: 7px 13px; border-radius: 999px; font-size: 14px; font-weight: 600;
+  cursor: pointer; transition: background .12s, border-color .12s, color .12s;
+}
+.navbar-link:hover { background: var(--bg-card-hover); border-color: var(--accent-focus); }
+.navbar-link.is-active { background: var(--accent); border-color: var(--accent); color: #fff; }
+.navbar-lang { margin-left: auto; }              /* jazyk vpravo */
+.navbar-burger { display: none; }                /* viditelné jen na mobilu */
+/* Hamburger ikona (3 proužky → ✕ při otevřeném menu) */
+.navbar-burger { align-items: center; gap: 9px; background: var(--bg-card);
+  border: 1px solid var(--border); border-radius: 8px; padding: 8px 13px;
+  color: var(--text); font-weight: 600; font-size: 14px; cursor: pointer; }
+.burger-icon { position: relative; width: 18px; height: 14px; flex: 0 0 auto; }
+.burger-icon span { position: absolute; left: 0; width: 100%; height: 2px; background: currentColor;
+  border-radius: 2px; transition: transform .2s, opacity .2s; }
+.burger-icon span:nth-child(1) { top: 0; }
+.burger-icon span:nth-child(2) { top: 6px; }
+.burger-icon span:nth-child(3) { top: 12px; }
+.navbar-burger[aria-expanded="true"] .burger-icon span:nth-child(1) { transform: translateY(6px) rotate(45deg); }
+.navbar-burger[aria-expanded="true"] .burger-icon span:nth-child(2) { opacity: 0; }
+.navbar-burger[aria-expanded="true"] .burger-icon span:nth-child(3) { transform: translateY(-6px) rotate(-45deg); }
+/* „Pohledy" + „Rychlé filtry" v mobilním draweru — jen na mobilu */
+.views-nav { display: none; }
+.views-nav .view-link.is-active { background: var(--accent); border-color: var(--accent); color: #fff; }
+.slices-heading { display: none; }
+.slices-heading .tabs { margin-top: 10px; }   /* odsadit řezy od nadpisu */
 .lang-switch button {
-  background: rgba(0, 0, 0, 0.38);
+  background: rgba(0, 0, 0, 0.6);
   border: 1px solid rgba(255, 255, 255, 0.55);
   color: #fff;
   font-weight: 700;
@@ -125,7 +164,7 @@ a { color: inherit; text-decoration: none; }
   cursor: pointer;
   transition: background .12s, border-color .12s;
 }
-.lang-switch button:hover { background: rgba(0, 0, 0, 0.55); }
+.lang-switch button:hover { background: rgba(0, 0, 0, 0.72); }
 .lang-switch button.is-active {
   background: var(--accent);
   border-color: var(--accent);
@@ -138,16 +177,21 @@ a { color: inherit; text-decoration: none; }
   letter-spacing: -0.02em;
   line-height: 1.05;
 }
-.brand-prefix { font-size: 1.333em; }   /* „Katalog" o 1/3 větší než základ h1 */
-.brand-domain { color: var(--accent-focus); display: block; font-size: 0.75em; }  /* „Zprávobot.news" o 1/4 menší */
+/* Fixní barvy čitelné na hero obrázku (nevážeme na --bg-panel, obrázek se nemění).
+   #b4aef5 = nový odstín fialové mezi původním #e8e4f2 a accent #6364ff (tlačítka). */
+.brand-prefix { font-size: 1.333em; }                /* „Sloník.online" — velký */
+.brand-name   { color: #b4aef5; }                    /* „Sloník" — výrazná levandulová */
+.brand-tld    { color: #ffffff; }                    /* „.online" — bílá */
+.brand-domain { color: var(--accent-focus); display: block; font-size: 0.75em; }  /* „Zprávobot.news" — oranžová */
 .hero-overlay-tl .claim {
   margin: 8px 0 0;
   font-size: clamp(14px, 1.6vw, 18px);
   font-weight: 500;
+  color: #ffffff;  /* claim — bílá */
 }
 .main-account {
   display: inline-block;
-  color: var(--accent-focus);
+  color: var(--accent-focus);  /* „Zprávobot.news" — oranžová (stejně jako titulek) */
   font-weight: 700;
   font-size: clamp(13px, 1.5vw, 16px);
 }
@@ -164,6 +208,157 @@ a { color: inherit; text-decoration: none; }
   gap: 28px;
   align-items: start;
 }
+/* „O Sloníku" zachovává dvousloupcový layout: menu vlevo, obsah vpravo. */
+
+/* ---------- Pohled: O Sloníku ---------- */
+.about-content {
+  /* Bez max-width → vyplní sloupec obsahu, pravý okraj zarovnaný s headerem
+     (stejně jako mřížka karet v pohledu Účty). Čitelnost textu drží .about-content p. */
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 28px 32px;
+}
+.about-content h2 {
+  margin: 0 0 16px;
+  font-size: 24px;
+  color: var(--text-strong);
+}
+.about-content p {
+  margin: 0 0 14px;
+  font-size: 15px;
+  line-height: 1.65;
+  color: var(--text);
+}
+.about-content p:last-child { margin-bottom: 0; }
+.about-content h3 {
+  margin: 22px 0 8px;
+  font-size: 17px;
+  color: var(--text-strong);
+}
+.about-content ul {
+  margin: 0 0 14px;
+  padding-left: 22px;
+  font-size: 15px;
+  line-height: 1.65;
+  color: var(--text);
+}
+.about-content li { margin-bottom: 4px; }
+.about-content a { color: var(--accent); }
+.about-content code { background: var(--bg-panel); border: 1px solid var(--border);
+  border-radius: 6px; padding: 1px 6px; font-size: 0.9em; }
+/* Náhledy karet v O Sloníku — vycentrované, pod textem (skryjí se přes onerror). */
+.about-figure { margin: 14px 0 20px; text-align: center; }
+.about-figure img { max-width: 480px; width: 100%; height: auto; display: block;
+  margin: 0 auto; border: 1px solid var(--border); border-radius: 12px; background: var(--bg); }
+.about-figure figcaption { font-size: 13px; line-height: 1.55; color: var(--text-dim); margin-top: 8px; }
+.about-figure.qr img { max-width: 220px; }   /* QR kód menší */
+/* Finanční podpora — odrážky bez teček, vzdušnější. */
+.faq-support { list-style: none; padding-left: 0; }
+.faq-support li { margin-bottom: 8px; }
+/* Foto autora — vpravo, text obtéká. */
+.author-photo { float: right; width: 45%; height: auto;
+  border-radius: 14px; margin: 0 0 16px 24px; }
+@media (max-width: 560px) { .author-photo { float: none; display: block; margin: 0 0 14px; width: 100%; max-width: 320px; } }
+
+/* Menu „O Sloníku" v sidebaru — tlačítka sdílí styl s filtry (.filter-chip). */
+.about-nav .filter-buttons { margin-bottom: 18px; }
+.about-nav .search-nav-desc { margin: 2px 0 10px; }
+.about-nav h2 { margin-top: 4px; }
+
+/* ---------- Pohled: Vyhledávání ---------- */
+/* Dvousloupcový layout (vlevo panel s popisem, vpravo formulář + výsledky) —
+   stejně jako O Sloníku. Karty účtů/postů sdílí .card / .post-card z Účtů/Postů. */
+.search-nav-desc { font-size: 13px; line-height: 1.6; color: var(--text); margin: 0; }
+/* „Landing" à la Google — vycentrované logo + claim nad formulářem; po zadání
+   dotazu (.has-query) zmizí, ať mají výsledky místo. */
+.search-hero { display: flex; align-items: center; justify-content: center; gap: 6px; margin: 14px 0 16px; flex-wrap: wrap; }
+.search-logo { width: min(200px, 42%); height: auto; border-radius: 14px; }
+/* Wordmark kolem loga: „Sloník" levandulová jako title, „online" bílá s fialovým obrysem. */
+.search-wordmark { font-weight: 800; font-size: clamp(26px, 6vw, 52px); line-height: 1; letter-spacing: -0.01em; }
+/* Když to prohlížeč umí, škáluj wordmark+logo podle ŠÍŘKY SLOUPCE OBSAHU
+   (ne celého okna) a nech blok na jednom řádku — na úzké stránce se zmenší. */
+@supports (container-type: inline-size) {
+  .search-view { container-type: inline-size; }
+  .search-hero { flex-wrap: nowrap; gap: clamp(4px, 1.5cqi, 10px); }
+  .search-logo { width: clamp(96px, 24cqi, 200px); }
+  .search-wordmark { font-size: clamp(20px, 7.5cqi, 56px); white-space: nowrap; }
+}
+.search-wordmark-l { color: var(--accent); }
+/* Bílá výplň + fialový obrys. paint-order kreslí obrys POD výplň → vnitřek
+   zůstane čistě bílý a tenké tvary („e") se neslijí do škrtu. */
+.search-wordmark-r {
+  color: #ffffff;
+  -webkit-text-stroke: 2px var(--accent);
+  text-stroke: 2px var(--accent);
+  paint-order: stroke fill;
+}
+.search-tagline { text-align: center; color: var(--text-dim); font-size: 13px; line-height: 1.5; margin: 12px auto 0; max-width: 560px; }
+.search-tip { text-align: center; color: var(--text-dim); font-size: 12px; line-height: 1.5; margin: 6px auto 0; max-width: 600px; opacity: 0.85; }
+#search-view .search-bar { max-width: 620px; margin: 0 auto; }
+.search-view.has-query .search-hero,
+.search-view.has-query .search-tagline,
+.search-view.has-query .search-tip { display: none; }
+.search-bar input {
+  width: 100%; padding: 13px 15px; font-size: 16px;
+  border: 1px solid var(--border); border-radius: 10px;
+  background: var(--bg-card); color: var(--text);
+}
+.search-bar input:focus { outline: 2px solid var(--accent); border-color: transparent; }
+.search-meta { color: var(--text-dim); font-size: 12px; margin: 10px 2px 18px; min-height: 16px; }
+.s-sec { font-size: 13px; text-transform: uppercase; letter-spacing: .06em; color: var(--text-dim); margin: 22px 2px 12px; }
+.s-sec:first-child { margin-top: 4px; }
+.s-sec span { font-weight: 400; }
+.s-empty { color: var(--text-dim); padding: 24px 2px; }
+
+/* ---------- Pohled: Instance ---------- */
+/* Karty mají stejnou velikost jako karty postů (mřížka 320px). */
+#instance-results .cards-grid { grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); }
+.inst-card { background: var(--bg-card); border: 1px solid var(--border); border-radius: 12px;
+  padding: 16px; display: flex; flex-direction: column; gap: 10px;
+  transition: border-color .12s, transform .12s, box-shadow .12s; }
+.inst-card:hover { border-color: var(--accent); transform: translateY(-2px);
+  box-shadow: 0 6px 18px rgba(99, 100, 255, 0.10); }
+.inst-head { display: flex; gap: 12px; align-items: flex-start; }
+.inst-logo { flex: 0 0 60px; width: 60px; height: 60px; border-radius: 12px; object-fit: cover; background: var(--bg-card-hover); }
+.inst-logo-fb { display: flex; align-items: center; justify-content: center; background: var(--accent); color: #fff; font-weight: 700; font-size: 26px; }
+.inst-headbody { min-width: 0; flex: 1; }
+/* Plný název instance (max 2 řádky), ne zkrácený. */
+.inst-title { font-weight: 700; color: var(--text-strong); font-size: 17px; line-height: 1.3;
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; word-break: break-word; }
+.inst-host { color: var(--text-dim); font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-top: 2px; }
+.inst-reg { flex: 0 0 auto; align-self: flex-start; font-size: 11px; font-weight: 600; padding: 3px 8px; border-radius: 999px; white-space: nowrap; }
+.inst-reg-open { background: var(--fam-business); color: #fff; }
+.inst-reg-approval { background: var(--fam-lifestyle); color: #fff; }
+.inst-reg-closed { background: var(--border); color: var(--text-dim); }
+.inst-desc { font-size: 13px; line-height: 1.5; color: var(--text);
+  display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+.inst-stats { display: flex; gap: 14px; flex-wrap: wrap; font-size: 12px; color: var(--text-dim); }
+.inst-stats strong { color: var(--text-strong); font-weight: 700; }
+.inst-foot { display: flex; gap: 12px; align-items: center; margin-top: 2px; }
+.inst-cat { font-size: 12px; color: var(--text-dim); }
+.inst-join { margin-left: auto; font-size: 13px; font-weight: 600; text-decoration: none;
+  background: var(--accent); color: #fff; padding: 7px 13px; border-radius: 8px; }
+.inst-join:hover { background: var(--accent-focus); }
+.inst-open { font-size: 13px; color: var(--accent); text-decoration: none; }
+.inst-open:hover { text-decoration: underline; }
+
+/* ---------- Pohled: Odkazy ---------- */
+.link-card { background: var(--bg-card); border: 1px solid var(--border); border-radius: 12px;
+  padding: 14px 16px; display: flex; flex-direction: column; gap: 6px;
+  transition: border-color .12s, transform .12s, box-shadow .12s; }
+.link-card:hover { border-color: var(--accent); transform: translateY(-2px);
+  box-shadow: 0 6px 18px rgba(99, 100, 255, 0.10); }
+.link-title { font-weight: 700; font-size: 15px; color: var(--text-strong);
+  text-decoration: none; line-height: 1.35; }
+.link-title:hover { color: var(--accent); text-decoration: underline; }
+.link-meta { display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+  font-size: 12px; color: var(--text-dim); }
+.link-lang { font-size: 11px; font-weight: 700; padding: 1px 7px; border-radius: 999px;
+  background: var(--bg-panel); border: 1px solid var(--border); color: var(--text-dim); }
+.link-lang-cs { color: #fff; background: var(--accent); border-color: transparent; }
+.link-src { font-weight: 600; color: var(--text); }
+.link-note { font-size: 13px; line-height: 1.5; color: var(--text); margin: 2px 0 0; }
 
 /* ---------- Sidebar ---------- */
 .sidebar {
@@ -246,6 +441,8 @@ a { color: inherit; text-decoration: none; }
   grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
   gap: 14px;
 }
+/* Marker pro infinite scroll — nepatrná výška, ať ho IntersectionObserver vidí. */
+#cards-sentinel { width: 100%; height: 1px; }
 .card {
   display: flex;
   gap: 14px;
@@ -282,6 +479,8 @@ a { color: inherit; text-decoration: none; }
   text-overflow: ellipsis;
 }
 .card-handle {
+  display: block;          /* <a> je inline → bez block ellipsis nefunguje */
+  max-width: 100%;
   color: var(--text-dim);
   font-size: 13px;
   white-space: nowrap;
@@ -297,6 +496,12 @@ a { color: inherit; text-decoration: none; }
   white-space: nowrap;
 }
 .label-type { background: var(--bg-panel); color: var(--text-dim); border: 1px solid var(--border); }
+.label-bot {
+  background: var(--accent-bg);
+  color: var(--accent-focus);
+  border: 1px solid var(--accent-focus);
+  font-weight: 700;
+}
 .label-family { color: #fff; }
 .label-family.fam-sport { background: var(--fam-sport); }
 .label-family.fam-news { background: var(--fam-news); }
@@ -480,21 +685,7 @@ a { color: inherit; text-decoration: none; }
 .tag-x { font-weight: 700; }
 
 /* ---------- Sidebar accordion toggle (mobil) ---------- */
-.sidebar-toggle {
-  display: none;
-  width: 100%;
-  padding: 10px 12px;
-  background: var(--bg-card);
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  color: var(--text);
-  font-size: 14px;
-  font-weight: 600;
-  cursor: pointer;
-  text-align: left;
-}
-.sidebar-toggle-icon { float: right; transition: transform .15s; }
-.sidebar.open .sidebar-toggle-icon { transform: rotate(180deg); }
+/* (sidebar-toggle nahrazen navbar-burgerem — viz Navigace výše) */
 
 /* ---------- Hover preview ---------- */
 .hover-preview {
@@ -589,22 +780,6 @@ a { color: inherit; text-decoration: none; }
 .modal-stat strong { font-size: 17px; color: var(--text-strong); }
 .modal-stat span { font-size: 12px; color: var(--text-dim); }
 .modal-stat-wide { justify-content: center; color: var(--text-dim); font-size: 13px; }
-.modal-sources h3 {
-  font-size: 12px; text-transform: uppercase; letter-spacing: 0.08em;
-  color: var(--text-dim); margin: 4px 0 8px;
-}
-.modal-sources { margin-bottom: 18px; }
-.source-link {
-  display: block;
-  padding: 8px 10px;
-  margin-bottom: 6px;
-  background: var(--bg-panel);
-  border-radius: 8px;
-  font-size: 13px;
-  color: var(--accent);
-}
-.source-link:hover { background: var(--bg-card-hover); }
-.source-link-plain { color: var(--text-dim); }
 .modal-actions { display: flex; gap: 10px; flex-wrap: wrap; }
 .btn {
   padding: 10px 18px;
@@ -633,34 +808,57 @@ a { color: inherit; text-decoration: none; }
   padding: 20px 24px;
   color: var(--text-dim);
   font-size: 13px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px 24px;
+  flex-wrap: wrap;
 }
 .footer-inner p { margin: 4px 0; }
+.footer-meta { margin: 0; text-align: left; }
 .footer-inner a { color: var(--accent); }
 .footer-inner a:hover { text-decoration: underline; }
 
-/* ---------- Tablet ---------- */
-@media (max-width: 760px) {
-  .layout { grid-template-columns: 1fr; }
-  .sidebar { position: static; }
-  .header-meta { text-align: left; }
+/* Sponzor (OSCLOUD) — text + logo u pravého okraje patičky (jako Sloník). */
+.footer-sponsor { display: inline-flex; align-items: center; gap: 12px; flex-shrink: 0; text-decoration: none; }
+.footer-sponsor:hover { text-decoration: none; }
+.footer-sponsor-logo { height: 24px; width: auto; display: block; }
+.footer-sponsor-text { color: var(--text-dim); font-size: 12px; line-height: 1.25; white-space: pre-line; text-align: left; }
+.footer-sponsor:hover .footer-sponsor-text { color: var(--text); }
+@media (max-width: 560px) {
+  .footer-inner { flex-direction: column; align-items: flex-start; }
 }
 
-/* ---------- Mobile-first (<=640px): jednosloupcový list + accordion sidebar ---------- */
+/* ---------- Tablet/mobil (<=760px): 1 sloupec + navigace jako hamburger drawer ---------- */
+@media (max-width: 760px) {
+  .layout { grid-template-columns: 1fr; }
+  .header-meta { text-align: left; }
+
+  /* Navigace: skryj pilulky, ukaž hamburger; „Pohledy" + „Rychlé filtry" do draweru. */
+  .navbar-views { display: none; }
+  .navbar-burger { display: inline-flex; }
+  .views-nav { display: block; }
+  .slices-heading { display: block; }
+
+  /* Sidebar = drawer: defaultně skrytý, otevře ho hamburger v navbaru. */
+  .sidebar { position: static; display: none; }
+  .sidebar.open { display: block; }
+
+  /* Řezy lišty přesunuté JS do draweru — zarovnat na šířku panelu (bez centrování). */
+  .sidebar-body .tabs { max-width: none; margin: 0; padding: 0; }
+}
+
+/* ---------- Mobile (<=640px): jednosloupcový list, jemnější odsazení ---------- */
 @media (max-width: 640px) {
   .hero { padding: 12px 14px 0; }
   .header-inner { padding: 16px 14px; }
+  .navbar-inner { padding: 8px 14px; }
   .tabs { padding: 12px 14px 0; }
   .layout { padding: 16px 14px; gap: 16px; }
 
-  /* Sidebar jako accordion nad seznamem */
-  .sidebar-toggle { display: block; }
-  .sidebar-body { display: none; margin-top: 12px; }
-  .sidebar.open .sidebar-body { display: flex; flex-direction: column; gap: 26px; }
-
   /* Hero overlay na mobilu: zmenšit a zúžit, ať se text vejde */
-  .hero-overlay { max-width: 60%; }
+  .hero-overlay { max-width: 70%; }
   .hero-overlay-tl { top: 24px; left: 22px; }
-  .hero-overlay-tr { top: 20px; right: 18px; max-width: none; }
   .hero-overlay-br { right: 22px; bottom: 22px; }
 
   /* Grid karet → jednosloupcový seznam */
@@ -675,3 +873,137 @@ a { color: inherit; text-decoration: none; }
 @media (hover: none) {
   .hover-preview { display: none !important; }
 }
+
+/* ============================================================
+   Karta postu
+   ============================================================ */
+
+/* Karta postu — vychází z .card, ale je vertikální (sloupec) */
+.post-card {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  transition: border-color .12s, transform .12s, box-shadow .12s;
+}
+.post-card:hover {
+  border-color: var(--accent);
+  transform: translateY(-2px);
+  box-shadow: 0 6px 18px rgba(99, 100, 255, 0.10);
+}
+.post-head { display: flex; gap: 10px; align-items: center; }
+.post-avatar-link { flex: 0 0 40px; display: block; line-height: 0; border-radius: 10px; }
+.post-avatar-link:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.post-head .card-avatar { flex: 0 0 40px; width: 40px; height: 40px; border-radius: 10px; }
+.post-head-body { min-width: 0; flex: 1; }
+.post-author { display: block; font-weight: 700; font-size: 14px; color: var(--text-strong);
+  text-decoration: none; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.post-author:hover { text-decoration: underline; }
+.post-handle { color: var(--text-dim); font-size: 12px;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.post-head .label-family { flex: 0 0 auto; align-self: flex-start; }
+
+.post-text {
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--text);
+  white-space: pre-wrap;
+  word-break: break-word;
+  margin: 0;
+}
+.post-text.is-empty { color: var(--text-dim); font-style: italic; }
+/* Zkrácení dlouhého postu (klamp na ~6 řádků), tlačítko sundá clamp. */
+.post-text.is-clamped {
+  display: -webkit-box;
+  -webkit-line-clamp: 6;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+/* Inline odkazy v textu postu */
+.post-inline-hashtag, .post-inline-mention { color: var(--accent); font-weight: 600; text-decoration: none; cursor: pointer; }
+.post-inline-link { color: var(--accent); text-decoration: none; word-break: break-all; }
+.post-inline-hashtag:hover, .post-inline-mention:hover, .post-inline-link:hover { text-decoration: underline; }
+/* Mastodon zkrácené URL: skrytý protokol/ocásek (https://, www, …) */
+.post-text .invisible {
+  position: absolute; width: 1px; height: 1px; overflow: hidden;
+  clip: rect(0 0 0 0); white-space: nowrap;
+}
+.post-text .ellipsis::after { content: '…'; }
+.post-more {
+  background: none; border: none; padding: 0; cursor: pointer;
+  color: var(--accent); font-size: 13px; font-weight: 600;
+  align-self: flex-start; margin-top: -4px;
+}
+.post-media-badge {
+  display: inline-flex; align-items: center; gap: 5px;
+  font-size: 12px; color: var(--accent);
+  background: var(--bg-panel); border: 1px solid var(--border);
+  padding: 3px 9px; border-radius: 999px; align-self: flex-start;
+  cursor: pointer; font-weight: 600;
+}
+.post-media-badge:hover { border-color: var(--accent); background: var(--bg-card); }
+
+.embed-modal {
+  width: min(500px, calc(100vw - 32px));
+  max-height: 90vh;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  background: var(--bg-card);
+  color: var(--text);
+  overflow: hidden;
+}
+.embed-modal::backdrop { background: rgba(0,0,0,0.5); }
+.embed-modal.modal-fallback-open {
+  position: fixed;
+  inset: 0;
+  margin: auto;
+  z-index: 100;
+}
+.embed-modal-inner {
+  position: relative;
+  padding: 16px;
+  max-height: 90vh;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+.embed-modal-inner .modal-close { position: sticky; float: right; top: 0; z-index: 1; }
+.embed-frame {
+  display: block;
+  width: 100%;
+  height: 200px;
+  border: none;
+  border-radius: 10px;
+  background: var(--bg-panel);
+  transition: height 0.15s ease;
+}
+.post-tags { display: flex; gap: 6px; flex-wrap: wrap; }
+.post-tag {
+  font-size: 11px; color: var(--text-dim);
+  background: var(--bg-panel); border: 1px solid var(--border);
+  padding: 2px 8px; border-radius: 999px;
+}
+
+.hashtags-empty { font-size: 12px; color: var(--text-dim); margin: 2px 0 0; }
+.post-foot {
+  display: flex; align-items: center; gap: 14px; flex-wrap: wrap;
+  font-size: 12px; color: var(--text-dim);
+  border-top: 1px solid var(--border); padding-top: 10px; margin-top: auto;
+}
+.post-foot .post-stat { display: inline-flex; align-items: center; gap: 4px; }
+.post-foot .post-stat strong { color: var(--text); font-weight: 700; }
+.post-open {
+  margin-left: auto; color: var(--accent); font-weight: 600;
+  text-decoration: none; white-space: nowrap;
+}
+.post-open:hover { text-decoration: underline; }
+.post-riser-badge {
+  font-size: 11px; font-weight: 700; color: #fff;
+  background: var(--accent); padding: 2px 8px; border-radius: 999px;
+}
+
+/* posts grid sdílí auto-fill, ale karty jsou trochu širší pro text */
+.posts-grid { grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); }

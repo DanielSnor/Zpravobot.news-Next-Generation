@@ -69,13 +69,17 @@ for f in "$TEST_DIR"/bin/*.rb; do
 done
 echo ""
 
-# 2. lib/**/*.rb (rekurzivně)
-echo -e "${CYAN}=== lib/**/*.rb ===${NC}"
+# 2. lib/**/*.rb + frontend šablony katalogu (lib/catalog/templates/*)
+#    POZOR: katalog má v lib/ i ne-rb assety (app.js, app.css, index.html.erb,
+#    *.png, *.jpg) — bez nich se na prod přenese jen Ruby a web zůstane starý
+#    (+ build failne na chybějících obrázcích).
+echo -e "${CYAN}=== lib/**/*.rb + lib/catalog/templates/* ===${NC}"
 if [ "$DRY_RUN" == true ]; then
-    echo -e "  ${YELLOW}[DRY]${NC} rsync lib/ ($(find "$TEST_DIR/lib" -name "*.rb" | wc -l) souborů)"
+    echo -e "  ${YELLOW}[DRY]${NC} rsync lib/ ($(find "$TEST_DIR/lib" -name "*.rb" | wc -l) .rb + templates)"
 else
-    rsync -av --include='*.rb' --include='*/' --exclude='*' \
-        "$TEST_DIR/lib/" "$PROD_DIR/lib/" | grep -E "\.rb$" | while read line; do
+    rsync -av --include='*/' --include='*.rb' --include='*.erb' --include='*.js' \
+        --include='*.css' --include='*.jpg' --include='*.png' --exclude='*' \
+        "$TEST_DIR/lib/" "$PROD_DIR/lib/" | grep -E "\.(rb|erb|js|css|jpg|png)$" | while read line; do
         echo -e "  ${GREEN}✔${NC} lib/$line"
     done || true
     echo -e "  ${GREEN}✔${NC} lib/ synced"
