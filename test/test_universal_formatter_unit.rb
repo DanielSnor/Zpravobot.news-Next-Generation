@@ -226,7 +226,7 @@ tier3_post = make_post(
 result_t3 = formatter_tw.format(tier3_post)
 
 test_includes("Tier 3: contains read_more prefix", "\u{1f4d6}\u{27a1}\u{fe0f}", result_t3) # 📖➡️
-test_includes("Tier 3: contains post URL", 'xcancel.com', result_t3)
+test_includes("Tier 3: contains post URL", 'x.com', result_t3)
 
 # Tier 3 video
 tier3_video = make_post(
@@ -248,16 +248,17 @@ url_post = make_post(
 )
 result_url = formatter_tw.format(url_post)
 
-test_includes("URL rewrite: twitter.com -> xcancel.com", 'xcancel.com', result_url)
+test_includes("URL rewrite: twitter.com -> x.com", 'x.com', result_url)
 test_not_includes("URL rewrite: no twitter.com in output", 'twitter.com', result_url)
 
-# x.com also rewritten
+# dead nitter.net also rewritten
 url_post2 = make_post(
-  text: 'Check https://x.com/user/status/456',
-  url: 'https://x.com/user/status/456'
+  text: 'Check https://nitter.net/user/status/456',
+  url: 'https://nitter.net/user/status/456'
 )
 result_url2 = formatter_tw.format(url_post2)
-test_includes("URL rewrite: x.com -> xcancel.com", 'xcancel.com', result_url2)
+test_includes("URL rewrite: nitter.net -> x.com", 'x.com', result_url2)
+test_not_includes("URL rewrite: no nitter.net in output", 'nitter.net', result_url2)
 
 # =============================================================================
 # 9. URL Deduplication
@@ -349,7 +350,7 @@ section("Platform Defaults")
 
 tw_fmt = Formatters::UniversalFormatter.new(platform: :twitter)
 tw_config = tw_fmt.instance_variable_get(:@config)
-test("Twitter: url_domain is xcancel.com", 'xcancel.com', tw_config[:url_domain])
+test("Twitter: url_domain is x.com", 'x.com', tw_config[:url_domain])
 test("Twitter: prefix_repost", "\u{1d54f}\u{1f501}", tw_config[:prefix_repost])
 test("Twitter: include_post_url_for_regular false", false, tw_config[:include_post_url_for_regular])
 

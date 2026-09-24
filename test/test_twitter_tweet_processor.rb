@@ -529,7 +529,7 @@ syndi_with_video = syndi_thumb_only.merge(
   video_url_variants: ['https://video.twimg.com/tweet_video/abc.mp4']
 )
 
-cfg_thumb = source_config(url: { replace_to: 'xcancel.com' })
+cfg_thumb = source_config(url: { replace_to: 'x.com' })
 build_proc9 = make_processor(post_processor: TrackingPostProcessor.new)
 
 post_thumb_only = build_proc9.send(:build_syndication_post, 'thumbonly_001', 'videouser', cfg_thumb, syndi_thumb_only, nil)
@@ -581,8 +581,8 @@ thumb_formatted_text = "Check this video!"
 
 quiet { pp_direct.send(:publish_post, thumb_formatted_text, post_thumb_only, cfg_thumb) }
 
-test "thumbnail-only publish: text obsahuje tweet URL (xcancel.com)",
-     true, cap_pub.last_text&.include?('xcancel.com/videouser/status/thumbonly_001')
+test "thumbnail-only publish: text obsahuje tweet URL (x.com)",
+     true, cap_pub.last_text&.include?('x.com/videouser/status/thumbonly_001')
 test "thumbnail-only publish: text obsahuje prefix 🎬",
      true, cap_pub.last_text&.include?('🎬')
 test "thumbnail-only publish: thumbnail nahrán jako médium",
@@ -601,11 +601,11 @@ pp_dup = Processors::PostProcessor.new(
 pp_dup.define_singleton_method(:get_publisher) { |_cfg| cap_pub2 }
 pp_dup.define_singleton_method(:upload_dummy_transparent_image) { |_pub| nil }
 
-already_text = "Check this video!\n🎬 https://xcancel.com/videouser/status/urldup_003"
+already_text = "Check this video!\n🎬 https://x.com/videouser/status/urldup_003"
 
 quiet { pp_dup.send(:publish_post, already_text, post_url_already, cfg_thumb) }
 
-url_count = cap_pub2.last_text.to_s.scan(%r{xcancel\.com/videouser/status/urldup_003}).size
+url_count = cap_pub2.last_text.to_s.scan(%r{x\.com/videouser/status/urldup_003}).size
 test "thumbnail-only: URL se nepřidá znovu pokud video_url_added true",
      1, url_count
 
