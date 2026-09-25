@@ -16,7 +16,7 @@ TEST_DIR="/app/data/zbnw-ng-test"
 PROD_DIR="/app/data/zbnw-ng"
 
 # Soubory k vynechání
-EXCLUDE_RB="ifttt_webhook.rb"  # Má dual-env konfiguraci v produkci
+EXCLUDE_RB=""  # ifttt_webhook.rb se od 25. 9. 2026 synchronizuje; po změně restart: kill + ./cron_webhook.sh
 EXCLUDE_SH="env.sh"            # Prostředí-specifická konfigurace
 
 # Barvy

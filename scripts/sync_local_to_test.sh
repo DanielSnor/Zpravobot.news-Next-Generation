@@ -65,12 +65,14 @@ echo "============================================================"
 echo ""
 
 # ============================================================
-# 1. bin/*.rb (kromě ifttt_webhook.rb)
+# 1. bin/*.rb
+#    ifttt_webhook.rb se od 25. 9. 2026 synchronizuje také (čte tytéž ENV jako
+#    dřív, žádná dual-env konfigurace). Změna se projeví až po restartu serveru:
+#    kill běžícího procesu + ./cron_webhook.sh (watchdog startuje jen neběžící).
 # ============================================================
 echo -e "${CYAN}=== bin/*.rb ===${NC}"
 do_rsync \
     --include='*.rb' \
-    --exclude='ifttt_webhook.rb' \
     --exclude='*' \
     "$LOCAL_DIR/bin/" "$REMOTE:$TEST_DIR/bin/"
 echo ""
