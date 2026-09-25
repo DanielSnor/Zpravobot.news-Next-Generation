@@ -21,6 +21,11 @@
 #   Broadcast:  POST /api/mastodon/broadcast (tlambot trigger)
 
 $LOAD_PATH.unshift File.join(__dir__, '..', 'lib')
+
+# Log jde přes cron_webhook.sh do souboru: bez sync by Ruby držel řádky v bufferu
+# a webhook_server.log (čtou ho health checky) by se plnil po kilobajtech se zpožděním.
+$stdout.sync = true
+$stderr.sync = true
 require 'optparse'
 require 'webhook/http_server'
 
